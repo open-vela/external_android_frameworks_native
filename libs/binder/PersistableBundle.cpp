@@ -91,7 +91,7 @@ namespace os {
 
 #define RETURN_IF_ENTRY_ERASED(map, key)                                 \
     {                                                                    \
-        size_t num_erased = (map).erase(key);                            \
+        size_t num_erased = map.erase(key);                              \
         if (num_erased) {                                                \
             ALOGE("Failed at %s:%d (%s)", __FILE__, __LINE__, __func__); \
             return num_erased;                                           \
@@ -420,6 +420,7 @@ status_t PersistableBundle::readFromParcelInner(const Parcel* parcel, size_t len
     RETURN_IF_FAILED(parcel->readInt32(&num_entries));
 
     for (; num_entries > 0; --num_entries) {
+        size_t start_pos = parcel->dataPosition();
         String16 key;
         int32_t value_type;
         RETURN_IF_FAILED(parcel->readString16(&key));

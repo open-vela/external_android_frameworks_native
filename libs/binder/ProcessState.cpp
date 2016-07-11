@@ -52,7 +52,7 @@ namespace android {
 class PoolThread : public Thread
 {
 public:
-    PoolThread(bool isMain)
+    explicit PoolThread(bool isMain)
         : mIsMain(isMain)
     {
     }
@@ -366,6 +366,13 @@ ProcessState::ProcessState()
 
 ProcessState::~ProcessState()
 {
+    if (mDriverFD >= 0) {
+        if (mVMStart != MAP_FAILED) {
+            munmap(mVMStart, BINDER_VM_SIZE);
+        }
+        close(mDriverFD);
+    }
+    mDriverFD = -1;
 }
         
 }; // namespace android

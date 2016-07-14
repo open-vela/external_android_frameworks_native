@@ -32,6 +32,11 @@ Status Status::fromExceptionCode(int32_t exceptionCode,
     return Status(exceptionCode, OK, message);
 }
 
+Status Status::fromExceptionCode(int32_t exceptionCode,
+                                 const char* message) {
+    return fromExceptionCode(exceptionCode, String8(message));
+}
+
 Status Status::fromServiceSpecificError(int32_t serviceSpecificErrorCode) {
     return Status(EX_SERVICE_SPECIFIC, serviceSpecificErrorCode);
 }
@@ -39,6 +44,11 @@ Status Status::fromServiceSpecificError(int32_t serviceSpecificErrorCode) {
 Status Status::fromServiceSpecificError(int32_t serviceSpecificErrorCode,
                                         const String8& message) {
     return Status(EX_SERVICE_SPECIFIC, serviceSpecificErrorCode, message);
+}
+
+Status Status::fromServiceSpecificError(int32_t serviceSpecificErrorCode,
+                                        const char* message) {
+    return fromServiceSpecificError(serviceSpecificErrorCode, String8(message));
 }
 
 Status Status::fromStatusT(status_t status) {
@@ -156,6 +166,11 @@ String8 Status::toString8() const {
         ret.append("'");
     }
     return ret;
+}
+
+std::stringstream& operator<< (std::stringstream& stream, const Status& s) {
+    stream << s.toString8().string();
+    return stream;
 }
 
 }  // namespace binder

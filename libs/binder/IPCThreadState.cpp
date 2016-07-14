@@ -330,7 +330,6 @@ void IPCThreadState::shutdown()
             delete st;
             pthread_setspecific(gTLS, NULL);
         }
-        pthread_key_delete(gTLS);
         gHaveTLS = false;
     }
 }

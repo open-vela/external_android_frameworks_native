@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 The Android Open Source Project
+ * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "AppOpsCallback"
+#define LOG_TAG "ResultReceiver"
 
-#include <binder/IAppOpsCallback.h>
+#include <binder/IResultReceiver.h>
 
 #include <utils/Log.h>
 #include <binder/Parcel.h>
@@ -28,37 +28,37 @@ namespace android {
 
 // ----------------------------------------------------------------------
 
-class BpAppOpsCallback : public BpInterface<IAppOpsCallback>
+class BpResultReceiver : public BpInterface<IResultReceiver>
 {
 public:
-    explicit BpAppOpsCallback(const sp<IBinder>& impl)
-        : BpInterface<IAppOpsCallback>(impl)
+    explicit BpResultReceiver(const sp<IBinder>& impl)
+        : BpInterface<IResultReceiver>(impl)
     {
     }
 
-    virtual void opChanged(int32_t op, const String16& packageName) {
-        Parcel data, reply;
-        data.writeInterfaceToken(IAppOpsCallback::getInterfaceDescriptor());
-        data.writeInt32(op);
-        data.writeString16(packageName);
-        remote()->transact(OP_CHANGED_TRANSACTION, data, &reply);
+    virtual void send(int32_t resultCode) {
+        Parcel data;
+        data.writeInterfaceToken(IResultReceiver::getInterfaceDescriptor());
+        data.writeInt32(resultCode);
+        remote()->transact(OP_SEND, data, NULL, IBinder::FLAG_ONEWAY);
     }
 };
 
-IMPLEMENT_META_INTERFACE(AppOpsCallback, "com.android.internal.app.IAppOpsCallback");
+IMPLEMENT_META_INTERFACE(ResultReceiver, "com.android.internal.os.IResultReceiver");
 
 // ----------------------------------------------------------------------
 
-status_t BnAppOpsCallback::onTransact(
+status_t BnResultReceiver::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
     switch(code) {
-        case OP_CHANGED_TRANSACTION: {
-            CHECK_INTERFACE(IAppOpsCallback, data, reply);
-            int32_t op = data.readInt32();
-            String16 packageName = data.readString16();
-            opChanged(op, packageName);
-            reply->writeNoException();
+        case OP_SEND: {
+            CHECK_INTERFACE(IResultReceiver, data, reply);
+            int32_t resultCode = data.readInt32();
+            send(resultCode);
+            if (reply != NULL) {
+                reply->writeNoException();
+            }
             return NO_ERROR;
         } break;
         default:

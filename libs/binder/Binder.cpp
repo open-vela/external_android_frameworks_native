@@ -16,11 +16,10 @@
 
 #include <binder/Binder.h>
 
-#include <atomic>
+#include <stdatomic.h>
 #include <utils/misc.h>
 #include <binder/BpBinder.h>
 #include <binder/IInterface.h>
-#include <binder/IResultReceiver.h>
 #include <binder/Parcel.h>
 
 #include <stdio.h>
@@ -60,24 +59,6 @@ bool IBinder::checkSubclass(const void* /*subclassID*/) const
     return false;
 }
 
-
-status_t IBinder::shellCommand(const sp<IBinder>& target, int in, int out, int err,
-    Vector<String16>& args, const sp<IResultReceiver>& resultReceiver)
-{
-    Parcel send;
-    Parcel reply;
-    send.writeFileDescriptor(in);
-    send.writeFileDescriptor(out);
-    send.writeFileDescriptor(err);
-    const size_t numArgs = args.size();
-    send.writeInt32(numArgs);
-    for (size_t i = 0; i < numArgs; i++) {
-        send.writeString16(args[i]);
-    }
-    send.writeStrongBinder(resultReceiver != NULL ? IInterface::asBinder(resultReceiver) : NULL);
-    return target->transact(SHELL_COMMAND_TRANSACTION, send, &reply);
-}
-
 // ---------------------------------------------------------------------------
 
 class BBinder::Extras
@@ -89,8 +70,9 @@ public:
 
 // ---------------------------------------------------------------------------
 
-BBinder::BBinder() : mExtras(nullptr)
+BBinder::BBinder()
 {
+  atomic_init(&mExtras, static_cast<uintptr_t>(0));
 }
 
 bool BBinder::isBinderAlive() const
@@ -148,7 +130,7 @@ status_t BBinder::unlinkToDeath(
     return INVALID_OPERATION;
 }
 
-status_t BBinder::dump(int /*fd*/, const Vector<String16>& /*args*/)
+    status_t BBinder::dump(int /*fd*/, const Vector<String16>& /*args*/)
 {
     return NO_ERROR;
 }
@@ -157,16 +139,19 @@ void BBinder::attachObject(
     const void* objectID, void* object, void* cleanupCookie,
     object_cleanup_func func)
 {
-    Extras* e = mExtras.load(std::memory_order_acquire);
+    Extras* e = reinterpret_cast<Extras*>(
+                    atomic_load_explicit(&mExtras, memory_order_acquire));
 
     if (!e) {
         e = new Extras;
-        Extras* expected = nullptr;
-        if (!mExtras.compare_exchange_strong(expected, e,
-                                             std::memory_order_release,
-                                             std::memory_order_acquire)) {
+        uintptr_t expected = 0;
+        if (!atomic_compare_exchange_strong_explicit(
+                                        &mExtras, &expected,
+                                        reinterpret_cast<uintptr_t>(e),
+                                        memory_order_release,
+                                        memory_order_acquire)) {
             delete e;
-            e = expected;  // Filled in by CAS
+            e = reinterpret_cast<Extras*>(expected);  // Filled in by CAS
         }
         if (e == 0) return; // out of memory
     }
@@ -175,9 +160,18 @@ void BBinder::attachObject(
     e->mObjects.attach(objectID, object, cleanupCookie, func);
 }
 
+// The C11 standard doesn't allow atomic loads from const fields,
+// though C++11 does.  Fudge it until standards get straightened out.
+static inline uintptr_t load_const_atomic(const atomic_uintptr_t* p,
+                                          memory_order mo) {
+    atomic_uintptr_t* non_const_p = const_cast<atomic_uintptr_t*>(p);
+    return atomic_load_explicit(non_const_p, mo);
+}
+
 void* BBinder::findObject(const void* objectID) const
 {
-    Extras* e = mExtras.load(std::memory_order_acquire);
+    Extras* e = reinterpret_cast<Extras*>(
+                    load_const_atomic(&mExtras, memory_order_acquire));
     if (!e) return NULL;
 
     AutoMutex _l(e->mLock);
@@ -186,7 +180,8 @@ void* BBinder::findObject(const void* objectID) const
 
 void BBinder::detachObject(const void* objectID)
 {
-    Extras* e = mExtras.load(std::memory_order_acquire);
+    Extras* e = reinterpret_cast<Extras*>(
+                    atomic_load_explicit(&mExtras, memory_order_acquire));
     if (!e) return;
 
     AutoMutex _l(e->mLock);
@@ -200,7 +195,8 @@ BBinder* BBinder::localBinder()
 
 BBinder::~BBinder()
 {
-    Extras* e = mExtras.load(std::memory_order_relaxed);
+    Extras* e = reinterpret_cast<Extras*>(
+                    atomic_load_explicit(&mExtras, memory_order_relaxed));
     if (e) delete e;
 }
 
@@ -221,25 +217,6 @@ status_t BBinder::onTransact(
                args.add(data.readString16());
             }
             return dump(fd, args);
-        }
-
-        case SHELL_COMMAND_TRANSACTION: {
-            int in = data.readFileDescriptor();
-            int out = data.readFileDescriptor();
-            int err = data.readFileDescriptor();
-            int argc = data.readInt32();
-            Vector<String16> args;
-            for (int i = 0; i < argc && data.dataAvail() > 0; i++) {
-               args.add(data.readString16());
-            }
-            sp<IResultReceiver> resultReceiver = IResultReceiver::asInterface(
-                    data.readStrongBinder());
-
-            // XXX can't add virtuals until binaries are updated.
-            //return shellCommand(in, out, err, args, resultReceiver);
-            if (resultReceiver != NULL) {
-                resultReceiver->send(INVALID_OPERATION);
-            }
         }
 
         case SYSPROPS_TRANSACTION: {
@@ -275,7 +252,7 @@ BpRefBase::BpRefBase(const sp<IBinder>& o)
 BpRefBase::~BpRefBase()
 {
     if (mRemote) {
-        if (!(mState.load(std::memory_order_relaxed)&kRemoteAcquired)) {
+        if (!(mState&kRemoteAcquired)) {
             mRemote->decStrong(this);
         }
         mRefs->decWeak(this);
@@ -284,7 +261,7 @@ BpRefBase::~BpRefBase()
 
 void BpRefBase::onFirstRef()
 {
-    mState.fetch_or(kRemoteAcquired, std::memory_order_relaxed);
+    android_atomic_or(kRemoteAcquired, &mState);
 }
 
 void BpRefBase::onLastStrongRef(const void* /*id*/)

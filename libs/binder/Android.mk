@@ -23,23 +23,19 @@ sources := \
     IAppOpsService.cpp \
     IBatteryStats.cpp \
     IInterface.cpp \
-    IMediaResourceMonitor.cpp \
     IMemory.cpp \
     IPCThreadState.cpp \
     IPermissionController.cpp \
     IProcessInfoService.cpp \
-    IResultReceiver.cpp \
+    ProcessInfoService.cpp \
     IServiceManager.cpp \
-    MemoryBase.cpp \
     MemoryDealer.cpp \
+    MemoryBase.cpp \
     MemoryHeapBase.cpp \
     Parcel.cpp \
     PermissionCache.cpp \
-    PersistableBundle.cpp \
-    ProcessInfoService.cpp \
     ProcessState.cpp \
     Static.cpp \
-    Status.cpp \
     TextOutput.cpp \
 
 LOCAL_PATH:= $(call my-dir)
@@ -47,9 +43,6 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libbinder
 LOCAL_SHARED_LIBRARIES := liblog libcutils libutils
-
-LOCAL_CLANG := true
-LOCAL_SANITIZE := integer
 LOCAL_SRC_FILES := $(sources)
 ifneq ($(TARGET_USES_64_BIT_BINDER),true)
 ifneq ($(TARGET_IS_64_BIT),true)

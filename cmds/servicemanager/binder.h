@@ -5,7 +5,7 @@
 #define _BINDER_H_
 
 #include <sys/ioctl.h>
-#include <linux/android/binder.h>
+#include <linux/binder.h>
 
 struct binder_state;
 

@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -103,7 +104,7 @@ struct binder_state *binder_open(size_t mapsize)
         return NULL;
     }
 
-    bs->fd = open("/dev/binder", O_RDWR);
+    bs->fd = open("/dev/binder", O_RDWR | O_CLOEXEC);
     if (bs->fd < 0) {
         fprintf(stderr,"binder: cannot open device (%s)\n",
                 strerror(errno));
@@ -112,7 +113,9 @@ struct binder_state *binder_open(size_t mapsize)
 
     if ((ioctl(bs->fd, BINDER_VERSION, &vers) == -1) ||
         (vers.protocol_version != BINDER_CURRENT_PROTOCOL_VERSION)) {
-        fprintf(stderr, "binder: driver version differs from user space\n");
+        fprintf(stderr,
+                "binder: kernel driver version (%d) differs from user space version (%d)\n",
+                vers.protocol_version, BINDER_CURRENT_PROTOCOL_VERSION);
         goto fail_open;
     }
 
@@ -162,6 +165,18 @@ int binder_write(struct binder_state *bs, void *data, size_t len)
                 strerror(errno));
     }
     return res;
+}
+
+void binder_free_buffer(struct binder_state *bs,
+                        binder_uintptr_t buffer_to_free)
+{
+    struct {
+        uint32_t cmd_free;
+        binder_uintptr_t buffer;
+    } __attribute__((packed)) data;
+    data.cmd_free = BC_FREE_BUFFER;
+    data.buffer = buffer_to_free;
+    binder_write(bs, &data, sizeof(data));
 }
 
 void binder_send_reply(struct binder_state *bs,
@@ -240,7 +255,11 @@ int binder_parse(struct binder_state *bs, struct binder_io *bio,
                 bio_init(&reply, rdata, sizeof(rdata), 4);
                 bio_init_from_txn(&msg, txn);
                 res = func(bs, txn, &msg, &reply);
-                binder_send_reply(bs, &reply, txn->data.ptr.buffer, res);
+                if (txn->flags & TF_ONE_WAY) {
+                    binder_free_buffer(bs, txn->data.ptr.buffer);
+                } else {
+                    binder_send_reply(bs, &reply, txn->data.ptr.buffer, res);
+                }
             }
             ptr += sizeof(*txn);
             break;
@@ -446,7 +465,7 @@ static void *bio_alloc(struct binder_io *bio, size_t size)
 }
 
 void binder_done(struct binder_state *bs,
-                 struct binder_io *msg,
+                 __unused struct binder_io *msg,
                  struct binder_io *reply)
 {
     struct {

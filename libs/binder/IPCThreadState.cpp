@@ -24,26 +24,21 @@
 
 #include <cutils/sched_policy.h>
 #include <utils/Log.h>
+#include <utils/SystemClock.h>
 #include <utils/threads.h>
 
 #include <private/binder/binder_module.h>
 #include <private/binder/Static.h>
 
-#include <sys/ioctl.h>
-#include <signal.h>
 #include <errno.h>
-#include <stdio.h>
-#include <unistd.h>
-
-#ifdef HAVE_PTHREADS
+#include <inttypes.h>
 #include <pthread.h>
 #include <sched.h>
+#include <signal.h>
+#include <stdio.h>
+#include <sys/ioctl.h>
 #include <sys/resource.h>
-#endif
-#ifdef HAVE_WIN32_THREADS
-#include <windows.h>
-#endif
-
+#include <unistd.h>
 
 #if LOG_NDEBUG
 
@@ -70,13 +65,11 @@
 namespace android {
 
 static const char* getReturnString(size_t idx);
-static const char* getCommandString(size_t idx);
 static const void* printReturnCommand(TextOutput& out, const void* _cmd);
 static const void* printCommand(TextOutput& out, const void* _cmd);
 
-// This will result in a missing symbol failure if the IF_LOG_COMMANDS()
-// conditionals don't get stripped...  but that is probably what we want.
-#if !LOG_NDEBUG
+// Static const and functions will be optimized out if not used,
+// when LOG_NDEBUG and references in IF_LOG_COMMANDS() are optimized out.
 static const char *kReturnStrings[] = {
     "BR_ERROR",
     "BR_OK",
@@ -126,14 +119,6 @@ static const char* getReturnString(size_t idx)
         return "unknown";
 }
 
-static const char* getCommandString(size_t idx)
-{
-    if (idx < sizeof(kCommandStrings) / sizeof(kCommandStrings[0]))
-        return kCommandStrings[idx];
-    else
-        return "unknown";
-}
-
 static const void* printBinderTransactionData(TextOutput& out, const void* data)
 {
     const binder_transaction_data* btd =
@@ -145,7 +130,7 @@ static const void* printBinderTransactionData(TextOutput& out, const void* data)
         out << "target.ptr=" << btd->target.ptr;
     }
     out << " (cookie " << btd->cookie << ")" << endl
-        << "code=" << TypeCode(btd->code) << ", flags=" << (void*)btd->flags << endl
+        << "code=" << TypeCode(btd->code) << ", flags=" << (void*)(long)btd->flags << endl
         << "data=" << btd->data.ptr.buffer << " (" << (void*)btd->data_size
         << " bytes)" << endl
         << "offsets=" << btd->data.ptr.offsets << " (" << (void*)btd->offsets_size
@@ -157,10 +142,10 @@ static const void* printReturnCommand(TextOutput& out, const void* _cmd)
 {
     static const size_t N = sizeof(kReturnStrings)/sizeof(kReturnStrings[0]);
     const int32_t* cmd = (const int32_t*)_cmd;
-    int32_t code = *cmd++;
+    uint32_t code = (uint32_t)*cmd++;
     size_t cmdIndex = code & 0xff;
-    if (code == (int32_t) BR_ERROR) {
-        out << "BR_ERROR: " << (void*)(*cmd++) << endl;
+    if (code == BR_ERROR) {
+        out << "BR_ERROR: " << (void*)(long)(*cmd++) << endl;
         return cmd;
     } else if (cmdIndex >= N) {
         out << "Unknown reply: " << code << endl;
@@ -187,21 +172,21 @@ static const void* printReturnCommand(TextOutput& out, const void* _cmd)
         case BR_DECREFS: {
             const int32_t b = *cmd++;
             const int32_t c = *cmd++;
-            out << ": target=" << (void*)b << " (cookie " << (void*)c << ")";
+            out << ": target=" << (void*)(long)b << " (cookie " << (void*)(long)c << ")";
         } break;
     
         case BR_ATTEMPT_ACQUIRE: {
             const int32_t p = *cmd++;
             const int32_t b = *cmd++;
             const int32_t c = *cmd++;
-            out << ": target=" << (void*)b << " (cookie " << (void*)c
+            out << ": target=" << (void*)(long)b << " (cookie " << (void*)(long)c
                 << "), pri=" << p;
         } break;
 
         case BR_DEAD_BINDER:
         case BR_CLEAR_DEATH_NOTIFICATION_DONE: {
             const int32_t c = *cmd++;
-            out << ": death cookie " << (void*)c;
+            out << ": death cookie " << (void*)(long)c;
         } break;
 
         default:
@@ -218,7 +203,7 @@ static const void* printCommand(TextOutput& out, const void* _cmd)
 {
     static const size_t N = sizeof(kCommandStrings)/sizeof(kCommandStrings[0]);
     const int32_t* cmd = (const int32_t*)_cmd;
-    int32_t code = *cmd++;
+    uint32_t code = (uint32_t)*cmd++;
     size_t cmdIndex = code & 0xff;
 
     if (cmdIndex >= N) {
@@ -242,7 +227,7 @@ static const void* printCommand(TextOutput& out, const void* _cmd)
         
         case BC_FREE_BUFFER: {
             const int32_t buf = *cmd++;
-            out << ": buffer=" << (void*)buf;
+            out << ": buffer=" << (void*)(long)buf;
         } break;
         
         case BC_INCREFS:
@@ -257,7 +242,7 @@ static const void* printCommand(TextOutput& out, const void* _cmd)
         case BC_ACQUIRE_DONE: {
             const int32_t b = *cmd++;
             const int32_t c = *cmd++;
-            out << ": target=" << (void*)b << " (cookie " << (void*)c << ")";
+            out << ": target=" << (void*)(long)b << " (cookie " << (void*)(long)c << ")";
         } break;
         
         case BC_ATTEMPT_ACQUIRE: {
@@ -270,12 +255,12 @@ static const void* printCommand(TextOutput& out, const void* _cmd)
         case BC_CLEAR_DEATH_NOTIFICATION: {
             const int32_t h = *cmd++;
             const int32_t c = *cmd++;
-            out << ": handle=" << h << " (death cookie " << (void*)c << ")";
+            out << ": handle=" << h << " (death cookie " << (void*)(long)c << ")";
         } break;
 
         case BC_DEAD_BINDER_DONE: {
             const int32_t c = *cmd++;
-            out << ": death cookie " << (void*)c;
+            out << ": death cookie " << (void*)(long)c;
         } break;
 
         default:
@@ -287,7 +272,6 @@ static const void* printCommand(TextOutput& out, const void* _cmd)
     out << endl;
     return cmd;
 }
-#endif
 
 static pthread_mutex_t gTLSMutex = PTHREAD_MUTEX_INITIALIZER;
 static bool gHaveTLS = false;
@@ -305,12 +289,18 @@ restart:
         return new IPCThreadState;
     }
     
-    if (gShutdown) return NULL;
+    if (gShutdown) {
+        ALOGW("Calling IPCThreadState::self() during shutdown is dangerous, expect a crash.\n");
+        return NULL;
+    }
     
     pthread_mutex_lock(&gTLSMutex);
     if (!gHaveTLS) {
-        if (pthread_key_create(&gTLS, threadDestructor) != 0) {
+        int key_create_value = pthread_key_create(&gTLS, threadDestructor);
+        if (key_create_value != 0) {
             pthread_mutex_unlock(&gTLSMutex);
+            ALOGW("IPCThreadState::self() unable to create TLS key, expect a crash: %s\n",
+                    strerror(key_create_value));
             return NULL;
         }
         gHaveTLS = true;
@@ -361,12 +351,12 @@ status_t IPCThreadState::clearLastError()
     return err;
 }
 
-int IPCThreadState::getCallingPid() const
+pid_t IPCThreadState::getCallingPid() const
 {
     return mCallingPid;
 }
 
-int IPCThreadState::getCallingUid() const
+uid_t IPCThreadState::getCallingUid() const
 {
     return mCallingUid;
 }
@@ -417,6 +407,18 @@ void IPCThreadState::flushCommands()
     talkWithDriver(false);
 }
 
+void IPCThreadState::blockUntilThreadAvailable()
+{
+    pthread_mutex_lock(&mProcess->mThreadCountLock);
+    while (mProcess->mExecutingThreadsCount >= mProcess->mMaxThreads) {
+        ALOGW("Waiting for thread to be free. mExecutingThreadsCount=%lu mMaxThreads=%lu\n",
+                static_cast<unsigned long>(mProcess->mExecutingThreadsCount),
+                static_cast<unsigned long>(mProcess->mMaxThreads));
+        pthread_cond_wait(&mProcess->mThreadCountDecrement, &mProcess->mThreadCountLock);
+    }
+    pthread_mutex_unlock(&mProcess->mThreadCountLock);
+}
+
 status_t IPCThreadState::getAndExecuteCommand()
 {
     status_t result;
@@ -432,7 +434,29 @@ status_t IPCThreadState::getAndExecuteCommand()
                  << getReturnString(cmd) << endl;
         }
 
+        pthread_mutex_lock(&mProcess->mThreadCountLock);
+        mProcess->mExecutingThreadsCount++;
+        if (mProcess->mExecutingThreadsCount >= mProcess->mMaxThreads &&
+                mProcess->mStarvationStartTimeMs == 0) {
+            mProcess->mStarvationStartTimeMs = uptimeMillis();
+        }
+        pthread_mutex_unlock(&mProcess->mThreadCountLock);
+
         result = executeCommand(cmd);
+
+        pthread_mutex_lock(&mProcess->mThreadCountLock);
+        mProcess->mExecutingThreadsCount--;
+        if (mProcess->mExecutingThreadsCount < mProcess->mMaxThreads &&
+                mProcess->mStarvationStartTimeMs != 0) {
+            int64_t starvationTimeMs = uptimeMillis() - mProcess->mStarvationStartTimeMs;
+            if (starvationTimeMs > 100) {
+                ALOGE("binder thread pool (%zu threads) starved for %" PRId64 " ms",
+                      mProcess->mMaxThreads, starvationTimeMs);
+            }
+            mProcess->mStarvationStartTimeMs = 0;
+        }
+        pthread_cond_broadcast(&mProcess->mThreadCountDecrement);
+        pthread_mutex_unlock(&mProcess->mThreadCountLock);
 
         // After executing the command, ensure that the thread is returned to the
         // foreground cgroup before rejoining the pool.  The driver takes care of
@@ -682,7 +706,7 @@ status_t IPCThreadState::clearDeathNotification(int32_t handle, BpBinder* proxy)
 
 IPCThreadState::IPCThreadState()
     : mProcess(ProcessState::self()),
-      mMyThreadId(androidGetTid()),
+      mMyThreadId(gettid()),
       mStrictModePolicy(0),
       mLastTransactionBinderFlags(0)
 {
@@ -708,7 +732,7 @@ status_t IPCThreadState::sendReply(const Parcel& reply, uint32_t flags)
 
 status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
 {
-    int32_t cmd;
+    uint32_t cmd;
     int32_t err;
 
     while (1) {
@@ -717,7 +741,7 @@ status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
         if (err < NO_ERROR) break;
         if (mIn.dataAvail() == 0) continue;
         
-        cmd = mIn.readInt32();
+        cmd = (uint32_t)mIn.readInt32();
         
         IF_LOG_COMMANDS() {
             alog << "Processing waitForResponse Command: "
@@ -849,7 +873,7 @@ status_t IPCThreadState::talkWithDriver(bool doReceive)
         IF_LOG_COMMANDS() {
             alog << "About to read/write, write size = " << mOut.dataSize() << endl;
         }
-#if defined(HAVE_ANDROID_OS)
+#if defined(__ANDROID__)
         if (ioctl(mProcess->mDriverFD, BINDER_WRITE_READ, &bwr) >= 0)
             err = NO_ERROR;
         else
@@ -947,7 +971,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
     RefBase::weakref_type* refs;
     status_t result = NO_ERROR;
     
-    switch (cmd) {
+    switch ((uint32_t)cmd) {
     case BR_ERROR:
         result = mIn.readInt32();
         break;
@@ -1163,7 +1187,7 @@ void IPCThreadState::threadDestructor(void *st)
         IPCThreadState* const self = static_cast<IPCThreadState*>(st);
         if (self) {
                 self->flushCommands();
-#if defined(HAVE_ANDROID_OS)
+#if defined(__ANDROID__)
         if (self->mProcess->mDriverFD > 0) {
             ioctl(self->mProcess->mDriverFD, BINDER_THREAD_EXIT, 0);
         }

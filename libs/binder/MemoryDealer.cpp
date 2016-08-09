@@ -126,7 +126,7 @@ class SimpleBestFitAllocator
         PAGE_ALIGNED = 0x00000001
     };
 public:
-    SimpleBestFitAllocator(size_t size);
+    explicit SimpleBestFitAllocator(size_t size);
     ~SimpleBestFitAllocator();
 
     size_t      allocate(size_t size, uint32_t flags = 0);
@@ -134,6 +134,8 @@ public:
     size_t      size() const;
     void        dump(const char* what) const;
     void        dump(String8& res, const char* what) const;
+
+    static size_t getAllocationAlignment() { return kMemoryAlign; }
 
 private:
 
@@ -262,6 +264,12 @@ const sp<IMemoryHeap>& MemoryDealer::heap() const {
 
 SimpleBestFitAllocator* MemoryDealer::allocator() const {
     return mAllocator;
+}
+
+// static
+size_t MemoryDealer::getAllocationAlignment()
+{
+    return SimpleBestFitAllocator::getAllocationAlignment();
 }
 
 // ----------------------------------------------------------------------------

@@ -34,7 +34,7 @@ namespace android {
 
 struct BufferedTextOutput::BufferState : public RefBase
 {
-    BufferState(int32_t _seq)
+    explicit BufferState(int32_t _seq)
         : seq(_seq)
         , buffer(NULL)
         , bufferPos(0)
@@ -49,9 +49,12 @@ struct BufferedTextOutput::BufferState : public RefBase
     
     status_t append(const char* txt, size_t len) {
         if ((len+bufferPos) > bufferSize) {
-            void* b = realloc(buffer, ((len+bufferPos)*3)/2);
+            size_t newSize = ((len+bufferPos)*3)/2;
+            if (newSize < (len+bufferPos)) return NO_MEMORY;    // overflow
+            void* b = realloc(buffer, newSize);
             if (!b) return NO_MEMORY;
             buffer = (char*)b;
+            bufferSize = newSize;
         }
         memcpy(buffer+bufferPos, txt, len);
         bufferPos += len;

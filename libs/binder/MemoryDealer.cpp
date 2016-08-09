@@ -135,8 +135,6 @@ public:
     void        dump(const char* what) const;
     void        dump(String8& res, const char* what) const;
 
-    static size_t getAllocationAlignment() { return kMemoryAlign; }
-
 private:
 
     struct chunk_t {
@@ -264,12 +262,6 @@ const sp<IMemoryHeap>& MemoryDealer::heap() const {
 
 SimpleBestFitAllocator* MemoryDealer::allocator() const {
     return mAllocator;
-}
-
-// static
-size_t MemoryDealer::getAllocationAlignment()
-{
-    return SimpleBestFitAllocator::getAllocationAlignment();
 }
 
 // ----------------------------------------------------------------------------

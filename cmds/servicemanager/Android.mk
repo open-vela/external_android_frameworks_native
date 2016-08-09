@@ -1,7 +1,7 @@
 LOCAL_PATH:= $(call my-dir)
 
 svc_c_flags =	\
-	-Wall -Wextra -Werror \
+	-Wall -Wextra \
 
 ifneq ($(TARGET_USES_64_BIT_BINDER),true)
 ifneq ($(TARGET_IS_64_BIT),true)
@@ -22,5 +22,4 @@ LOCAL_SHARED_LIBRARIES := liblog libselinux
 LOCAL_SRC_FILES := service_manager.c binder.c
 LOCAL_CFLAGS += $(svc_c_flags)
 LOCAL_MODULE := servicemanager
-LOCAL_INIT_RC := servicemanager.rc
 include $(BUILD_EXECUTABLE)

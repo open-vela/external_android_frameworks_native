@@ -31,7 +31,7 @@ namespace android {
 class BpPermissionController : public BpInterface<IPermissionController>
 {
 public:
-    explicit BpPermissionController(const sp<IBinder>& impl)
+    BpPermissionController(const sp<IBinder>& impl)
         : BpInterface<IPermissionController>(impl)
     {
     }

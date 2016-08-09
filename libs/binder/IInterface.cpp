@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "IInterface"
-#include <utils/Log.h>
 #include <binder/IInterface.h>
 
 namespace android {
@@ -29,39 +27,16 @@ IInterface::IInterface()
 IInterface::~IInterface() {
 }
 
-// static
-sp<IBinder> IInterface::asBinder(const IInterface* iface)
+sp<IBinder> IInterface::asBinder()
 {
-    if (iface == NULL) return NULL;
-    return const_cast<IInterface*>(iface)->onAsBinder();
+    return this ? onAsBinder() : NULL;
 }
 
-// static
-sp<IBinder> IInterface::asBinder(const sp<IInterface>& iface)
+sp<const IBinder> IInterface::asBinder() const
 {
-    if (iface == NULL) return NULL;
-    return iface->onAsBinder();
+    return this ? const_cast<IInterface*>(this)->onAsBinder() : NULL;
 }
-
 
 // ---------------------------------------------------------------------------
 
 }; // namespace android
-
-extern "C" {
-
-void _ZN7android10IInterface8asBinderEv(void *retval, void* self) {
-    ALOGW("deprecated asBinder call, please update your code");
-    //ALOGI("self: %p, retval: %p", self, retval);
-    android::sp<android::IBinder> *ret = new(retval) android::sp<android::IBinder>;
-    *ret = android::IInterface::asBinder((android::IInterface*)self);
-}
-
-void _ZNK7android10IInterface8asBinderEv(void *retval, void *self) {
-    ALOGW("deprecated asBinder call, please update your code");
-    //ALOGI("self: %p, retval: %p", self, retval);
-    android::sp<android::IBinder> *ret = new(retval) android::sp<android::IBinder>;
-    *ret = android::IInterface::asBinder((android::IInterface*)self);
-}
-
-} // extern "C"

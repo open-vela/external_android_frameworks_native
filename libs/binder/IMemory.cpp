@@ -75,7 +75,7 @@ enum {
 class BpMemoryHeap : public BpInterface<IMemoryHeap>
 {
 public:
-    explicit BpMemoryHeap(const sp<IBinder>& impl);
+    BpMemoryHeap(const sp<IBinder>& impl);
     virtual ~BpMemoryHeap();
 
     virtual int getHeapID() const;
@@ -123,7 +123,7 @@ enum {
 class BpMemory : public BpInterface<IMemory>
 {
 public:
-    explicit BpMemory(const sp<IBinder>& impl);
+    BpMemory(const sp<IBinder>& impl);
     virtual ~BpMemory();
     virtual sp<IMemoryHeap> getMemory(ssize_t* offset=0, size_t* size=0) const;
 
@@ -228,7 +228,7 @@ status_t BnMemory::onTransact(
             CHECK_INTERFACE(IMemory, data, reply);
             ssize_t offset;
             size_t size;
-            reply->writeStrongBinder( IInterface::asBinder(getMemory(&offset, &size)) );
+            reply->writeStrongBinder( getMemory(&offset, &size)->asBinder() );
             reply->writeInt32(offset);
             reply->writeInt32(size);
             return NO_ERROR;
@@ -253,7 +253,7 @@ BpMemoryHeap::~BpMemoryHeap() {
         if (mRealHeap) {
             // by construction we're the last one
             if (mBase != MAP_FAILED) {
-                sp<IBinder> binder = IInterface::asBinder(this);
+                sp<IBinder> binder = const_cast<BpMemoryHeap*>(this)->asBinder();
 
                 if (VERBOSE) {
                     ALOGD("UNMAPPING binder=%p, heap=%p, size=%zu, fd=%d",
@@ -265,7 +265,7 @@ BpMemoryHeap::~BpMemoryHeap() {
             }
         } else {
             // remove from list only if it was mapped before
-            sp<IBinder> binder = IInterface::asBinder(this);
+            sp<IBinder> binder = const_cast<BpMemoryHeap*>(this)->asBinder();
             free_heap(binder);
         }
     }
@@ -274,7 +274,7 @@ BpMemoryHeap::~BpMemoryHeap() {
 void BpMemoryHeap::assertMapped() const
 {
     if (mHeapId == -1) {
-        sp<IBinder> binder(IInterface::asBinder(const_cast<BpMemoryHeap*>(this)));
+        sp<IBinder> binder(const_cast<BpMemoryHeap*>(this)->asBinder());
         sp<BpMemoryHeap> heap(static_cast<BpMemoryHeap*>(find_heap(binder).get()));
         heap->assertReallyMapped();
         if (heap->mBase != MAP_FAILED) {
@@ -309,25 +309,24 @@ void BpMemoryHeap::assertReallyMapped() const
         uint32_t offset = reply.readInt32();
 
         ALOGE_IF(err, "binder=%p transaction failed fd=%d, size=%zd, err=%d (%s)",
-                IInterface::asBinder(this).get(),
-                parcel_fd, size, err, strerror(-err));
+                asBinder().get(), parcel_fd, size, err, strerror(-err));
+
+        int fd = dup( parcel_fd );
+        ALOGE_IF(fd==-1, "cannot dup fd=%d, size=%zd, err=%d (%s)",
+                parcel_fd, size, err, strerror(errno));
+
+        int access = PROT_READ;
+        if (!(flags & READ_ONLY)) {
+            access |= PROT_WRITE;
+        }
 
         Mutex::Autolock _l(mLock);
         if (mHeapId == -1) {
-            int fd = dup( parcel_fd );
-            ALOGE_IF(fd==-1, "cannot dup fd=%d, size=%zd, err=%d (%s)",
-                    parcel_fd, size, err, strerror(errno));
-
-            int access = PROT_READ;
-            if (!(flags & READ_ONLY)) {
-                access |= PROT_WRITE;
-            }
-
             mRealHeap = true;
             mBase = mmap(0, size, access, MAP_SHARED, fd, offset);
             if (mBase == MAP_FAILED) {
                 ALOGE("cannot map BpMemoryHeap (binder=%p), size=%zd, fd=%d (%s)",
-                        IInterface::asBinder(this).get(), size, fd, strerror(errno));
+                        asBinder().get(), size, fd, strerror(errno));
                 close(fd);
             } else {
                 mSize = size;

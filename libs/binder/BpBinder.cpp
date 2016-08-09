@@ -20,7 +20,6 @@
 #include <binder/BpBinder.h>
 
 #include <binder/IPCThreadState.h>
-#include <binder/IResultReceiver.h>
 #include <utils/Log.h>
 
 #include <stdio.h>
@@ -221,6 +220,7 @@ status_t BpBinder::unlinkToDeath(
         if ((obit.recipient == recipient
                     || (recipient == NULL && obit.cookie == cookie))
                 && obit.flags == flags) {
+            const uint32_t allFlags = obit.flags|flags;
             if (outRecipient != NULL) {
                 *outRecipient = mObituaries->itemAt(i).recipient;
             }

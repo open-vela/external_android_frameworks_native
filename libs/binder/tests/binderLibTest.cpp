@@ -45,7 +45,6 @@ enum BinderLibTestTranscationCode {
     BINDER_LIB_TEST_ADD_SERVER,
     BINDER_LIB_TEST_CALL_BACK,
     BINDER_LIB_TEST_NOP_CALL_BACK,
-    BINDER_LIB_TEST_GET_SELF_TRANSACTION,
     BINDER_LIB_TEST_GET_ID_TRANSACTION,
     BINDER_LIB_TEST_INDIRECT_TRANSACTION,
     BINDER_LIB_TEST_SET_ERROR_TRANSACTION,
@@ -57,7 +56,6 @@ enum BinderLibTestTranscationCode {
     BINDER_LIB_TEST_EXIT_TRANSACTION,
     BINDER_LIB_TEST_DELAYED_EXIT_TRANSACTION,
     BINDER_LIB_TEST_GET_PTR_SIZE_TRANSACTION,
-    BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION,
 };
 
 pid_t start_server_process(int arg2)
@@ -672,62 +670,6 @@ TEST_F(BinderLibTest, PromoteRemote) {
     EXPECT_GE(ret, 0);
 }
 
-TEST_F(BinderLibTest, CheckHandleZeroBinderHighBitsZeroCookie) {
-    status_t ret;
-    Parcel data, reply;
-
-    ret = m_server->transact(BINDER_LIB_TEST_GET_SELF_TRANSACTION, data, &reply);
-    EXPECT_EQ(NO_ERROR, ret);
-
-    const flat_binder_object *fb = reply.readObject(false);
-    ASSERT_TRUE(fb != NULL);
-    EXPECT_EQ(fb->hdr.type, BINDER_TYPE_HANDLE);
-    EXPECT_EQ(ProcessState::self()->getStrongProxyForHandle(fb->handle), m_server);
-    EXPECT_EQ(fb->cookie, (binder_uintptr_t)0);
-    EXPECT_EQ(fb->binder >> 32, (binder_uintptr_t)0);
-}
-
-TEST_F(BinderLibTest, FreedBinder) {
-    status_t ret;
-
-    sp<IBinder> server = addServer();
-    ASSERT_TRUE(server != NULL);
-
-    __u32 freedHandle;
-    wp<IBinder> keepFreedBinder;
-    {
-        Parcel data, reply;
-        data.writeBool(false); /* request weak reference */
-        ret = server->transact(BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION, data, &reply);
-        ASSERT_EQ(NO_ERROR, ret);
-        struct flat_binder_object *freed = (struct flat_binder_object *)(reply.data());
-        freedHandle = freed->handle;
-        /* Add a weak ref to the freed binder so the driver does not
-         * delete its reference to it - otherwise the transaction
-         * fails regardless of whether the driver is fixed.
-         */
-        keepFreedBinder = reply.readWeakBinder();
-    }
-    {
-        Parcel data, reply;
-        data.writeStrongBinder(server);
-        /* Replace original handle with handle to the freed binder */
-        struct flat_binder_object *strong = (struct flat_binder_object *)(data.data());
-        __u32 oldHandle = strong->handle;
-        strong->handle = freedHandle;
-        ret = server->transact(BINDER_LIB_TEST_ADD_STRONG_REF_TRANSACTION, data, &reply);
-        /* Returns DEAD_OBJECT (-32) if target crashes and
-         * FAILED_TRANSACTION if the driver rejects the invalid
-         * object.
-         */
-        EXPECT_EQ((status_t)FAILED_TRANSACTION, ret);
-        /* Restore original handle so parcel destructor does not use
-         * the wrong handle.
-         */
-        strong->handle = oldHandle;
-    }
-}
-
 class BinderLibTestService : public BBinder
 {
     public:
@@ -829,9 +771,6 @@ class BinderLibTestService : public BBinder
                 binder->transact(BINDER_LIB_TEST_CALL_BACK, data2, &reply2);
                 return NO_ERROR;
             }
-            case BINDER_LIB_TEST_GET_SELF_TRANSACTION:
-                reply->writeStrongBinder(this);
-                return NO_ERROR;
             case BINDER_LIB_TEST_GET_ID_TRANSACTION:
                 reply->writeInt32(m_id);
                 return NO_ERROR;
@@ -945,16 +884,6 @@ class BinderLibTestService : public BBinder
                 while (wait(NULL) != -1 || errno != ECHILD)
                     ;
                 exit(EXIT_SUCCESS);
-            case BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION: {
-                bool strongRef = data.readBool();
-                sp<IBinder> binder = new BBinder();
-                if (strongRef) {
-                    reply->writeStrongBinder(binder);
-                } else {
-                    reply->writeWeakBinder(binder);
-                }
-                return NO_ERROR;
-            }
             default:
                 return UNKNOWN_TRANSACTION;
             };

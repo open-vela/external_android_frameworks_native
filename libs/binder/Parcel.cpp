@@ -57,7 +57,7 @@
 #define PAD_SIZE(s) (((s)+3)&~3)
 
 // Note: must be kept in sync with android/os/StrictMode.java's PENALTY_GATHER
-#define STRICT_MODE_PENALTY_GATHER 0x100
+#define STRICT_MODE_PENALTY_GATHER (0x40 << 16)
 
 // Note: must be kept in sync with android/os/Parcel.java's EX_HAS_REPLY_HEADER
 #define EX_HAS_REPLY_HEADER -128
@@ -645,6 +645,12 @@ status_t Parcel::writeInt32(int32_t val)
 {
     return writeAligned(val);
 }
+
+status_t Parcel::writeUint32(uint32_t val)
+{
+    return writeAligned(val);
+}
+
 status_t Parcel::writeInt32Array(size_t len, const int32_t *val) {
     if (!val) {
         return writeAligned(-1);
@@ -1033,6 +1039,15 @@ int32_t Parcel::readInt32() const
     return readAligned<int32_t>();
 }
 
+status_t Parcel::readUint32(uint32_t *pArg) const
+{
+    return readAligned(pArg);
+}
+
+uint32_t Parcel::readUint32() const
+{
+    return readAligned<uint32_t>();
+}
 
 status_t Parcel::readInt64(int64_t *pArg) const
 {
@@ -1448,7 +1463,7 @@ void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
     for (size_t i = 0; i < mObjectsSize; i++) {
         binder_size_t offset = mObjects[i];
         if (offset < minOffset) {
-            ALOGE("%s: bad object offset %"PRIu64" < %"PRIu64"\n",
+            ALOGE("%s: bad object offset %" PRIu64 " < %" PRIu64 "\n",
                   __func__, (uint64_t)offset, (uint64_t)minOffset);
             mObjectsSize = 0;
             break;

@@ -784,7 +784,7 @@ status_t Parcel::writeUtf8AsUtf16(const std::string& str) {
     const uint8_t* strData = (uint8_t*)str.data();
     const size_t strLen= str.length();
     const ssize_t utf16Len = utf8_to_utf16_length(strData, strLen);
-    if (utf16Len < 0 || utf16Len > std::numeric_limits<int32_t>::max()) {
+    if (utf16Len < 0 || utf16Len> std::numeric_limits<int32_t>::max()) {
         return BAD_VALUE;
     }
 
@@ -799,7 +799,7 @@ status_t Parcel::writeUtf8AsUtf16(const std::string& str) {
         return NO_MEMORY;
     }
 
-    utf8_to_utf16(strData, strLen, (char16_t*)dst, (size_t) utf16Len + 1);
+    utf8_to_utf16(strData, strLen, (char16_t*)dst);
 
     return NO_ERROR;
 }
@@ -1112,7 +1112,7 @@ status_t Parcel::writeStrongBinderVector(const std::unique_ptr<std::vector<sp<IB
 }
 
 status_t Parcel::readStrongBinderVector(std::unique_ptr<std::vector<sp<IBinder>>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readNullableStrongBinder);
+    return readNullableTypedVector(val, &Parcel::readStrongBinder);
 }
 
 status_t Parcel::readStrongBinderVector(std::vector<sp<IBinder>>* val) const {
@@ -1187,15 +1187,15 @@ status_t Parcel::writeDupFileDescriptor(int fd)
     return err;
 }
 
-status_t Parcel::writeUniqueFileDescriptor(const base::unique_fd& fd) {
+status_t Parcel::writeUniqueFileDescriptor(const ScopedFd& fd) {
     return writeDupFileDescriptor(fd.get());
 }
 
-status_t Parcel::writeUniqueFileDescriptorVector(const std::vector<base::unique_fd>& val) {
+status_t Parcel::writeUniqueFileDescriptorVector(const std::vector<ScopedFd>& val) {
     return writeTypedVector(val, &Parcel::writeUniqueFileDescriptor);
 }
 
-status_t Parcel::writeUniqueFileDescriptorVector(const std::unique_ptr<std::vector<base::unique_fd>>& val) {
+status_t Parcel::writeUniqueFileDescriptorVector(const std::unique_ptr<std::vector<ScopedFd>>& val) {
     return writeNullableTypedVector(val, &Parcel::writeUniqueFileDescriptor);
 }
 
@@ -1842,37 +1842,13 @@ const char* Parcel::readCString() const
 
 String8 Parcel::readString8() const
 {
-    String8 retString;
-    status_t status = readString8(&retString);
-    if (status != OK) {
-        // We don't care about errors here, so just return an empty string.
-        return String8();
+    int32_t size = readInt32();
+    // watch for potential int overflow adding 1 for trailing NUL
+    if (size > 0 && size < INT32_MAX) {
+        const char* str = (const char*)readInplace(size+1);
+        if (str) return String8(str, size);
     }
-    return retString;
-}
-
-status_t Parcel::readString8(String8* pArg) const
-{
-    int32_t size;
-    status_t status = readInt32(&size);
-    if (status != OK) {
-        return status;
-    }
-    // watch for potential int overflow from size+1
-    if (size < 0 || size >= INT32_MAX) {
-        return BAD_VALUE;
-    }
-    // |writeString8| writes nothing for empty string.
-    if (size == 0) {
-        *pArg = String8();
-        return OK;
-    }
-    const char* str = (const char*)readInplace(size + 1);
-    if (str == NULL) {
-        return BAD_VALUE;
-    }
-    pArg->setTo(str, size);
-    return OK;
+    return String8();
 }
 
 String16 Parcel::readString16() const
@@ -1937,25 +1913,13 @@ const char16_t* Parcel::readString16Inplace(size_t* outLen) const
 
 status_t Parcel::readStrongBinder(sp<IBinder>* val) const
 {
-    status_t status = readNullableStrongBinder(val);
-    if (status == OK && !val->get()) {
-        status = UNEXPECTED_NULL;
-    }
-    return status;
-}
-
-status_t Parcel::readNullableStrongBinder(sp<IBinder>* val) const
-{
     return unflatten_binder(ProcessState::self(), *this, val);
 }
 
 sp<IBinder> Parcel::readStrongBinder() const
 {
     sp<IBinder> val;
-    // Note that a lot of code in Android reads binders by hand with this
-    // method, and that code has historically been ok with getting nullptr
-    // back (while ignoring error codes).
-    readNullableStrongBinder(&val);
+    readStrongBinder(&val);
     return val;
 }
 
@@ -2030,7 +1994,7 @@ int Parcel::readFileDescriptor() const
     return BAD_TYPE;
 }
 
-status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
+status_t Parcel::readUniqueFileDescriptor(ScopedFd* val) const
 {
     int got = readFileDescriptor();
 
@@ -2048,11 +2012,11 @@ status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
 }
 
 
-status_t Parcel::readUniqueFileDescriptorVector(std::unique_ptr<std::vector<base::unique_fd>>* val) const {
+status_t Parcel::readUniqueFileDescriptorVector(std::unique_ptr<std::vector<ScopedFd>>* val) const {
     return readNullableTypedVector(val, &Parcel::readUniqueFileDescriptor);
 }
 
-status_t Parcel::readUniqueFileDescriptorVector(std::vector<base::unique_fd>* val) const {
+status_t Parcel::readUniqueFileDescriptorVector(std::vector<ScopedFd>* val) const {
     return readTypedVector(val, &Parcel::readUniqueFileDescriptor);
 }
 

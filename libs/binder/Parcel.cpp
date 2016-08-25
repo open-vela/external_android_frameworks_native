@@ -784,7 +784,7 @@ status_t Parcel::writeUtf8AsUtf16(const std::string& str) {
     const uint8_t* strData = (uint8_t*)str.data();
     const size_t strLen= str.length();
     const ssize_t utf16Len = utf8_to_utf16_length(strData, strLen);
-    if (utf16Len < 0 || utf16Len > std::numeric_limits<int32_t>::max()) {
+    if (utf16Len < 0 || utf16Len> std::numeric_limits<int32_t>::max()) {
         return BAD_VALUE;
     }
 
@@ -799,7 +799,7 @@ status_t Parcel::writeUtf8AsUtf16(const std::string& str) {
         return NO_MEMORY;
     }
 
-    utf8_to_utf16(strData, strLen, (char16_t*)dst, (size_t) utf16Len + 1);
+    utf8_to_utf16(strData, strLen, (char16_t*)dst);
 
     return NO_ERROR;
 }
@@ -1795,16 +1795,15 @@ status_t Parcel::readUtf8FromUtf16(std::string* str) const {
        return NO_ERROR;
     }
 
-    // Allow for closing '\0'
-    ssize_t utf8Size = utf16_to_utf8_length(src, utf16Size) + 1;
-    if (utf8Size < 1) {
+    ssize_t utf8Size = utf16_to_utf8_length(src, utf16Size);
+    if (utf8Size < 0) {
         return BAD_VALUE;
     }
     // Note that while it is probably safe to assume string::resize keeps a
-    // spare byte around for the trailing null, we still pass the size including the trailing null
+    // spare byte around for the trailing null, we're going to be explicit.
+    str->resize(utf8Size + 1);
+    utf16_to_utf8(src, utf16Size, &((*str)[0]));
     str->resize(utf8Size);
-    utf16_to_utf8(src, utf16Size, &((*str)[0]), utf8Size);
-    str->resize(utf8Size - 1);
     return NO_ERROR;
 }
 

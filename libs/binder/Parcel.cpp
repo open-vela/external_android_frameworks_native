@@ -100,32 +100,6 @@ enum {
     BLOB_ASHMEM_MUTABLE = 2,
 };
 
-static dev_t ashmem_rdev()
-{
-    static dev_t __ashmem_rdev;
-    static pthread_mutex_t __ashmem_rdev_lock = PTHREAD_MUTEX_INITIALIZER;
-
-    pthread_mutex_lock(&__ashmem_rdev_lock);
-
-    dev_t rdev = __ashmem_rdev;
-    if (!rdev) {
-        int fd = TEMP_FAILURE_RETRY(open("/dev/ashmem", O_RDONLY));
-        if (fd >= 0) {
-            struct stat st;
-
-            int ret = TEMP_FAILURE_RETRY(fstat(fd, &st));
-            close(fd);
-            if ((ret >= 0) && S_ISCHR(st.st_mode)) {
-                rdev = __ashmem_rdev = st.st_rdev;
-            }
-        }
-    }
-
-    pthread_mutex_unlock(&__ashmem_rdev_lock);
-
-    return rdev;
-}
-
 void acquire_object(const sp<ProcessState>& proc,
     const flat_binder_object& obj, const void* who, size_t* outAshmemSize)
 {
@@ -154,15 +128,11 @@ void acquire_object(const sp<ProcessState>& proc,
             return;
         }
         case BINDER_TYPE_FD: {
-            if ((obj.cookie != 0) && (outAshmemSize != NULL)) {
-                struct stat st;
-                int ret = fstat(obj.handle, &st);
-                if (!ret && S_ISCHR(st.st_mode) && (st.st_rdev == ashmem_rdev())) {
-                    // If we own an ashmem fd, keep track of how much memory it refers to.
-                    int size = ashmem_get_size_region(obj.handle);
-                    if (size > 0) {
-                        *outAshmemSize += size;
-                    }
+            if ((obj.cookie != 0) && (outAshmemSize != NULL) && ashmem_valid(obj.handle)) {
+                // If we own an ashmem fd, keep track of how much memory it refers to.
+                int size = ashmem_get_size_region(obj.handle);
+                if (size > 0) {
+                    *outAshmemSize += size;
                 }
             }
             return;
@@ -207,14 +177,10 @@ static void release_object(const sp<ProcessState>& proc,
         }
         case BINDER_TYPE_FD: {
             if (obj.cookie != 0) { // owned
-                if (outAshmemSize != NULL) {
-                    struct stat st;
-                    int ret = fstat(obj.handle, &st);
-                    if (!ret && S_ISCHR(st.st_mode) && (st.st_rdev == ashmem_rdev())) {
-                        int size = ashmem_get_size_region(obj.handle);
-                        if (size > 0) {
-                            *outAshmemSize -= size;
-                        }
+                if ((outAshmemSize != NULL) && ashmem_valid(obj.handle)) {
+                    int size = ashmem_get_size_region(obj.handle);
+                    if (size > 0) {
+                        *outAshmemSize -= size;
                     }
                 }
 
@@ -784,7 +750,7 @@ status_t Parcel::writeUtf8AsUtf16(const std::string& str) {
     const uint8_t* strData = (uint8_t*)str.data();
     const size_t strLen= str.length();
     const ssize_t utf16Len = utf8_to_utf16_length(strData, strLen);
-    if (utf16Len < 0 || utf16Len > std::numeric_limits<int32_t>::max()) {
+    if (utf16Len < 0 || utf16Len> std::numeric_limits<int32_t>::max()) {
         return BAD_VALUE;
     }
 
@@ -799,7 +765,7 @@ status_t Parcel::writeUtf8AsUtf16(const std::string& str) {
         return NO_MEMORY;
     }
 
-    utf8_to_utf16(strData, strLen, (char16_t*)dst, (size_t) utf16Len + 1);
+    utf8_to_utf16(strData, strLen, (char16_t*)dst);
 
     return NO_ERROR;
 }
@@ -1795,16 +1761,15 @@ status_t Parcel::readUtf8FromUtf16(std::string* str) const {
        return NO_ERROR;
     }
 
-    // Allow for closing '\0'
-    ssize_t utf8Size = utf16_to_utf8_length(src, utf16Size) + 1;
-    if (utf8Size < 1) {
+    ssize_t utf8Size = utf16_to_utf8_length(src, utf16Size);
+    if (utf8Size < 0) {
         return BAD_VALUE;
     }
     // Note that while it is probably safe to assume string::resize keeps a
-    // spare byte around for the trailing null, we still pass the size including the trailing null
+    // spare byte around for the trailing null, we're going to be explicit.
+    str->resize(utf8Size + 1);
+    utf16_to_utf8(src, utf16Size, &((*str)[0]));
     str->resize(utf8Size);
-    utf16_to_utf8(src, utf16Size, &((*str)[0]), utf8Size);
-    str->resize(utf8Size - 1);
     return NO_ERROR;
 }
 

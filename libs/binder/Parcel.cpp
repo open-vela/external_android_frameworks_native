@@ -1427,13 +1427,13 @@ status_t readByteVectorInternal(const Parcel* parcel,
         return status;
     }
 
-    T* data = const_cast<T*>(reinterpret_cast<const T*>(parcel->readInplace(size)));
+    const void* data = parcel->readInplace(size);
     if (!data) {
         status = BAD_VALUE;
         return status;
     }
-    val->reserve(size);
-    val->insert(val->end(), data, data + size);
+    val->resize(size);
+    memcpy(val->data(), data, size);
 
     return status;
 }

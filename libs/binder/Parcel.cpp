@@ -1153,12 +1153,6 @@ status_t Parcel::writeDupFileDescriptor(int fd)
     return err;
 }
 
-status_t Parcel::writeParcelFileDescriptor(int fd, bool takeOwnership)
-{
-    writeInt32(0);
-    return writeFileDescriptor(fd, takeOwnership);
-}
-
 status_t Parcel::writeUniqueFileDescriptor(const base::unique_fd& fd) {
     return writeDupFileDescriptor(fd.get());
 }
@@ -1433,13 +1427,13 @@ status_t readByteVectorInternal(const Parcel* parcel,
         return status;
     }
 
-    T* data = const_cast<T*>(reinterpret_cast<const T*>(parcel->readInplace(size)));
+    const void* data = parcel->readInplace(size);
     if (!data) {
         status = BAD_VALUE;
         return status;
     }
-    val->reserve(size);
-    val->insert(val->end(), data, data + size);
+    val->resize(size);
+    memcpy(val->data(), data, size);
 
     return status;
 }
@@ -1990,6 +1984,7 @@ native_handle* Parcel::readNativeHandle() const
     return h;
 }
 
+
 int Parcel::readFileDescriptor() const
 {
     const flat_binder_object* flat = readObject(true);
@@ -1999,17 +1994,6 @@ int Parcel::readFileDescriptor() const
     }
 
     return BAD_TYPE;
-}
-
-int Parcel::readParcelFileDescriptor() const
-{
-    int32_t hasComm = readInt32();
-    int fd = readFileDescriptor();
-    if (hasComm != 0) {
-        // skip
-        readFileDescriptor();
-    }
-    return fd;
 }
 
 status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const

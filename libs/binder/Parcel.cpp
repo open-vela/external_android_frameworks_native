@@ -514,7 +514,7 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
         // grow objects
         if (mObjectsCapacity < mObjectsSize + numObjects) {
             size_t newSize = ((mObjectsSize + numObjects)*3)/2;
-            if (newSize*sizeof(binder_size_t) < mObjectsSize) return NO_MEMORY;   // overflow
+            if (newSize < mObjectsSize) return NO_MEMORY;   // overflow
             binder_size_t *objects =
                 (binder_size_t*)realloc(mObjects, newSize*sizeof(binder_size_t));
             if (objects == (binder_size_t*)0) {
@@ -1153,12 +1153,6 @@ status_t Parcel::writeDupFileDescriptor(int fd)
     return err;
 }
 
-status_t Parcel::writeParcelFileDescriptor(int fd, bool takeOwnership)
-{
-    writeInt32(0);
-    return writeFileDescriptor(fd, takeOwnership);
-}
-
 status_t Parcel::writeUniqueFileDescriptor(const base::unique_fd& fd) {
     return writeDupFileDescriptor(fd.get());
 }
@@ -1314,7 +1308,7 @@ restart_write:
     }
     if (!enoughObjects) {
         size_t newSize = ((mObjectsSize+2)*3)/2;
-        if (newSize*sizeof(binder_size_t) < mObjectsSize) return NO_MEMORY;   // overflow
+        if (newSize < mObjectsSize) return NO_MEMORY;   // overflow
         binder_size_t* objects = (binder_size_t*)realloc(mObjects, newSize*sizeof(binder_size_t));
         if (objects == NULL) return NO_MEMORY;
         mObjects = objects;
@@ -1433,13 +1427,13 @@ status_t readByteVectorInternal(const Parcel* parcel,
         return status;
     }
 
-    T* data = const_cast<T*>(reinterpret_cast<const T*>(parcel->readInplace(size)));
+    const void* data = parcel->readInplace(size);
     if (!data) {
         status = BAD_VALUE;
         return status;
     }
-    val->reserve(size);
-    val->insert(val->end(), data, data + size);
+    val->resize(size);
+    memcpy(val->data(), data, size);
 
     return status;
 }
@@ -1990,6 +1984,7 @@ native_handle* Parcel::readNativeHandle() const
     return h;
 }
 
+
 int Parcel::readFileDescriptor() const
 {
     const flat_binder_object* flat = readObject(true);
@@ -1999,17 +1994,6 @@ int Parcel::readFileDescriptor() const
     }
 
     return BAD_TYPE;
-}
-
-int Parcel::readParcelFileDescriptor() const
-{
-    int32_t hasComm = readInt32();
-    int fd = readFileDescriptor();
-    if (hasComm != 0) {
-        // skip
-        readFileDescriptor();
-    }
-    return fd;
 }
 
 status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
@@ -2094,15 +2078,11 @@ status_t Parcel::read(FlattenableHelperInterface& val) const
 
     status_t err = NO_ERROR;
     for (size_t i=0 ; i<fd_count && err==NO_ERROR ; i++) {
-        int fd = this->readFileDescriptor();
-        if (fd < 0 || ((fds[i] = dup(fd)) < 0)) {
+        fds[i] = dup(this->readFileDescriptor());
+        if (fds[i] < 0) {
             err = BAD_VALUE;
             ALOGE("dup() failed in Parcel::read, i is %zu, fds[i] is %d, fd_count is %zu, error: %s",
-                  i, fds[i], fd_count, strerror(fd < 0 ? -fd : errno));
-            // Close all the file descriptors that were dup-ed.
-            for (size_t j=0; j<i ;j++) {
-                close(fds[j]);
-            }
+                i, fds[i], fd_count, strerror(errno));
         }
     }
 

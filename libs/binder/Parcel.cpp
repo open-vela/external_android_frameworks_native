@@ -17,63 +17,52 @@
 #define LOG_TAG "Parcel"
 //#define LOG_NDEBUG 0
 
-#include <errno.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <pthread.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/resource.h>
-#include <unistd.h>
+#include <binder/Parcel.h>
 
+#include <binder/IPCThreadState.h>
 #include <binder/Binder.h>
 #include <binder/BpBinder.h>
-#include <binder/IPCThreadState.h>
-#include <binder/Parcel.h>
 #include <binder/ProcessState.h>
-#include <binder/Status.h>
 #include <binder/TextOutput.h>
 
-#include <cutils/ashmem.h>
+#include <errno.h>
+#include <utils/CallStack.h>
 #include <utils/Debug.h>
-#include <utils/Flattenable.h>
 #include <utils/Log.h>
-#include <utils/misc.h>
 #include <utils/String8.h>
 #include <utils/String16.h>
+#include <utils/misc.h>
+#include <utils/Flattenable.h>
+#include <cutils/ashmem.h>
 
 #include <private/binder/binder_module.h>
-#include <private/binder/Static.h>
+
+#include <fcntl.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <sys/mman.h>
 
 #ifndef INT32_MAX
 #define INT32_MAX ((int32_t)(2147483647))
 #endif
 
 #define LOG_REFS(...)
-//#define LOG_REFS(...) ALOG(LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOG_ALLOC(...)
-//#define LOG_ALLOC(...) ALOG(LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+//#define LOG_REFS(...) ALOG(LOG_DEBUG, "Parcel", __VA_ARGS__)
 
 // ---------------------------------------------------------------------------
 
-// This macro should never be used at runtime, as a too large value
-// of s could cause an integer overflow. Instead, you should always
-// use the wrapper function pad_size()
-#define PAD_SIZE_UNSAFE(s) (((s)+3)&~3)
-
-static size_t pad_size(size_t s) {
-    if (s > (SIZE_T_MAX - 3)) {
-        abort();
-    }
-    return PAD_SIZE_UNSAFE(s);
-}
+#define PAD_SIZE(s) (((s)+3)&~3)
 
 // Note: must be kept in sync with android/os/StrictMode.java's PENALTY_GATHER
-#define STRICT_MODE_PENALTY_GATHER (0x40 << 16)
+#define STRICT_MODE_PENALTY_GATHER 0x100
+
+// Note: must be kept in sync with android/os/Parcel.java's EX_HAS_REPLY_HEADER
+#define EX_HAS_REPLY_HEADER -128
+
+// Maximum size of a blob to transfer in-place.
+static const size_t IN_PLACE_BLOB_LIMIT = 40 * 1024;
 
 // XXX This can be made public if we want to provide
 // support for typed data.
@@ -85,23 +74,8 @@ struct small_flat_data
 
 namespace android {
 
-static pthread_mutex_t gParcelGlobalAllocSizeLock = PTHREAD_MUTEX_INITIALIZER;
-static size_t gParcelGlobalAllocSize = 0;
-static size_t gParcelGlobalAllocCount = 0;
-
-static size_t gMaxFds = 0;
-
-// Maximum size of a blob to transfer in-place.
-static const size_t BLOB_INPLACE_LIMIT = 16 * 1024;
-
-enum {
-    BLOB_INPLACE = 0,
-    BLOB_ASHMEM_IMMUTABLE = 1,
-    BLOB_ASHMEM_MUTABLE = 2,
-};
-
 void acquire_object(const sp<ProcessState>& proc,
-    const flat_binder_object& obj, const void* who, size_t* outAshmemSize)
+    const flat_binder_object& obj, const void* who)
 {
     switch (obj.type) {
         case BINDER_TYPE_BINDER:
@@ -128,13 +102,8 @@ void acquire_object(const sp<ProcessState>& proc,
             return;
         }
         case BINDER_TYPE_FD: {
-            if ((obj.cookie != 0) && (outAshmemSize != NULL) && ashmem_valid(obj.handle)) {
-                // If we own an ashmem fd, keep track of how much memory it refers to.
-                int size = ashmem_get_size_region(obj.handle);
-                if (size > 0) {
-                    *outAshmemSize += size;
-                }
-            }
+            // intentionally blank -- nothing to do to acquire this, but we do
+            // recognize it as a legitimate object type.
             return;
         }
     }
@@ -142,14 +111,8 @@ void acquire_object(const sp<ProcessState>& proc,
     ALOGD("Invalid object type 0x%08x", obj.type);
 }
 
-void acquire_object(const sp<ProcessState>& proc,
+void release_object(const sp<ProcessState>& proc,
     const flat_binder_object& obj, const void* who)
-{
-    acquire_object(proc, obj, who, NULL);
-}
-
-static void release_object(const sp<ProcessState>& proc,
-    const flat_binder_object& obj, const void* who, size_t* outAshmemSize)
 {
     switch (obj.type) {
         case BINDER_TYPE_BINDER:
@@ -176,27 +139,12 @@ static void release_object(const sp<ProcessState>& proc,
             return;
         }
         case BINDER_TYPE_FD: {
-            if (obj.cookie != 0) { // owned
-                if ((outAshmemSize != NULL) && ashmem_valid(obj.handle)) {
-                    int size = ashmem_get_size_region(obj.handle);
-                    if (size > 0) {
-                        *outAshmemSize -= size;
-                    }
-                }
-
-                close(obj.handle);
-            }
+            if (obj.cookie != 0) close(obj.handle);
             return;
         }
     }
 
     ALOGE("Invalid object type 0x%08x", obj.type);
-}
-
-void release_object(const sp<ProcessState>& proc,
-    const flat_binder_object& obj, const void* who)
-{
-    release_object(proc, obj, who, NULL);
 }
 
 inline static status_t finish_flatten_binder(
@@ -345,28 +293,12 @@ status_t unflatten_binder(const sp<ProcessState>& proc,
 
 Parcel::Parcel()
 {
-    LOG_ALLOC("Parcel %p: constructing", this);
     initState();
 }
 
 Parcel::~Parcel()
 {
     freeDataNoInit();
-    LOG_ALLOC("Parcel %p: destroyed", this);
-}
-
-size_t Parcel::getGlobalAllocSize() {
-    pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
-    size_t size = gParcelGlobalAllocSize;
-    pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
-    return size;
-}
-
-size_t Parcel::getGlobalAllocCount() {
-    pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
-    size_t count = gParcelGlobalAllocCount;
-    pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
-    return count;
 }
 
 const uint8_t* Parcel::data() const
@@ -381,11 +313,13 @@ size_t Parcel::dataSize() const
 
 size_t Parcel::dataAvail() const
 {
-    size_t result = dataSize() - dataPosition();
-    if (result > INT32_MAX) {
-        abort();
-    }
-    return result;
+    // TODO: decide what to do about the possibility that this can
+    // report an available-data size that exceeds a Java int's max
+    // positive value, causing havoc.  Fortunately this will only
+    // happen if someone constructs a Parcel containing more than two
+    // gigabytes of data, which on typical phone hardware is simply
+    // not possible.
+    return dataSize() - dataPosition();
 }
 
 size_t Parcel::dataPosition() const
@@ -400,12 +334,6 @@ size_t Parcel::dataCapacity() const
 
 status_t Parcel::setDataSize(size_t size)
 {
-    if (size > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     status_t err;
     err = continueWrite(size);
     if (err == NO_ERROR) {
@@ -417,36 +345,18 @@ status_t Parcel::setDataSize(size_t size)
 
 void Parcel::setDataPosition(size_t pos) const
 {
-    if (pos > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        abort();
-    }
-
     mDataPos = pos;
     mNextObjectHint = 0;
 }
 
 status_t Parcel::setDataCapacity(size_t size)
 {
-    if (size > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     if (size > mDataCapacity) return continueWrite(size);
     return NO_ERROR;
 }
 
 status_t Parcel::setData(const uint8_t* buffer, size_t len)
 {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     status_t err = restartWrite(len);
     if (err == NO_ERROR) {
         memcpy(const_cast<uint8_t*>(data()), buffer, len);
@@ -468,12 +378,6 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
 
     if (len == 0) {
         return NO_ERROR;
-    }
-
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
     }
 
     // range checks against the source parcel size
@@ -533,7 +437,7 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
 
             flat_binder_object* flat
                 = reinterpret_cast<flat_binder_object*>(mData + off);
-            acquire_object(proc, *flat, this, &mOpenAshmemSize);
+            acquire_object(proc, *flat, this);
 
             if (flat->type == BINDER_TYPE_FD) {
                 // If this is a file descriptor, we need to dup it so the
@@ -550,11 +454,6 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
     }
 
     return err;
-}
-
-bool Parcel::allowFds() const
-{
-    return mAllowFds;
 }
 
 bool Parcel::pushAllowFds(bool allowFds)
@@ -642,12 +541,6 @@ void Parcel::setError(status_t err)
 
 status_t Parcel::finishWrite(size_t len)
 {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     //printf("Finish write of %d\n", len);
     mDataPos += len;
     ALOGV("finishWrite Setting data pos of %p to %zu", this, mDataPos);
@@ -661,12 +554,6 @@ status_t Parcel::finishWrite(size_t len)
 
 status_t Parcel::writeUnpadded(const void* data, size_t len)
 {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     size_t end = mDataPos + len;
     if (end < mDataPos) {
         // integer overflow
@@ -686,12 +573,6 @@ restart_write:
 
 status_t Parcel::write(const void* data, size_t len)
 {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     void* const d = writeInplace(len);
     if (d) {
         memcpy(d, data, len);
@@ -702,13 +583,7 @@ status_t Parcel::write(const void* data, size_t len)
 
 void* Parcel::writeInplace(size_t len)
 {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return NULL;
-    }
-
-    const size_t padded = pad_size(len);
+    const size_t padded = PAD_SIZE(len);
 
     // sanity check for integer overflow
     if (mDataPos+padded < mDataPos) {
@@ -746,238 +621,32 @@ restart_write:
     return NULL;
 }
 
-status_t Parcel::writeUtf8AsUtf16(const std::string& str) {
-    const uint8_t* strData = (uint8_t*)str.data();
-    const size_t strLen= str.length();
-    const ssize_t utf16Len = utf8_to_utf16_length(strData, strLen);
-    if (utf16Len < 0 || utf16Len > std::numeric_limits<int32_t>::max()) {
-        return BAD_VALUE;
-    }
-
-    status_t err = writeInt32(utf16Len);
-    if (err) {
-        return err;
-    }
-
-    // Allocate enough bytes to hold our converted string and its terminating NULL.
-    void* dst = writeInplace((utf16Len + 1) * sizeof(char16_t));
-    if (!dst) {
-        return NO_MEMORY;
-    }
-
-    utf8_to_utf16(strData, strLen, (char16_t*)dst, (size_t) utf16Len + 1);
-
-    return NO_ERROR;
-}
-
-status_t Parcel::writeUtf8AsUtf16(const std::unique_ptr<std::string>& str) {
-  if (!str) {
-    return writeInt32(-1);
-  }
-  return writeUtf8AsUtf16(*str);
-}
-
-namespace {
-
-template<typename T>
-status_t writeByteVectorInternal(Parcel* parcel, const std::vector<T>& val)
-{
-    status_t status;
-    if (val.size() > std::numeric_limits<int32_t>::max()) {
-        status = BAD_VALUE;
-        return status;
-    }
-
-    status = parcel->writeInt32(val.size());
-    if (status != OK) {
-        return status;
-    }
-
-    void* data = parcel->writeInplace(val.size());
-    if (!data) {
-        status = BAD_VALUE;
-        return status;
-    }
-
-    memcpy(data, val.data(), val.size());
-    return status;
-}
-
-template<typename T>
-status_t writeByteVectorInternalPtr(Parcel* parcel,
-                                    const std::unique_ptr<std::vector<T>>& val)
-{
-    if (!val) {
-        return parcel->writeInt32(-1);
-    }
-
-    return writeByteVectorInternal(parcel, *val);
-}
-
-}  // namespace
-
-status_t Parcel::writeByteVector(const std::vector<int8_t>& val) {
-    return writeByteVectorInternal(this, val);
-}
-
-status_t Parcel::writeByteVector(const std::unique_ptr<std::vector<int8_t>>& val)
-{
-    return writeByteVectorInternalPtr(this, val);
-}
-
-status_t Parcel::writeByteVector(const std::vector<uint8_t>& val) {
-    return writeByteVectorInternal(this, val);
-}
-
-status_t Parcel::writeByteVector(const std::unique_ptr<std::vector<uint8_t>>& val)
-{
-    return writeByteVectorInternalPtr(this, val);
-}
-
-status_t Parcel::writeInt32Vector(const std::vector<int32_t>& val)
-{
-    return writeTypedVector(val, &Parcel::writeInt32);
-}
-
-status_t Parcel::writeInt32Vector(const std::unique_ptr<std::vector<int32_t>>& val)
-{
-    return writeNullableTypedVector(val, &Parcel::writeInt32);
-}
-
-status_t Parcel::writeInt64Vector(const std::vector<int64_t>& val)
-{
-    return writeTypedVector(val, &Parcel::writeInt64);
-}
-
-status_t Parcel::writeInt64Vector(const std::unique_ptr<std::vector<int64_t>>& val)
-{
-    return writeNullableTypedVector(val, &Parcel::writeInt64);
-}
-
-status_t Parcel::writeFloatVector(const std::vector<float>& val)
-{
-    return writeTypedVector(val, &Parcel::writeFloat);
-}
-
-status_t Parcel::writeFloatVector(const std::unique_ptr<std::vector<float>>& val)
-{
-    return writeNullableTypedVector(val, &Parcel::writeFloat);
-}
-
-status_t Parcel::writeDoubleVector(const std::vector<double>& val)
-{
-    return writeTypedVector(val, &Parcel::writeDouble);
-}
-
-status_t Parcel::writeDoubleVector(const std::unique_ptr<std::vector<double>>& val)
-{
-    return writeNullableTypedVector(val, &Parcel::writeDouble);
-}
-
-status_t Parcel::writeBoolVector(const std::vector<bool>& val)
-{
-    return writeTypedVector(val, &Parcel::writeBool);
-}
-
-status_t Parcel::writeBoolVector(const std::unique_ptr<std::vector<bool>>& val)
-{
-    return writeNullableTypedVector(val, &Parcel::writeBool);
-}
-
-status_t Parcel::writeCharVector(const std::vector<char16_t>& val)
-{
-    return writeTypedVector(val, &Parcel::writeChar);
-}
-
-status_t Parcel::writeCharVector(const std::unique_ptr<std::vector<char16_t>>& val)
-{
-    return writeNullableTypedVector(val, &Parcel::writeChar);
-}
-
-status_t Parcel::writeString16Vector(const std::vector<String16>& val)
-{
-    return writeTypedVector(val, &Parcel::writeString16);
-}
-
-status_t Parcel::writeString16Vector(
-        const std::unique_ptr<std::vector<std::unique_ptr<String16>>>& val)
-{
-    return writeNullableTypedVector(val, &Parcel::writeString16);
-}
-
-status_t Parcel::writeUtf8VectorAsUtf16Vector(
-                        const std::unique_ptr<std::vector<std::unique_ptr<std::string>>>& val) {
-    return writeNullableTypedVector(val, &Parcel::writeUtf8AsUtf16);
-}
-
-status_t Parcel::writeUtf8VectorAsUtf16Vector(const std::vector<std::string>& val) {
-    return writeTypedVector(val, &Parcel::writeUtf8AsUtf16);
-}
-
 status_t Parcel::writeInt32(int32_t val)
 {
     return writeAligned(val);
 }
-
-status_t Parcel::writeUint32(uint32_t val)
-{
-    return writeAligned(val);
-}
-
 status_t Parcel::writeInt32Array(size_t len, const int32_t *val) {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     if (!val) {
-        return writeInt32(-1);
+        return writeAligned(-1);
     }
-    status_t ret = writeInt32(static_cast<uint32_t>(len));
+    status_t ret = writeAligned(len);
     if (ret == NO_ERROR) {
         ret = write(val, len * sizeof(*val));
     }
     return ret;
 }
 status_t Parcel::writeByteArray(size_t len, const uint8_t *val) {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     if (!val) {
-        return writeInt32(-1);
+        return writeAligned(-1);
     }
-    status_t ret = writeInt32(static_cast<uint32_t>(len));
+    status_t ret = writeAligned(len);
     if (ret == NO_ERROR) {
         ret = write(val, len * sizeof(*val));
     }
     return ret;
 }
 
-status_t Parcel::writeBool(bool val)
-{
-    return writeInt32(int32_t(val));
-}
-
-status_t Parcel::writeChar(char16_t val)
-{
-    return writeInt32(int32_t(val));
-}
-
-status_t Parcel::writeByte(int8_t val)
-{
-    return writeInt32(int32_t(val));
-}
-
 status_t Parcel::writeInt64(int64_t val)
-{
-    return writeAligned(val);
-}
-
-status_t Parcel::writeUint64(uint64_t val)
 {
     return writeAligned(val);
 }
@@ -1030,15 +699,6 @@ status_t Parcel::writeString8(const String8& str)
     return err;
 }
 
-status_t Parcel::writeString16(const std::unique_ptr<String16>& str)
-{
-    if (!str) {
-        return writeInt32(-1);
-    }
-
-    return writeString16(*str);
-}
-
 status_t Parcel::writeString16(const String16& str)
 {
     return writeString16(str.string(), str.size());
@@ -1067,43 +727,9 @@ status_t Parcel::writeStrongBinder(const sp<IBinder>& val)
     return flatten_binder(ProcessState::self(), val, this);
 }
 
-status_t Parcel::writeStrongBinderVector(const std::vector<sp<IBinder>>& val)
-{
-    return writeTypedVector(val, &Parcel::writeStrongBinder);
-}
-
-status_t Parcel::writeStrongBinderVector(const std::unique_ptr<std::vector<sp<IBinder>>>& val)
-{
-    return writeNullableTypedVector(val, &Parcel::writeStrongBinder);
-}
-
-status_t Parcel::readStrongBinderVector(std::unique_ptr<std::vector<sp<IBinder>>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readNullableStrongBinder);
-}
-
-status_t Parcel::readStrongBinderVector(std::vector<sp<IBinder>>* val) const {
-    return readTypedVector(val, &Parcel::readStrongBinder);
-}
-
 status_t Parcel::writeWeakBinder(const wp<IBinder>& val)
 {
     return flatten_binder(ProcessState::self(), val, this);
-}
-
-status_t Parcel::writeRawNullableParcelable(const Parcelable* parcelable) {
-    if (!parcelable) {
-        return writeInt32(0);
-    }
-
-    return writeParcelable(*parcelable);
-}
-
-status_t Parcel::writeParcelable(const Parcelable& parcelable) {
-    status_t status = writeInt32(1);  // parcelable is not null.
-    if (status != OK) {
-        return status;
-    }
-    return parcelable.writeToParcel(this);
 }
 
 status_t Parcel::writeNativeHandle(const native_handle* handle)
@@ -1143,52 +769,78 @@ status_t Parcel::writeFileDescriptor(int fd, bool takeOwnership)
 status_t Parcel::writeDupFileDescriptor(int fd)
 {
     int dupFd = dup(fd);
+
+    {   // Temporary extra debug validation for b/17477219: a Parcel recipient is
+        // getting a positive but invalid fd unexpectedly. Trying to track down
+        // where it's coming from.
+        int dupErrno = dupFd < 0 ? errno : 0;
+        int fdFlags = fcntl(fd, F_GETFD);
+        int fdFlagsErrno = fdFlags == -1 ? errno : 0;
+        int dupFlags = fcntl(dupFd, F_GETFD);
+        int dupFlagsErrno = dupFlags == -1 ? errno : 0;
+        if (dupFd < 0 || fdFlags == -1 || dupFlags == -1) {
+            ALOGE("Parcel::writeDupFileDescriptor failed:\n"
+                    "  fd=%d flags=%d err=%d(%s)\n"
+                    "  dupFd=%d dupErr=%d(%s) flags=%d err=%d(%s)",
+                    fd, fdFlags, fdFlagsErrno, strerror(fdFlagsErrno),
+                    dupFd, dupErrno, strerror(dupErrno),
+                    dupFlags, dupFlagsErrno, strerror(dupFlagsErrno));
+            if (fd < 0 || fdFlags == -1) {
+                CallStack(LOG_TAG);
+            }
+            return -errno;
+        }
+    }
+
     if (dupFd < 0) {
         return -errno;
     }
     status_t err = writeFileDescriptor(dupFd, true /*takeOwnership*/);
-    if (err != OK) {
+    if (err) {
         close(dupFd);
     }
     return err;
 }
 
-status_t Parcel::writeParcelFileDescriptor(int fd, bool takeOwnership)
-{
-    writeInt32(0);
-    return writeFileDescriptor(fd, takeOwnership);
-}
-
-status_t Parcel::writeUniqueFileDescriptor(const base::unique_fd& fd) {
-    return writeDupFileDescriptor(fd.get());
-}
-
-status_t Parcel::writeUniqueFileDescriptorVector(const std::vector<base::unique_fd>& val) {
-    return writeTypedVector(val, &Parcel::writeUniqueFileDescriptor);
-}
-
-status_t Parcel::writeUniqueFileDescriptorVector(const std::unique_ptr<std::vector<base::unique_fd>>& val) {
-    return writeNullableTypedVector(val, &Parcel::writeUniqueFileDescriptor);
-}
-
-status_t Parcel::writeBlob(size_t len, bool mutableCopy, WritableBlob* outBlob)
-{
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
+// WARNING: This method must stay in sync with
+// Parcelable.Creator<ParcelFileDescriptor> CREATOR
+// in frameworks/base/core/java/android/os/ParcelFileDescriptor.java
+status_t Parcel::writeParcelFileDescriptor(int fd, int commChannel) {
     status_t status;
-    if (!mAllowFds || len <= BLOB_INPLACE_LIMIT) {
+
+    if (fd < 0) {
+        status = writeInt32(0); // ParcelFileDescriptor is null
+        if (status) return status;
+    } else {
+        status = writeInt32(1); // ParcelFileDescriptor is not null
+        if (status) return status;
+        status = writeDupFileDescriptor(fd);
+        if (status) return status;
+        if (commChannel < 0) {
+            status = writeInt32(0); // commChannel is null
+            if (status) return status;
+        } else {
+            status = writeInt32(1); // commChannel is not null
+            if (status) return status;
+            status = writeDupFileDescriptor(commChannel);
+        }
+    }
+    return status;
+}
+
+status_t Parcel::writeBlob(size_t len, WritableBlob* outBlob)
+{
+    status_t status;
+
+    if (!mAllowFds || len <= IN_PLACE_BLOB_LIMIT) {
         ALOGV("writeBlob: write in place");
-        status = writeInt32(BLOB_INPLACE);
+        status = writeInt32(0);
         if (status) return status;
 
         void* ptr = writeInplace(len);
         if (!ptr) return NO_MEMORY;
 
-        outBlob->init(-1, ptr, len, false);
+        outBlob->init(false /*mapped*/, ptr, len);
         return NO_ERROR;
     }
 
@@ -1204,17 +856,15 @@ status_t Parcel::writeBlob(size_t len, bool mutableCopy, WritableBlob* outBlob)
         if (ptr == MAP_FAILED) {
             status = -errno;
         } else {
-            if (!mutableCopy) {
-                result = ashmem_set_prot_region(fd, PROT_READ);
-            }
+            result = ashmem_set_prot_region(fd, PROT_READ);
             if (result < 0) {
                 status = result;
             } else {
-                status = writeInt32(mutableCopy ? BLOB_ASHMEM_MUTABLE : BLOB_ASHMEM_IMMUTABLE);
+                status = writeInt32(1);
                 if (!status) {
                     status = writeFileDescriptor(fd, true /*takeOwnership*/);
                     if (!status) {
-                        outBlob->init(fd, ptr, len, mutableCopy);
+                        outBlob->init(true /*mapped*/, ptr, len);
                         return NO_ERROR;
                     }
                 }
@@ -1226,15 +876,6 @@ status_t Parcel::writeBlob(size_t len, bool mutableCopy, WritableBlob* outBlob)
     return status;
 }
 
-status_t Parcel::writeDupImmutableBlobFileDescriptor(int fd)
-{
-    // Must match up with what's done in writeBlob.
-    if (!mAllowFds) return FDS_NOT_ALLOWED;
-    status_t status = writeInt32(BLOB_ASHMEM_IMMUTABLE);
-    if (status) return status;
-    return writeDupFileDescriptor(fd);
-}
-
 status_t Parcel::write(const FlattenableHelperInterface& val)
 {
     status_t err;
@@ -1243,12 +884,6 @@ status_t Parcel::write(const FlattenableHelperInterface& val)
     const size_t len = val.getFlattenedSize();
     const size_t fd_count = val.getFdCount();
 
-    if ((len > INT32_MAX) || (fd_count >= gMaxFds)) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     err = this->writeInt32(len);
     if (err) return err;
 
@@ -1256,17 +891,13 @@ status_t Parcel::write(const FlattenableHelperInterface& val)
     if (err) return err;
 
     // payload
-    void* const buf = this->writeInplace(pad_size(len));
+    void* const buf = this->writeInplace(PAD_SIZE(len));
     if (buf == NULL)
         return BAD_VALUE;
 
     int* fds = NULL;
     if (fd_count) {
-        fds = new (std::nothrow) int[fd_count];
-        if (fds == nullptr) {
-            ALOGE("write: failed to allocate requested %zu fds", fd_count);
-            return BAD_VALUE;
-        }
+        fds = new int[fd_count];
     }
 
     err = val.flatten(buf, len, fds, fd_count);
@@ -1289,20 +920,19 @@ status_t Parcel::writeObject(const flat_binder_object& val, bool nullMetaData)
 restart_write:
         *reinterpret_cast<flat_binder_object*>(mData+mDataPos) = val;
 
-        // remember if it's a file descriptor
-        if (val.type == BINDER_TYPE_FD) {
-            if (!mAllowFds) {
-                // fail before modifying our object index
-                return FDS_NOT_ALLOWED;
-            }
-            mHasFds = mFdsKnown = true;
-        }
-
         // Need to write meta-data?
         if (nullMetaData || val.binder != 0) {
             mObjects[mObjectsSize] = mDataPos;
-            acquire_object(ProcessState::self(), val, this, &mOpenAshmemSize);
+            acquire_object(ProcessState::self(), val, this);
             mObjectsSize++;
+        }
+
+        // remember if it's a file descriptor
+        if (val.type == BINDER_TYPE_FD) {
+            if (!mAllowFds) {
+                return FDS_NOT_ALLOWED;
+            }
+            mHasFds = mFdsKnown = true;
         }
 
         return finishWrite(sizeof(flat_binder_object));
@@ -1326,8 +956,7 @@ restart_write:
 
 status_t Parcel::writeNoException()
 {
-    binder::Status status;
-    return status.writeToParcel(this);
+    return writeInt32(0);
 }
 
 void Parcel::remove(size_t /*start*/, size_t /*amt*/)
@@ -1337,16 +966,10 @@ void Parcel::remove(size_t /*start*/, size_t /*amt*/)
 
 status_t Parcel::read(void* outData, size_t len) const
 {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
-    if ((mDataPos+pad_size(len)) >= mDataPos && (mDataPos+pad_size(len)) <= mDataSize
-            && len <= pad_size(len)) {
+    if ((mDataPos+PAD_SIZE(len)) >= mDataPos && (mDataPos+PAD_SIZE(len)) <= mDataSize
+            && len <= PAD_SIZE(len)) {
         memcpy(outData, mData+mDataPos, len);
-        mDataPos += pad_size(len);
+        mDataPos += PAD_SIZE(len);
         ALOGV("read Setting data pos of %p to %zu", this, mDataPos);
         return NO_ERROR;
     }
@@ -1355,16 +978,10 @@ status_t Parcel::read(void* outData, size_t len) const
 
 const void* Parcel::readInplace(size_t len) const
 {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return NULL;
-    }
-
-    if ((mDataPos+pad_size(len)) >= mDataPos && (mDataPos+pad_size(len)) <= mDataSize
-            && len <= pad_size(len)) {
+    if ((mDataPos+PAD_SIZE(len)) >= mDataPos && (mDataPos+PAD_SIZE(len)) <= mDataSize
+            && len <= PAD_SIZE(len)) {
         const void* data = mData+mDataPos;
-        mDataPos += pad_size(len);
+        mDataPos += PAD_SIZE(len);
         ALOGV("readInplace Setting data pos of %p to %zu", this, mDataPos);
         return data;
     }
@@ -1373,7 +990,7 @@ const void* Parcel::readInplace(size_t len) const
 
 template<class T>
 status_t Parcel::readAligned(T *pArg) const {
-    COMPILE_TIME_ASSERT_FUNCTION_SCOPE(PAD_SIZE_UNSAFE(sizeof(T)) == sizeof(T));
+    COMPILE_TIME_ASSERT_FUNCTION_SCOPE(PAD_SIZE(sizeof(T)) == sizeof(T));
 
     if ((mDataPos+sizeof(T)) <= mDataSize) {
         const void* data = mData+mDataPos;
@@ -1397,7 +1014,7 @@ T Parcel::readAligned() const {
 
 template<class T>
 status_t Parcel::writeAligned(T val) {
-    COMPILE_TIME_ASSERT_FUNCTION_SCOPE(PAD_SIZE_UNSAFE(sizeof(T)) == sizeof(T));
+    COMPILE_TIME_ASSERT_FUNCTION_SCOPE(PAD_SIZE(sizeof(T)) == sizeof(T));
 
     if ((mDataPos+sizeof(val)) <= mDataCapacity) {
 restart_write:
@@ -1410,193 +1027,6 @@ restart_write:
     return err;
 }
 
-namespace {
-
-template<typename T>
-status_t readByteVectorInternal(const Parcel* parcel,
-                                std::vector<T>* val) {
-    val->clear();
-
-    int32_t size;
-    status_t status = parcel->readInt32(&size);
-
-    if (status != OK) {
-        return status;
-    }
-
-    if (size < 0) {
-        status = UNEXPECTED_NULL;
-        return status;
-    }
-    if (size_t(size) > parcel->dataAvail()) {
-        status = BAD_VALUE;
-        return status;
-    }
-
-    T* data = const_cast<T*>(reinterpret_cast<const T*>(parcel->readInplace(size)));
-    if (!data) {
-        status = BAD_VALUE;
-        return status;
-    }
-    val->reserve(size);
-    val->insert(val->end(), data, data + size);
-
-    return status;
-}
-
-template<typename T>
-status_t readByteVectorInternalPtr(
-        const Parcel* parcel,
-        std::unique_ptr<std::vector<T>>* val) {
-    const int32_t start = parcel->dataPosition();
-    int32_t size;
-    status_t status = parcel->readInt32(&size);
-    val->reset();
-
-    if (status != OK || size < 0) {
-        return status;
-    }
-
-    parcel->setDataPosition(start);
-    val->reset(new (std::nothrow) std::vector<T>());
-
-    status = readByteVectorInternal(parcel, val->get());
-
-    if (status != OK) {
-        val->reset();
-    }
-
-    return status;
-}
-
-}  // namespace
-
-status_t Parcel::readByteVector(std::vector<int8_t>* val) const {
-    return readByteVectorInternal(this, val);
-}
-
-status_t Parcel::readByteVector(std::vector<uint8_t>* val) const {
-    return readByteVectorInternal(this, val);
-}
-
-status_t Parcel::readByteVector(std::unique_ptr<std::vector<int8_t>>* val) const {
-    return readByteVectorInternalPtr(this, val);
-}
-
-status_t Parcel::readByteVector(std::unique_ptr<std::vector<uint8_t>>* val) const {
-    return readByteVectorInternalPtr(this, val);
-}
-
-status_t Parcel::readInt32Vector(std::unique_ptr<std::vector<int32_t>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readInt32);
-}
-
-status_t Parcel::readInt32Vector(std::vector<int32_t>* val) const {
-    return readTypedVector(val, &Parcel::readInt32);
-}
-
-status_t Parcel::readInt64Vector(std::unique_ptr<std::vector<int64_t>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readInt64);
-}
-
-status_t Parcel::readInt64Vector(std::vector<int64_t>* val) const {
-    return readTypedVector(val, &Parcel::readInt64);
-}
-
-status_t Parcel::readFloatVector(std::unique_ptr<std::vector<float>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readFloat);
-}
-
-status_t Parcel::readFloatVector(std::vector<float>* val) const {
-    return readTypedVector(val, &Parcel::readFloat);
-}
-
-status_t Parcel::readDoubleVector(std::unique_ptr<std::vector<double>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readDouble);
-}
-
-status_t Parcel::readDoubleVector(std::vector<double>* val) const {
-    return readTypedVector(val, &Parcel::readDouble);
-}
-
-status_t Parcel::readBoolVector(std::unique_ptr<std::vector<bool>>* val) const {
-    const int32_t start = dataPosition();
-    int32_t size;
-    status_t status = readInt32(&size);
-    val->reset();
-
-    if (status != OK || size < 0) {
-        return status;
-    }
-
-    setDataPosition(start);
-    val->reset(new (std::nothrow) std::vector<bool>());
-
-    status = readBoolVector(val->get());
-
-    if (status != OK) {
-        val->reset();
-    }
-
-    return status;
-}
-
-status_t Parcel::readBoolVector(std::vector<bool>* val) const {
-    int32_t size;
-    status_t status = readInt32(&size);
-
-    if (status != OK) {
-        return status;
-    }
-
-    if (size < 0) {
-        return UNEXPECTED_NULL;
-    }
-
-    val->resize(size);
-
-    /* C++ bool handling means a vector of bools isn't necessarily addressable
-     * (we might use individual bits)
-     */
-    bool data;
-    for (int32_t i = 0; i < size; ++i) {
-        status = readBool(&data);
-        (*val)[i] = data;
-
-        if (status != OK) {
-            return status;
-        }
-    }
-
-    return OK;
-}
-
-status_t Parcel::readCharVector(std::unique_ptr<std::vector<char16_t>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readChar);
-}
-
-status_t Parcel::readCharVector(std::vector<char16_t>* val) const {
-    return readTypedVector(val, &Parcel::readChar);
-}
-
-status_t Parcel::readString16Vector(
-        std::unique_ptr<std::vector<std::unique_ptr<String16>>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readString16);
-}
-
-status_t Parcel::readString16Vector(std::vector<String16>* val) const {
-    return readTypedVector(val, &Parcel::readString16);
-}
-
-status_t Parcel::readUtf8VectorFromUtf16Vector(
-        std::unique_ptr<std::vector<std::unique_ptr<std::string>>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readUtf8FromUtf16);
-}
-
-status_t Parcel::readUtf8VectorFromUtf16Vector(std::vector<std::string>* val) const {
-    return readTypedVector(val, &Parcel::readUtf8FromUtf16);
-}
-
 status_t Parcel::readInt32(int32_t *pArg) const
 {
     return readAligned(pArg);
@@ -1607,15 +1037,6 @@ int32_t Parcel::readInt32() const
     return readAligned<int32_t>();
 }
 
-status_t Parcel::readUint32(uint32_t *pArg) const
-{
-    return readAligned(pArg);
-}
-
-uint32_t Parcel::readUint32() const
-{
-    return readAligned<uint32_t>();
-}
 
 status_t Parcel::readInt64(int64_t *pArg) const
 {
@@ -1626,16 +1047,6 @@ status_t Parcel::readInt64(int64_t *pArg) const
 int64_t Parcel::readInt64() const
 {
     return readAligned<int64_t>();
-}
-
-status_t Parcel::readUint64(uint64_t *pArg) const
-{
-    return readAligned(pArg);
-}
-
-uint64_t Parcel::readUint64() const
-{
-    return readAligned<uint64_t>();
 }
 
 status_t Parcel::readPointer(uintptr_t *pArg) const
@@ -1715,85 +1126,6 @@ intptr_t Parcel::readIntPtr() const
     return readAligned<intptr_t>();
 }
 
-status_t Parcel::readBool(bool *pArg) const
-{
-    int32_t tmp;
-    status_t ret = readInt32(&tmp);
-    *pArg = (tmp != 0);
-    return ret;
-}
-
-bool Parcel::readBool() const
-{
-    return readInt32() != 0;
-}
-
-status_t Parcel::readChar(char16_t *pArg) const
-{
-    int32_t tmp;
-    status_t ret = readInt32(&tmp);
-    *pArg = char16_t(tmp);
-    return ret;
-}
-
-char16_t Parcel::readChar() const
-{
-    return char16_t(readInt32());
-}
-
-status_t Parcel::readByte(int8_t *pArg) const
-{
-    int32_t tmp;
-    status_t ret = readInt32(&tmp);
-    *pArg = int8_t(tmp);
-    return ret;
-}
-
-int8_t Parcel::readByte() const
-{
-    return int8_t(readInt32());
-}
-
-status_t Parcel::readUtf8FromUtf16(std::string* str) const {
-    size_t utf16Size = 0;
-    const char16_t* src = readString16Inplace(&utf16Size);
-    if (!src) {
-        return UNEXPECTED_NULL;
-    }
-
-    // Save ourselves the trouble, we're done.
-    if (utf16Size == 0u) {
-        str->clear();
-       return NO_ERROR;
-    }
-
-    // Allow for closing '\0'
-    ssize_t utf8Size = utf16_to_utf8_length(src, utf16Size) + 1;
-    if (utf8Size < 1) {
-        return BAD_VALUE;
-    }
-    // Note that while it is probably safe to assume string::resize keeps a
-    // spare byte around for the trailing null, we still pass the size including the trailing null
-    str->resize(utf8Size);
-    utf16_to_utf8(src, utf16Size, &((*str)[0]), utf8Size);
-    str->resize(utf8Size - 1);
-    return NO_ERROR;
-}
-
-status_t Parcel::readUtf8FromUtf16(std::unique_ptr<std::string>* str) const {
-    const int32_t start = dataPosition();
-    int32_t size;
-    status_t status = readInt32(&size);
-    str->reset();
-
-    if (status != OK || size < 0) {
-        return status;
-    }
-
-    setDataPosition(start);
-    str->reset(new (std::nothrow) std::string());
-    return readUtf8FromUtf16(str->get());
-}
 
 const char* Parcel::readCString() const
 {
@@ -1804,7 +1136,7 @@ const char* Parcel::readCString() const
         const char* eos = reinterpret_cast<const char*>(memchr(str, 0, avail));
         if (eos) {
             const size_t len = eos - str;
-            mDataPos += pad_size(len+1);
+            mDataPos += PAD_SIZE(len+1);
             ALOGV("readCString Setting data pos of %p to %zu", this, mDataPos);
             return str;
         }
@@ -1814,37 +1146,13 @@ const char* Parcel::readCString() const
 
 String8 Parcel::readString8() const
 {
-    String8 retString;
-    status_t status = readString8(&retString);
-    if (status != OK) {
-        // We don't care about errors here, so just return an empty string.
-        return String8();
+    int32_t size = readInt32();
+    // watch for potential int overflow adding 1 for trailing NUL
+    if (size > 0 && size < INT32_MAX) {
+        const char* str = (const char*)readInplace(size+1);
+        if (str) return String8(str, size);
     }
-    return retString;
-}
-
-status_t Parcel::readString8(String8* pArg) const
-{
-    int32_t size;
-    status_t status = readInt32(&size);
-    if (status != OK) {
-        return status;
-    }
-    // watch for potential int overflow from size+1
-    if (size < 0 || size >= INT32_MAX) {
-        return BAD_VALUE;
-    }
-    // |writeString8| writes nothing for empty string.
-    if (size == 0) {
-        *pArg = String8();
-        return OK;
-    }
-    const char* str = (const char*)readInplace(size + 1);
-    if (str == NULL) {
-        return BAD_VALUE;
-    }
-    pArg->setTo(str, size);
-    return OK;
+    return String8();
 }
 
 String16 Parcel::readString16() const
@@ -1854,42 +1162,6 @@ String16 Parcel::readString16() const
     if (str) return String16(str, len);
     ALOGE("Reading a NULL string not supported here.");
     return String16();
-}
-
-status_t Parcel::readString16(std::unique_ptr<String16>* pArg) const
-{
-    const int32_t start = dataPosition();
-    int32_t size;
-    status_t status = readInt32(&size);
-    pArg->reset();
-
-    if (status != OK || size < 0) {
-        return status;
-    }
-
-    setDataPosition(start);
-    pArg->reset(new (std::nothrow) String16());
-
-    status = readString16(pArg->get());
-
-    if (status != OK) {
-        pArg->reset();
-    }
-
-    return status;
-}
-
-status_t Parcel::readString16(String16* pArg) const
-{
-    size_t len;
-    const char16_t* str = readString16Inplace(&len);
-    if (str) {
-        pArg->setTo(str, len);
-        return 0;
-    } else {
-        *pArg = String16();
-        return UNEXPECTED_NULL;
-    }
 }
 
 const char16_t* Parcel::readString16Inplace(size_t* outLen) const
@@ -1907,27 +1179,10 @@ const char16_t* Parcel::readString16Inplace(size_t* outLen) const
     return NULL;
 }
 
-status_t Parcel::readStrongBinder(sp<IBinder>* val) const
-{
-    status_t status = readNullableStrongBinder(val);
-    if (status == OK && !val->get()) {
-        status = UNEXPECTED_NULL;
-    }
-    return status;
-}
-
-status_t Parcel::readNullableStrongBinder(sp<IBinder>* val) const
-{
-    return unflatten_binder(ProcessState::self(), *this, val);
-}
-
 sp<IBinder> Parcel::readStrongBinder() const
 {
     sp<IBinder> val;
-    // Note that a lot of code in Android reads binders by hand with this
-    // method, and that code has historically been ok with getting nullptr
-    // back (while ignoring error codes).
-    readNullableStrongBinder(&val);
+    unflatten_binder(ProcessState::self(), *this, &val);
     return val;
 }
 
@@ -1938,23 +1193,20 @@ wp<IBinder> Parcel::readWeakBinder() const
     return val;
 }
 
-status_t Parcel::readParcelable(Parcelable* parcelable) const {
-    int32_t have_parcelable = 0;
-    status_t status = readInt32(&have_parcelable);
-    if (status != OK) {
-        return status;
-    }
-    if (!have_parcelable) {
-        return UNEXPECTED_NULL;
-    }
-    return parcelable->readFromParcel(this);
-}
-
 int32_t Parcel::readExceptionCode() const
 {
-    binder::Status status;
-    status.readFromParcel(*this);
-    return status.exceptionCode();
+  int32_t exception_code = readAligned<int32_t>();
+  if (exception_code == EX_HAS_REPLY_HEADER) {
+    int32_t header_start = dataPosition();
+    int32_t header_size = readAligned<int32_t>();
+    // Skip over fat responses headers.  Not used (or propagated) in
+    // native code
+    setDataPosition(header_start + header_size);
+    // And fat response headers are currently only used when there are no
+    // exceptions, so return no error:
+    return 0;
+  }
+  return exception_code;
 }
 
 native_handle* Parcel::readNativeHandle() const
@@ -1990,79 +1242,60 @@ native_handle* Parcel::readNativeHandle() const
     return h;
 }
 
+
 int Parcel::readFileDescriptor() const
 {
     const flat_binder_object* flat = readObject(true);
-
-    if (flat && flat->type == BINDER_TYPE_FD) {
-        return flat->handle;
+    if (flat) {
+        switch (flat->type) {
+            case BINDER_TYPE_FD:
+                //ALOGI("Returning file descriptor %ld from parcel %p", flat->handle, this);
+                return flat->handle;
+        }
     }
-
     return BAD_TYPE;
 }
 
-int Parcel::readParcelFileDescriptor() const
-{
-    int32_t hasComm = readInt32();
-    int fd = readFileDescriptor();
-    if (hasComm != 0) {
-        // skip
-        readFileDescriptor();
+// WARNING: This method must stay in sync with writeToParcel()
+// in frameworks/base/core/java/android/os/ParcelFileDescriptor.java
+int Parcel::readParcelFileDescriptor(int& outCommChannel) const {
+    int fd;
+    outCommChannel = -1;
+
+    if (readInt32() == 0) {
+        fd = -1;
+    } else {
+        fd = readFileDescriptor();
+        if (fd >= 0 && readInt32() != 0) {
+            outCommChannel = readFileDescriptor();
+        }
     }
     return fd;
 }
 
-status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
-{
-    int got = readFileDescriptor();
-
-    if (got == BAD_TYPE) {
-        return BAD_TYPE;
-    }
-
-    val->reset(dup(got));
-
-    if (val->get() < 0) {
-        return BAD_VALUE;
-    }
-
-    return OK;
-}
-
-
-status_t Parcel::readUniqueFileDescriptorVector(std::unique_ptr<std::vector<base::unique_fd>>* val) const {
-    return readNullableTypedVector(val, &Parcel::readUniqueFileDescriptor);
-}
-
-status_t Parcel::readUniqueFileDescriptorVector(std::vector<base::unique_fd>* val) const {
-    return readTypedVector(val, &Parcel::readUniqueFileDescriptor);
-}
-
 status_t Parcel::readBlob(size_t len, ReadableBlob* outBlob) const
 {
-    int32_t blobType;
-    status_t status = readInt32(&blobType);
+    int32_t useAshmem;
+    status_t status = readInt32(&useAshmem);
     if (status) return status;
 
-    if (blobType == BLOB_INPLACE) {
+    if (!useAshmem) {
         ALOGV("readBlob: read in place");
         const void* ptr = readInplace(len);
         if (!ptr) return BAD_VALUE;
 
-        outBlob->init(-1, const_cast<void*>(ptr), len, false);
+        outBlob->init(false /*mapped*/, const_cast<void*>(ptr), len);
         return NO_ERROR;
     }
 
     ALOGV("readBlob: read from ashmem");
-    bool isMutable = (blobType == BLOB_ASHMEM_MUTABLE);
     int fd = readFileDescriptor();
     if (fd == int(BAD_TYPE)) return BAD_VALUE;
 
-    void* ptr = ::mmap(NULL, len, isMutable ? PROT_READ | PROT_WRITE : PROT_READ,
-            MAP_SHARED, fd, 0);
+    void* ptr = ::mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) return NO_MEMORY;
 
-    outBlob->init(fd, ptr, len, isMutable);
+    outBlob->init(true /*mapped*/, ptr, len);
     return NO_ERROR;
 }
 
@@ -2072,37 +1305,35 @@ status_t Parcel::read(FlattenableHelperInterface& val) const
     const size_t len = this->readInt32();
     const size_t fd_count = this->readInt32();
 
-    if ((len > INT32_MAX) || (fd_count >= gMaxFds)) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     // payload
-    void const* const buf = this->readInplace(pad_size(len));
+    void const* const buf = this->readInplace(PAD_SIZE(len));
     if (buf == NULL)
         return BAD_VALUE;
 
     int* fds = NULL;
     if (fd_count) {
-        fds = new (std::nothrow) int[fd_count];
-        if (fds == nullptr) {
-            ALOGE("read: failed to allocate requested %zu fds", fd_count);
-            return BAD_VALUE;
-        }
+        fds = new int[fd_count];
     }
 
     status_t err = NO_ERROR;
     for (size_t i=0 ; i<fd_count && err==NO_ERROR ; i++) {
-        int fd = this->readFileDescriptor();
-        if (fd < 0 || ((fds[i] = dup(fd)) < 0)) {
+        int oldfd = this->readFileDescriptor();
+        fds[i] = dup(oldfd);
+        if (fds[i] < 0) {
+            int dupErrno = errno;
             err = BAD_VALUE;
-            ALOGE("dup() failed in Parcel::read, i is %zu, fds[i] is %d, fd_count is %zu, error: %s",
-                  i, fds[i], fd_count, strerror(fd < 0 ? -fd : errno));
-            // Close all the file descriptors that were dup-ed.
-            for (size_t j=0; j<i ;j++) {
-                close(fds[j]);
-            }
+            int flags = fcntl(oldfd, F_GETFD);
+            int fcntlErrno = errno;
+            const flat_binder_object* flat = readObject(true);
+            ALOGE("dup failed in Parcel::read, fd %zu of %zu\n"
+                "  dup(%d) = %d [errno: %d (%s)]\n"
+                "  fcntl(%d, F_GETFD) = %d [errno: %d (%s)]\n"
+                "  flat %p type %d",
+                i, fd_count,
+                oldfd, fds[i], dupErrno, strerror(dupErrno),
+                oldfd, flags, fcntlErrno, strerror(fcntlErrno),
+                flat, flat ? flat->type : 0);
+            CallStack(LOG_TAG);
         }
     }
 
@@ -2233,7 +1464,7 @@ void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
     for (size_t i = 0; i < mObjectsSize; i++) {
         binder_size_t offset = mObjects[i];
         if (offset < minOffset) {
-            ALOGE("%s: bad object offset %" PRIu64 " < %" PRIu64 "\n",
+            ALOGE("%s: bad object offset %"PRIu64" < %"PRIu64"\n",
                   __func__, (uint64_t)offset, (uint64_t)minOffset);
             mObjectsSize = 0;
             break;
@@ -2279,7 +1510,7 @@ void Parcel::releaseObjects()
         i--;
         const flat_binder_object* flat
             = reinterpret_cast<flat_binder_object*>(data+objects[i]);
-        release_object(proc, *flat, this, &mOpenAshmemSize);
+        release_object(proc, *flat, this);
     }
 }
 
@@ -2293,7 +1524,7 @@ void Parcel::acquireObjects()
         i--;
         const flat_binder_object* flat
             = reinterpret_cast<flat_binder_object*>(data+objects[i]);
-        acquire_object(proc, *flat, this, &mOpenAshmemSize);
+        acquire_object(proc, *flat, this);
     }
 }
 
@@ -2306,38 +1537,17 @@ void Parcel::freeData()
 void Parcel::freeDataNoInit()
 {
     if (mOwner) {
-        LOG_ALLOC("Parcel %p: freeing other owner data", this);
         //ALOGI("Freeing data ref of %p (pid=%d)", this, getpid());
         mOwner(this, mData, mDataSize, mObjects, mObjectsSize, mOwnerCookie);
     } else {
-        LOG_ALLOC("Parcel %p: freeing allocated data", this);
         releaseObjects();
-        if (mData) {
-            LOG_ALLOC("Parcel %p: freeing with %zu capacity", this, mDataCapacity);
-            pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
-            if (mDataCapacity <= gParcelGlobalAllocSize) {
-              gParcelGlobalAllocSize = gParcelGlobalAllocSize - mDataCapacity;
-            } else {
-              gParcelGlobalAllocSize = 0;
-            }
-            if (gParcelGlobalAllocCount > 0) {
-              gParcelGlobalAllocCount--;
-            }
-            pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
-            free(mData);
-        }
+        if (mData) free(mData);
         if (mObjects) free(mObjects);
     }
 }
 
 status_t Parcel::growData(size_t len)
 {
-    if (len > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     size_t newSize = ((mDataSize+len)*3)/2;
     return (newSize <= mDataSize)
             ? (status_t) NO_MEMORY
@@ -2346,12 +1556,6 @@ status_t Parcel::growData(size_t len)
 
 status_t Parcel::restartWrite(size_t desired)
 {
-    if (desired > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     if (mOwner) {
         freeData();
         return continueWrite(desired);
@@ -2366,14 +1570,6 @@ status_t Parcel::restartWrite(size_t desired)
     releaseObjects();
 
     if (data) {
-        LOG_ALLOC("Parcel %p: restart from %zu to %zu capacity", this, mDataCapacity, desired);
-        pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
-        gParcelGlobalAllocSize += desired;
-        gParcelGlobalAllocSize -= mDataCapacity;
-        if (!mData) {
-            gParcelGlobalAllocCount++;
-        }
-        pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
         mData = data;
         mDataCapacity = desired;
     }
@@ -2395,12 +1591,6 @@ status_t Parcel::restartWrite(size_t desired)
 
 status_t Parcel::continueWrite(size_t desired)
 {
-    if (desired > INT32_MAX) {
-        // don't accept size_t values which may have come from an
-        // inadvertent conversion from a negative int.
-        return BAD_VALUE;
-    }
-
     // If shrinking, first adjust for any objects that appear
     // after the new data size.
     size_t objectsSize = mObjectsSize;
@@ -2433,7 +1623,7 @@ status_t Parcel::continueWrite(size_t desired)
         binder_size_t* objects = NULL;
 
         if (objectsSize) {
-            objects = (binder_size_t*)calloc(objectsSize, sizeof(binder_size_t));
+            objects = (binder_size_t*)malloc(objectsSize*sizeof(binder_size_t));
             if (!objects) {
                 free(data);
 
@@ -2459,12 +1649,6 @@ status_t Parcel::continueWrite(size_t desired)
         mOwner(this, mData, mDataSize, mObjects, mObjectsSize, mOwnerCookie);
         mOwner = NULL;
 
-        LOG_ALLOC("Parcel %p: taking ownership of %zu capacity", this, desired);
-        pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
-        gParcelGlobalAllocSize += desired;
-        gParcelGlobalAllocCount++;
-        pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
-
         mData = data;
         mObjects = objects;
         mDataSize = (mDataSize < desired) ? mDataSize : desired;
@@ -2484,7 +1668,7 @@ status_t Parcel::continueWrite(size_t desired)
                     // will need to rescan because we may have lopped off the only FDs
                     mFdsKnown = false;
                 }
-                release_object(proc, *flat, this, &mOpenAshmemSize);
+                release_object(proc, *flat, this);
             }
             binder_size_t* objects =
                 (binder_size_t*)realloc(mObjects, objectsSize*sizeof(binder_size_t));
@@ -2499,12 +1683,6 @@ status_t Parcel::continueWrite(size_t desired)
         if (desired > mDataCapacity) {
             uint8_t* data = (uint8_t*)realloc(mData, desired);
             if (data) {
-                LOG_ALLOC("Parcel %p: continue from %zu to %zu capacity", this, mDataCapacity,
-                        desired);
-                pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
-                gParcelGlobalAllocSize += desired;
-                gParcelGlobalAllocSize -= mDataCapacity;
-                pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
                 mData = data;
                 mDataCapacity = desired;
             } else if (desired > mDataCapacity) {
@@ -2535,12 +1713,6 @@ status_t Parcel::continueWrite(size_t desired)
             ALOGE("continueWrite: %zu/%p/%zu/%zu", mDataCapacity, mObjects, mObjectsCapacity, desired);
         }
 
-        LOG_ALLOC("Parcel %p: allocating with %zu capacity", this, desired);
-        pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
-        gParcelGlobalAllocSize += desired;
-        gParcelGlobalAllocCount++;
-        pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
-
         mData = data;
         mDataSize = mDataPos = 0;
         ALOGV("continueWrite Setting data size of %p to %zu", this, mDataSize);
@@ -2553,7 +1725,6 @@ status_t Parcel::continueWrite(size_t desired)
 
 void Parcel::initState()
 {
-    LOG_ALLOC("Parcel %p: initState", this);
     mError = NO_ERROR;
     mData = 0;
     mDataSize = 0;
@@ -2569,19 +1740,6 @@ void Parcel::initState()
     mFdsKnown = true;
     mAllowFds = true;
     mOwner = NULL;
-    mOpenAshmemSize = 0;
-
-    // racing multiple init leads only to multiple identical write
-    if (gMaxFds == 0) {
-        struct rlimit result;
-        if (!getrlimit(RLIMIT_NOFILE, &result)) {
-            gMaxFds = (size_t)result.rlim_cur;
-            //ALOGI("parcel fd limit set to %zu", gMaxFds);
-        } else {
-            ALOGW("Unable to getrlimit: %s", strerror(errno));
-            gMaxFds = 1024;
-        }
-    }
 }
 
 void Parcel::scanForFds() const
@@ -2599,23 +1757,10 @@ void Parcel::scanForFds() const
     mFdsKnown = true;
 }
 
-size_t Parcel::getBlobAshmemSize() const
-{
-    // This used to return the size of all blobs that were written to ashmem, now we're returning
-    // the ashmem currently referenced by this Parcel, which should be equivalent.
-    // TODO: Remove method once ABI can be changed.
-    return mOpenAshmemSize;
-}
-
-size_t Parcel::getOpenAshmemSize() const
-{
-    return mOpenAshmemSize;
-}
-
 // --- Parcel::Blob ---
 
 Parcel::Blob::Blob() :
-        mFd(-1), mData(NULL), mSize(0), mMutable(false) {
+        mMapped(false), mData(NULL), mSize(0) {
 }
 
 Parcel::Blob::~Blob() {
@@ -2623,24 +1768,22 @@ Parcel::Blob::~Blob() {
 }
 
 void Parcel::Blob::release() {
-    if (mFd != -1 && mData) {
+    if (mMapped && mData) {
         ::munmap(mData, mSize);
     }
     clear();
 }
 
-void Parcel::Blob::init(int fd, void* data, size_t size, bool isMutable) {
-    mFd = fd;
+void Parcel::Blob::init(bool mapped, void* data, size_t size) {
+    mMapped = mapped;
     mData = data;
     mSize = size;
-    mMutable = isMutable;
 }
 
 void Parcel::Blob::clear() {
-    mFd = -1;
+    mMapped = false;
     mData = NULL;
     mSize = 0;
-    mMutable = false;
 }
 
 }; // namespace android

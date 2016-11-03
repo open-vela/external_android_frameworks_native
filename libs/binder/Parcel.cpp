@@ -1153,6 +1153,12 @@ status_t Parcel::writeDupFileDescriptor(int fd)
     return err;
 }
 
+status_t Parcel::writeParcelFileDescriptor(int fd, bool takeOwnership)
+{
+    writeInt32(0);
+    return writeFileDescriptor(fd, takeOwnership);
+}
+
 status_t Parcel::writeUniqueFileDescriptor(const base::unique_fd& fd) {
     return writeDupFileDescriptor(fd.get());
 }
@@ -1427,13 +1433,13 @@ status_t readByteVectorInternal(const Parcel* parcel,
         return status;
     }
 
-    const void* data = parcel->readInplace(size);
+    T* data = const_cast<T*>(reinterpret_cast<const T*>(parcel->readInplace(size)));
     if (!data) {
         status = BAD_VALUE;
         return status;
     }
-    val->resize(size);
-    memcpy(val->data(), data, size);
+    val->reserve(size);
+    val->insert(val->end(), data, data + size);
 
     return status;
 }
@@ -1984,7 +1990,6 @@ native_handle* Parcel::readNativeHandle() const
     return h;
 }
 
-
 int Parcel::readFileDescriptor() const
 {
     const flat_binder_object* flat = readObject(true);
@@ -1994,6 +1999,17 @@ int Parcel::readFileDescriptor() const
     }
 
     return BAD_TYPE;
+}
+
+int Parcel::readParcelFileDescriptor() const
+{
+    int32_t hasComm = readInt32();
+    int fd = readFileDescriptor();
+    if (hasComm != 0) {
+        // skip
+        readFileDescriptor();
+    }
+    return fd;
 }
 
 status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
@@ -2078,11 +2094,15 @@ status_t Parcel::read(FlattenableHelperInterface& val) const
 
     status_t err = NO_ERROR;
     for (size_t i=0 ; i<fd_count && err==NO_ERROR ; i++) {
-        fds[i] = dup(this->readFileDescriptor());
-        if (fds[i] < 0) {
+        int fd = this->readFileDescriptor();
+        if (fd < 0 || ((fds[i] = dup(fd)) < 0)) {
             err = BAD_VALUE;
             ALOGE("dup() failed in Parcel::read, i is %zu, fds[i] is %d, fd_count is %zu, error: %s",
-                i, fds[i], fd_count, strerror(errno));
+                  i, fds[i], fd_count, strerror(fd < 0 ? -fd : errno));
+            // Close all the file descriptors that were dup-ed.
+            for (size_t j=0; j<i ;j++) {
+                close(fds[j]);
+            }
         }
     }
 

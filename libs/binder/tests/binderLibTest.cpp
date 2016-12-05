@@ -34,6 +34,7 @@ using namespace android;
 
 static testing::Environment* binder_env;
 static char *binderservername;
+static char *binderserversuffix;
 static char binderserverarg[] = "--binderserver";
 
 static String16 binderLibTestServiceName = String16("test.binderLib");
@@ -70,6 +71,7 @@ pid_t start_server_process(int arg2)
         binderserverarg,
         stri,
         strpipefd1,
+        binderserversuffix,
         NULL
     };
 
@@ -252,14 +254,10 @@ class BinderLibTestEvent
             int ret;
             pthread_mutex_lock(&m_waitMutex);
             if (!m_eventTriggered) {
-#if defined(HAVE_PTHREAD_COND_TIMEDWAIT_RELATIVE)
-                pthread_cond_timeout_np(&m_waitCond, &m_waitMutex, timeout_s * 1000);
-#else
                 struct timespec ts;
                 clock_gettime(CLOCK_REALTIME, &ts);
                 ts.tv_sec += timeout_s;
                 pthread_cond_timedwait(&m_waitCond, &m_waitMutex, &ts);
-#endif
             }
             ret = m_eventTriggered ? NO_ERROR : TIMED_OUT;
             pthread_mutex_unlock(&m_waitMutex);
@@ -739,14 +737,10 @@ class BinderLibTestService : public BBinder
                 }
                 if (ret > 0) {
                     if (m_serverStartRequested) {
-#if defined(HAVE_PTHREAD_COND_TIMEDWAIT_RELATIVE)
-                        ret = pthread_cond_timeout_np(&m_serverWaitCond, &m_serverWaitMutex, 5000);
-#else
                         struct timespec ts;
                         clock_gettime(CLOCK_REALTIME, &ts);
                         ts.tv_sec += 5;
                         ret = pthread_cond_timedwait(&m_serverWaitCond, &m_serverWaitMutex, &ts);
-#endif
                     }
                     if (m_serverStartRequested) {
                         m_serverStartRequested = false;
@@ -906,6 +900,8 @@ class BinderLibTestService : public BBinder
 
 int run_server(int index, int readypipefd)
 {
+    binderLibTestServiceName += String16(binderserversuffix);
+
     status_t ret;
     sp<IServiceManager> sm = defaultServiceManager();
     {
@@ -936,15 +932,19 @@ int run_server(int index, int readypipefd)
 int main(int argc, char **argv) {
     int ret;
 
-    if (argc == 3 && !strcmp(argv[1], "--servername")) {
+    if (argc == 4 && !strcmp(argv[1], "--servername")) {
         binderservername = argv[2];
     } else {
         binderservername = argv[0];
     }
 
-    if (argc == 4 && !strcmp(argv[1], binderserverarg)) {
+    if (argc == 5 && !strcmp(argv[1], binderserverarg)) {
+        binderserversuffix = argv[4];
         return run_server(atoi(argv[2]), atoi(argv[3]));
     }
+    binderserversuffix = new char[16];
+    snprintf(binderserversuffix, 16, "%d", getpid());
+    binderLibTestServiceName += String16(binderserversuffix);
 
     ::testing::InitGoogleTest(&argc, argv);
     binder_env = AddGlobalTestEnvironment(new BinderLibTestEnv());

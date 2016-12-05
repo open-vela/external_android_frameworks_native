@@ -64,10 +64,6 @@
 
 namespace android {
 
-static const char* getReturnString(size_t idx);
-static const void* printReturnCommand(TextOutput& out, const void* _cmd);
-static const void* printCommand(TextOutput& out, const void* _cmd);
-
 // Static const and functions will be optimized out if not used,
 // when LOG_NDEBUG and references in IF_LOG_COMMANDS() are optimized out.
 static const char *kReturnStrings[] = {
@@ -111,8 +107,9 @@ static const char *kCommandStrings[] = {
     "BC_DEAD_BINDER_DONE"
 };
 
-static const char* getReturnString(size_t idx)
+static const char* getReturnString(uint32_t cmd)
 {
+    size_t idx = cmd & 0xff;
     if (idx < sizeof(kReturnStrings) / sizeof(kReturnStrings[0]))
         return kReturnStrings[idx];
     else
@@ -330,6 +327,7 @@ void IPCThreadState::shutdown()
             delete st;
             pthread_setspecific(gTLS, NULL);
         }
+        pthread_key_delete(gTLS);
         gHaveTLS = false;
     }
 }
@@ -525,8 +523,8 @@ void IPCThreadState::joinThreadPool(bool isMain)
         }
     } while (result != -ECONNREFUSED && result != -EBADF);
 
-    LOG_THREADPOOL("**** THREAD %p (PID %d) IS LEAVING THE THREAD POOL err=%p\n",
-        (void*)pthread_self(), getpid(), (void*)result);
+    LOG_THREADPOOL("**** THREAD %p (PID %d) IS LEAVING THE THREAD POOL err=%d\n",
+        (void*)pthread_self(), getpid(), result);
     
     mOut.writeInt32(BC_EXIT_LOOPER);
     talkWithDriver(false);
@@ -668,7 +666,7 @@ status_t IPCThreadState::attemptIncStrongHandle(int32_t handle)
     waitForResponse(NULL, &result);
     
 #if LOG_REFCOUNTS
-    printf("IPCThreadState::attemptIncStrongHandle(%ld) = %s\n",
+    ALOGV("IPCThreadState::attemptIncStrongHandle(%ld) = %s\n",
         handle, result == NO_ERROR ? "SUCCESS" : "FAILURE");
 #endif
     
@@ -683,7 +681,7 @@ status_t IPCThreadState::attemptIncStrongHandle(int32_t handle)
 void IPCThreadState::expungeHandle(int32_t handle, IBinder* binder)
 {
 #if LOG_REFCOUNTS
-    printf("IPCThreadState::expungeHandle(%ld)\n", handle);
+    ALOGV("IPCThreadState::expungeHandle(%ld)\n", handle);
 #endif
     self()->mProcess->expungeHandle(handle, binder);
 }
@@ -1170,7 +1168,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
         break;
         
     default:
-        printf("*** BAD COMMAND %d received from Binder driver\n", cmd);
+        ALOGE("*** BAD COMMAND %d received from Binder driver\n", cmd);
         result = UNKNOWN_ERROR;
         break;
     }

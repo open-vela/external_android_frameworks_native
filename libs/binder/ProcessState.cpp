@@ -16,6 +16,8 @@
 
 #define LOG_TAG "ProcessState"
 
+#include <cutils/process_name.h>
+
 #include <binder/ProcessState.h>
 
 #include <utils/Atomic.h>
@@ -50,7 +52,7 @@ namespace android {
 class PoolThread : public Thread
 {
 public:
-    explicit PoolThread(bool isMain)
+    PoolThread(bool isMain)
         : mIsMain(isMain)
     {
     }
@@ -364,13 +366,6 @@ ProcessState::ProcessState()
 
 ProcessState::~ProcessState()
 {
-    if (mDriverFD >= 0) {
-        if (mVMStart != MAP_FAILED) {
-            munmap(mVMStart, BINDER_VM_SIZE);
-        }
-        close(mDriverFD);
-    }
-    mDriverFD = -1;
 }
         
 }; // namespace android

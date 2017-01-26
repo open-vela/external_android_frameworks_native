@@ -539,7 +539,7 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
                 // If this is a file descriptor, we need to dup it so the
                 // new Parcel now owns its own fd, and can declare that we
                 // officially know we have fds.
-                flat->handle = fcntl(flat->handle, F_DUPFD_CLOEXEC, 0);
+                flat->handle = dup(flat->handle);
                 flat->cookie = 1;
                 mHasFds = mFdsKnown = true;
                 if (!mAllowFds) {
@@ -1142,7 +1142,7 @@ status_t Parcel::writeFileDescriptor(int fd, bool takeOwnership)
 
 status_t Parcel::writeDupFileDescriptor(int fd)
 {
-    int dupFd = fcntl(fd, F_DUPFD_CLOEXEC, 0);
+    int dupFd = dup(fd);
     if (dupFd < 0) {
         return -errno;
     }
@@ -1151,12 +1151,6 @@ status_t Parcel::writeDupFileDescriptor(int fd)
         close(dupFd);
     }
     return err;
-}
-
-status_t Parcel::writeParcelFileDescriptor(int fd, bool takeOwnership)
-{
-    writeInt32(0);
-    return writeFileDescriptor(fd, takeOwnership);
 }
 
 status_t Parcel::writeUniqueFileDescriptor(const base::unique_fd& fd) {
@@ -1433,13 +1427,13 @@ status_t readByteVectorInternal(const Parcel* parcel,
         return status;
     }
 
-    T* data = const_cast<T*>(reinterpret_cast<const T*>(parcel->readInplace(size)));
+    const void* data = parcel->readInplace(size);
     if (!data) {
         status = BAD_VALUE;
         return status;
     }
-    val->reserve(size);
-    val->insert(val->end(), data, data + size);
+    val->resize(size);
+    memcpy(val->data(), data, size);
 
     return status;
 }
@@ -1972,7 +1966,7 @@ native_handle* Parcel::readNativeHandle() const
     }
 
     for (int i=0 ; err==NO_ERROR && i<numFds ; i++) {
-        h->data[i] = fcntl(readFileDescriptor(), F_DUPFD_CLOEXEC, 0);
+        h->data[i] = dup(readFileDescriptor());
         if (h->data[i] < 0) {
             for (int j = 0; j < i; j++) {
                 close(h->data[j]);
@@ -1990,6 +1984,7 @@ native_handle* Parcel::readNativeHandle() const
     return h;
 }
 
+
 int Parcel::readFileDescriptor() const
 {
     const flat_binder_object* flat = readObject(true);
@@ -2001,17 +1996,6 @@ int Parcel::readFileDescriptor() const
     return BAD_TYPE;
 }
 
-int Parcel::readParcelFileDescriptor() const
-{
-    int32_t hasComm = readInt32();
-    int fd = readFileDescriptor();
-    if (hasComm != 0) {
-        // skip
-        readFileDescriptor();
-    }
-    return fd;
-}
-
 status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
 {
     int got = readFileDescriptor();
@@ -2020,7 +2004,7 @@ status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
         return BAD_TYPE;
     }
 
-    val->reset(fcntl(got, F_DUPFD_CLOEXEC, 0));
+    val->reset(dup(got));
 
     if (val->get() < 0) {
         return BAD_VALUE;
@@ -2094,15 +2078,11 @@ status_t Parcel::read(FlattenableHelperInterface& val) const
 
     status_t err = NO_ERROR;
     for (size_t i=0 ; i<fd_count && err==NO_ERROR ; i++) {
-        int fd = this->readFileDescriptor();
-        if (fd < 0 || ((fds[i] = fcntl(fd, F_DUPFD_CLOEXEC, 0)) < 0)) {
+        fds[i] = dup(this->readFileDescriptor());
+        if (fds[i] < 0) {
             err = BAD_VALUE;
-            ALOGE("fcntl(F_DUPFD_CLOEXEC) failed in Parcel::read, i is %zu, fds[i] is %d, fd_count is %zu, error: %s",
-                  i, fds[i], fd_count, strerror(fd < 0 ? -fd : errno));
-            // Close all the file descriptors that were dup-ed.
-            for (size_t j=0; j<i ;j++) {
-                close(fds[j]);
-            }
+            ALOGE("dup() failed in Parcel::read, i is %zu, fds[i] is %d, fd_count is %zu, error: %s",
+                i, fds[i], fd_count, strerror(errno));
         }
     }
 

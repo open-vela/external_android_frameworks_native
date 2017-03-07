@@ -16,6 +16,8 @@
 
 #define LOG_TAG "ProcessState"
 
+#include <cutils/process_name.h>
+
 #include <binder/ProcessState.h>
 
 #include <utils/Atomic.h>
@@ -40,7 +42,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define BINDER_VM_SIZE ((1 * 1024 * 1024) - sysconf(_SC_PAGE_SIZE) * 2)
+#define BINDER_VM_SIZE ((1*1024*1024) - (4096 *2))
 #define DEFAULT_MAX_BINDER_THREADS 15
 
 // -------------------------------------------------------------------------
@@ -50,7 +52,7 @@ namespace android {
 class PoolThread : public Thread
 {
 public:
-    explicit PoolThread(bool isMain)
+    PoolThread(bool isMain)
         : mIsMain(isMain)
     {
     }
@@ -71,17 +73,7 @@ sp<ProcessState> ProcessState::self()
     if (gProcess != NULL) {
         return gProcess;
     }
-    gProcess = new ProcessState("/dev/binder");
-    return gProcess;
-}
-
-sp<ProcessState> ProcessState::initWithDriver(const char* driver)
-{
-    Mutex::Autolock _l(gProcessMutex);
-    if (gProcess != NULL) {
-        LOG_ALWAYS_FATAL("ProcessState was already initialized.");
-    }
-    gProcess = new ProcessState(driver);
+    gProcess = new ProcessState;
     return gProcess;
 }
 
@@ -317,9 +309,9 @@ void ProcessState::giveThreadPoolName() {
     androidSetThreadName( makeBinderThreadName().string() );
 }
 
-static int open_driver(const char *driver)
+static int open_driver()
 {
-    int fd = open(driver, O_RDWR | O_CLOEXEC);
+    int fd = open("/dev/binder", O_RDWR | O_CLOEXEC);
     if (fd >= 0) {
         int vers = 0;
         status_t result = ioctl(fd, BINDER_VERSION, &vers);
@@ -329,8 +321,7 @@ static int open_driver(const char *driver)
             fd = -1;
         }
         if (result != 0 || vers != BINDER_CURRENT_PROTOCOL_VERSION) {
-          ALOGE("Binder driver protocol(%d) does not match user space protocol(%d)! ioctl() return value: %d",
-                vers, BINDER_CURRENT_PROTOCOL_VERSION, result);
+            ALOGE("Binder driver protocol does not match user space protocol!");
             close(fd);
             fd = -1;
         }
@@ -340,13 +331,13 @@ static int open_driver(const char *driver)
             ALOGE("Binder ioctl to set max threads failed: %s", strerror(errno));
         }
     } else {
-        ALOGW("Opening '%s' failed: %s\n", driver, strerror(errno));
+        ALOGW("Opening '/dev/binder' failed: %s\n", strerror(errno));
     }
     return fd;
 }
 
-ProcessState::ProcessState(const char *driver)
-    : mDriverFD(open_driver(driver))
+ProcessState::ProcessState()
+    : mDriverFD(open_driver())
     , mVMStart(MAP_FAILED)
     , mThreadCountLock(PTHREAD_MUTEX_INITIALIZER)
     , mThreadCountDecrement(PTHREAD_COND_INITIALIZER)
@@ -375,13 +366,6 @@ ProcessState::ProcessState(const char *driver)
 
 ProcessState::~ProcessState()
 {
-    if (mDriverFD >= 0) {
-        if (mVMStart != MAP_FAILED) {
-            munmap(mVMStart, BINDER_VM_SIZE);
-        }
-        close(mDriverFD);
-    }
-    mDriverFD = -1;
 }
         
 }; // namespace android

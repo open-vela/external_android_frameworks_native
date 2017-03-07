@@ -22,7 +22,7 @@
 #define ALOGE(x...) fprintf(stderr, "svcmgr: " x)
 #else
 #define LOG_TAG "ServiceManager"
-#include <log/log.h>
+#include <cutils/log.h>
 #endif
 
 struct audit_data {
@@ -60,6 +60,7 @@ int str16eq(const uint16_t *a, const char *b)
     return 1;
 }
 
+static int selinux_enabled;
 static char *service_manager_context;
 static struct selabel_handle* sehandle;
 
@@ -88,6 +89,10 @@ static bool check_mac_perms(pid_t spid, uid_t uid, const char *tctx, const char 
 
 static bool check_mac_perms_from_getcon(pid_t spid, uid_t uid, const char *perm)
 {
+    if (selinux_enabled <= 0) {
+        return true;
+    }
+
     return check_mac_perms(spid, uid, service_manager_context, perm, NULL);
 }
 
@@ -95,6 +100,10 @@ static bool check_mac_perms_from_lookup(pid_t spid, uid_t uid, const char *perm,
 {
     bool allowed;
     char *tctx = NULL;
+
+    if (selinux_enabled <= 0) {
+        return true;
+    }
 
     if (!sehandle) {
         ALOGE("SELinux: Failed to find sehandle. Aborting service_manager.\n");
@@ -360,21 +369,13 @@ static int audit_callback(void *data, __unused security_class_t cls, char *buf, 
     return 0;
 }
 
-int main(int argc, char** argv)
+int main()
 {
     struct binder_state *bs;
-    union selinux_callback cb;
-    char *driver;
 
-    if (argc > 1) {
-        driver = argv[1];
-    } else {
-        driver = "/dev/binder";
-    }
-
-    bs = binder_open(driver, 128*1024);
+    bs = binder_open(128*1024);
     if (!bs) {
-        ALOGE("failed to open binder driver %s\n", driver);
+        ALOGE("failed to open binder driver\n");
         return -1;
     }
 
@@ -383,24 +384,27 @@ int main(int argc, char** argv)
         return -1;
     }
 
+    selinux_enabled = is_selinux_enabled();
+    sehandle = selinux_android_service_context_handle();
+    selinux_status_open(true);
+
+    if (selinux_enabled > 0) {
+        if (sehandle == NULL) {
+            ALOGE("SELinux: Failed to acquire sehandle. Aborting.\n");
+            abort();
+        }
+
+        if (getcon(&service_manager_context) != 0) {
+            ALOGE("SELinux: Failed to acquire service_manager context. Aborting.\n");
+            abort();
+        }
+    }
+
+    union selinux_callback cb;
     cb.func_audit = audit_callback;
     selinux_set_callback(SELINUX_CB_AUDIT, cb);
     cb.func_log = selinux_log_callback;
     selinux_set_callback(SELINUX_CB_LOG, cb);
-
-    sehandle = selinux_android_service_context_handle();
-    selinux_status_open(true);
-
-    if (sehandle == NULL) {
-        ALOGE("SELinux: Failed to acquire sehandle. Aborting.\n");
-        abort();
-    }
-
-    if (getcon(&service_manager_context) != 0) {
-        ALOGE("SELinux: Failed to acquire service_manager context. Aborting.\n");
-        abort();
-    }
-
 
     binder_loop(bs, svcmgr_handler);
 

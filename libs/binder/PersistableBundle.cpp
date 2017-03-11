@@ -17,7 +17,6 @@
 #define LOG_TAG "PersistableBundle"
 
 #include <binder/PersistableBundle.h>
-#include <private/binder/ParcelValTypes.h>
 
 #include <limits>
 
@@ -36,11 +35,25 @@ using android::UNEXPECTED_NULL;
 using std::map;
 using std::set;
 using std::vector;
-using namespace ::android::binder;
 
 enum {
     // Keep in sync with BUNDLE_MAGIC in frameworks/base/core/java/android/os/BaseBundle.java.
     BUNDLE_MAGIC = 0x4C444E42,
+};
+
+enum {
+    // Keep in sync with frameworks/base/core/java/android/os/Parcel.java.
+    VAL_STRING = 0,
+    VAL_INTEGER = 1,
+    VAL_LONG = 6,
+    VAL_DOUBLE = 8,
+    VAL_BOOLEAN = 9,
+    VAL_STRINGARRAY = 14,
+    VAL_INTARRAY = 18,
+    VAL_LONGARRAY = 19,
+    VAL_BOOLEANARRAY = 23,
+    VAL_PERSISTABLEBUNDLE = 25,
+    VAL_DOUBLEARRAY = 28,
 };
 
 namespace {

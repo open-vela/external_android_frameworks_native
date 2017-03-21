@@ -71,17 +71,7 @@ sp<ProcessState> ProcessState::self()
     if (gProcess != NULL) {
         return gProcess;
     }
-    gProcess = new ProcessState("/dev/binder");
-    return gProcess;
-}
-
-sp<ProcessState> ProcessState::initWithDriver(const char* driver)
-{
-    Mutex::Autolock _l(gProcessMutex);
-    if (gProcess != NULL) {
-        LOG_ALWAYS_FATAL("ProcessState was already initialized.");
-    }
-    gProcess = new ProcessState(driver);
+    gProcess = new ProcessState;
     return gProcess;
 }
 
@@ -317,9 +307,9 @@ void ProcessState::giveThreadPoolName() {
     androidSetThreadName( makeBinderThreadName().string() );
 }
 
-static int open_driver(const char *driver)
+static int open_driver()
 {
-    int fd = open(driver, O_RDWR | O_CLOEXEC);
+    int fd = open("/dev/binder", O_RDWR | O_CLOEXEC);
     if (fd >= 0) {
         int vers = 0;
         status_t result = ioctl(fd, BINDER_VERSION, &vers);
@@ -329,7 +319,8 @@ static int open_driver(const char *driver)
             fd = -1;
         }
         if (result != 0 || vers != BINDER_CURRENT_PROTOCOL_VERSION) {
-            ALOGE("Binder driver protocol does not match user space protocol!");
+          ALOGE("Binder driver protocol(%d) does not match user space protocol(%d)! ioctl() return value: %d",
+                vers, BINDER_CURRENT_PROTOCOL_VERSION, result);
             close(fd);
             fd = -1;
         }
@@ -339,13 +330,13 @@ static int open_driver(const char *driver)
             ALOGE("Binder ioctl to set max threads failed: %s", strerror(errno));
         }
     } else {
-        ALOGW("Opening '%s' failed: %s\n", driver, strerror(errno));
+        ALOGW("Opening '/dev/binder' failed: %s\n", strerror(errno));
     }
     return fd;
 }
 
-ProcessState::ProcessState(const char *driver)
-    : mDriverFD(open_driver(driver))
+ProcessState::ProcessState()
+    : mDriverFD(open_driver())
     , mVMStart(MAP_FAILED)
     , mThreadCountLock(PTHREAD_MUTEX_INITIALIZER)
     , mThreadCountDecrement(PTHREAD_COND_INITIALIZER)

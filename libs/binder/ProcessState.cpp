@@ -16,8 +16,6 @@
 
 #define LOG_TAG "ProcessState"
 
-#include <cutils/process_name.h>
-
 #include <binder/ProcessState.h>
 
 #include <utils/Atomic.h>
@@ -42,7 +40,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define BINDER_VM_SIZE ((1*1024*1024) - (4096 *2))
+#define BINDER_VM_SIZE ((1 * 1024 * 1024) - sysconf(_SC_PAGE_SIZE) * 2)
 #define DEFAULT_MAX_BINDER_THREADS 15
 
 // -------------------------------------------------------------------------
@@ -52,7 +50,7 @@ namespace android {
 class PoolThread : public Thread
 {
 public:
-    PoolThread(bool isMain)
+    explicit PoolThread(bool isMain)
         : mIsMain(isMain)
     {
     }
@@ -366,6 +364,13 @@ ProcessState::ProcessState()
 
 ProcessState::~ProcessState()
 {
+    if (mDriverFD >= 0) {
+        if (mVMStart != MAP_FAILED) {
+            munmap(mVMStart, BINDER_VM_SIZE);
+        }
+        close(mDriverFD);
+    }
+    mDriverFD = -1;
 }
         
 }; // namespace android

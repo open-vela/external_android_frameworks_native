@@ -67,11 +67,6 @@ bool checkCallingPermission(const String16& permission, int32_t* outPid, int32_t
 
 bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
 {
-#ifdef __BRILLO__
-    // Brillo doesn't currently run ActivityManager or support framework permissions.
-    return true;
-#endif
-
     sp<IPermissionController> pc;
     gDefaultServiceManagerLock.lock();
     pc = gPermissionController;
@@ -131,7 +126,7 @@ bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
 class BpServiceManager : public BpInterface<IServiceManager>
 {
 public:
-    BpServiceManager(const sp<IBinder>& impl)
+    explicit BpServiceManager(const sp<IBinder>& impl)
         : BpInterface<IServiceManager>(impl)
     {
     }

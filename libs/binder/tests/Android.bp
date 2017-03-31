@@ -26,6 +26,15 @@ cc_test {
 }
 
 cc_test {
+    name: "binderValueTypeTest",
+    srcs: ["binderValueTypeTest.cpp"],
+    shared_libs: [
+        "libbinder",
+        "libutils",
+    ],
+}
+
+cc_test {
     name: "binderLibTest",
     srcs: ["binderLibTest.cpp"],
     shared_libs: [
@@ -59,5 +68,39 @@ cc_test {
         "libbinder",
         "libutils",
         "libbase",
+    ],
+}
+
+cc_test {
+    name: "schd-dbg",
+    srcs: ["schd-dbg.cpp"],
+    shared_libs: [
+        "libbinder",
+        "libutils",
+        "libbase",
+    ],
+}
+
+cc_test {
+    name: "binderSafeInterfaceTest",
+    srcs: ["binderSafeInterfaceTest.cpp"],
+
+    cppflags: [
+        "-Werror",
+        "-Weverything",
+        "-Wno-c++98-compat",
+        "-Wno-c++98-compat-pedantic",
+        "-Wno-global-constructors",
+        "-Wno-padded",
+        "-Wno-weak-vtables",
+    ],
+
+    cpp_std: "experimental",
+    gnu_extensions: false,
+
+    shared_libs: [
+        "libbinder",
+        "liblog",
+        "libutils",
     ],
 }

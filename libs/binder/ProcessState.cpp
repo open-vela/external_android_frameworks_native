@@ -317,10 +317,6 @@ void ProcessState::giveThreadPoolName() {
     androidSetThreadName( makeBinderThreadName().string() );
 }
 
-String8 ProcessState::getDriverName() {
-    return mDriverName;
-}
-
 static int open_driver(const char *driver)
 {
     int fd = open(driver, O_RDWR | O_CLOEXEC);
@@ -350,8 +346,7 @@ static int open_driver(const char *driver)
 }
 
 ProcessState::ProcessState(const char *driver)
-    : mDriverName(String8(driver))
-    , mDriverFD(open_driver(driver))
+    : mDriverFD(open_driver(driver))
     , mVMStart(MAP_FAILED)
     , mThreadCountLock(PTHREAD_MUTEX_INITIALIZER)
     , mThreadCountDecrement(PTHREAD_COND_INITIALIZER)
@@ -372,7 +367,6 @@ ProcessState::ProcessState(const char *driver)
             ALOGE("Using /dev/binder failed: unable to mmap transaction memory.\n");
             close(mDriverFD);
             mDriverFD = -1;
-            mDriverName.clear();
         }
     }
 

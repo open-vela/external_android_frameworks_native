@@ -44,19 +44,6 @@ public:
     status_t write(Parcel* parcel, bool b) const {
         return callParcel("writeBool", [&]() { return parcel->writeBool(b); });
     }
-    template <typename E>
-    typename std::enable_if<std::is_enum<E>::value, status_t>::type read(const Parcel& parcel,
-                                                                         E* e) const {
-        typename std::underlying_type<E>::type u{};
-        status_t result = read(parcel, &u);
-        *e = static_cast<E>(u);
-        return result;
-    }
-    template <typename E>
-    typename std::enable_if<std::is_enum<E>::value, status_t>::type write(Parcel* parcel,
-                                                                          E e) const {
-        return write(parcel, static_cast<typename std::underlying_type<E>::type>(e));
-    }
     template <typename T>
     typename std::enable_if<std::is_base_of<Flattenable<T>, T>::value, status_t>::type read(
             const Parcel& parcel, T* t) const {
@@ -66,17 +53,6 @@ public:
     typename std::enable_if<std::is_base_of<Flattenable<T>, T>::value, status_t>::type write(
             Parcel* parcel, const T& t) const {
         return callParcel("write(Flattenable)", [&]() { return parcel->write(t); });
-    }
-    template <typename T>
-    typename std::enable_if<std::is_base_of<Flattenable<T>, T>::value, status_t>::type read(
-            const Parcel& parcel, sp<T>* t) const {
-        *t = new T{};
-        return callParcel("read(sp<Flattenable>)", [&]() { return parcel.read(*(t->get())); });
-    }
-    template <typename T>
-    typename std::enable_if<std::is_base_of<Flattenable<T>, T>::value, status_t>::type write(
-            Parcel* parcel, const sp<T>& t) const {
-        return callParcel("write(sp<Flattenable>)", [&]() { return parcel->write(*(t.get())); });
     }
     template <typename T>
     typename std::enable_if<std::is_base_of<LightFlattenable<T>, T>::value, status_t>::type read(
@@ -105,8 +81,7 @@ public:
         return callParcel("writeString8", [&]() { return parcel->writeString8(str); });
     }
     template <typename T>
-    typename std::enable_if<std::is_same<IBinder, T>::value, status_t>::type read(
-            const Parcel& parcel, sp<T>* pointer) const {
+    status_t read(const Parcel& parcel, sp<T>* pointer) const {
         return callParcel("readNullableStrongBinder",
                           [&]() { return parcel.readNullableStrongBinder(pointer); });
     }
@@ -115,12 +90,6 @@ public:
             Parcel* parcel, const sp<T>& pointer) const {
         return callParcel("writeStrongBinder",
                           [&]() { return parcel->writeStrongBinder(pointer); });
-    }
-    template <typename T>
-    typename std::enable_if<std::is_base_of<IInterface, T>::value, status_t>::type read(
-            const Parcel& parcel, sp<T>* pointer) const {
-        return callParcel("readNullableStrongBinder[IInterface]",
-                          [&]() { return parcel.readNullableStrongBinder(pointer); });
     }
     template <typename T>
     typename std::enable_if<std::is_base_of<IInterface, T>::value, status_t>::type write(
@@ -149,24 +118,6 @@ public:
         }
         static status_t write(const ParcelHandler& handler, Parcel* parcel, I i) {
             return handler.callParcel("writeUint32", [&]() { return parcel->writeUint32(i); });
-        }
-    };
-    template <typename I>
-    struct HandleInt<true, 8, I> {
-        static status_t read(const ParcelHandler& handler, const Parcel& parcel, I* i) {
-            return handler.callParcel("readInt64", [&]() { return parcel.readInt64(i); });
-        }
-        static status_t write(const ParcelHandler& handler, Parcel* parcel, I i) {
-            return handler.callParcel("writeInt64", [&]() { return parcel->writeInt64(i); });
-        }
-    };
-    template <typename I>
-    struct HandleInt<false, 8, I> {
-        static status_t read(const ParcelHandler& handler, const Parcel& parcel, I* i) {
-            return handler.callParcel("readUint64", [&]() { return parcel.readUint64(i); });
-        }
-        static status_t write(const ParcelHandler& handler, Parcel* parcel, I i) {
-            return handler.callParcel("writeUint64", [&]() { return parcel->writeUint64(i); });
         }
     };
     template <typename I>

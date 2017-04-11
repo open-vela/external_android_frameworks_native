@@ -28,20 +28,12 @@
 #include <gtest/gtest.h>
 #pragma clang diagnostic pop
 
-#include <utils/LightRefBase.h>
-
 #include <optional>
 
 using namespace std::chrono_literals; // NOLINT - google-build-using-namespace
 
 namespace android {
 namespace tests {
-
-enum class TestEnum : uint32_t {
-    INVALID = 0,
-    INITIAL = 1,
-    FINAL = 2,
-};
 
 // This class serves two purposes:
 //   1) It ensures that the implementation doesn't require copying or moving the data (for
@@ -95,30 +87,6 @@ struct TestFlattenable : Flattenable<TestFlattenable> {
 struct TestLightFlattenable : LightFlattenablePod<TestLightFlattenable> {
     TestLightFlattenable() = default;
     explicit TestLightFlattenable(int32_t v) : value(v) {}
-    int32_t value = 0;
-};
-
-// It seems like this should be able to inherit from TestFlattenable (to avoid duplicating code),
-// but the SafeInterface logic can't easily be extended to find an indirect Flattenable<T>
-// base class
-class TestLightRefBaseFlattenable : public Flattenable<TestLightRefBaseFlattenable>,
-                                    public LightRefBase<TestLightRefBaseFlattenable> {
-public:
-    TestLightRefBaseFlattenable() = default;
-    explicit TestLightRefBaseFlattenable(int32_t v) : value(v) {}
-
-    // Flattenable protocol
-    size_t getFlattenedSize() const { return sizeof(value); }
-    size_t getFdCount() const { return 0; }
-    status_t flatten(void*& buffer, size_t& size, int*& /*fds*/, size_t& /*count*/) const {
-        FlattenableUtils::write(buffer, size, value);
-        return NO_ERROR;
-    }
-    status_t unflatten(void const*& buffer, size_t& size, int const*& /*fds*/, size_t& /*count*/) {
-        FlattenableUtils::read(buffer, size, value);
-        return NO_ERROR;
-    }
-
     int32_t value = 0;
 };
 
@@ -193,17 +161,13 @@ public:
         SetDeathToken = IBinder::FIRST_CALL_TRANSACTION,
         ReturnsNoMemory,
         LogicalNot,
-        ModifyEnum,
         IncrementFlattenable,
         IncrementLightFlattenable,
-        IncrementLightRefBaseFlattenable,
         IncrementNoCopyNoMove,
         ToUpper,
         CallMeBack,
         IncrementInt32,
         IncrementUint32,
-        IncrementInt64,
-        IncrementUint64,
         IncrementTwo,
         Last,
     };
@@ -217,20 +181,15 @@ public:
 
     // These are ordered according to their corresponding methods in SafeInterface::ParcelHandler
     virtual status_t logicalNot(bool a, bool* notA) const = 0;
-    virtual status_t modifyEnum(TestEnum a, TestEnum* b) const = 0;
     virtual status_t increment(const TestFlattenable& a, TestFlattenable* aPlusOne) const = 0;
     virtual status_t increment(const TestLightFlattenable& a,
                                TestLightFlattenable* aPlusOne) const = 0;
-    virtual status_t increment(const sp<TestLightRefBaseFlattenable>& a,
-                               sp<TestLightRefBaseFlattenable>* aPlusOne) const = 0;
     virtual status_t increment(const NoCopyNoMove& a, NoCopyNoMove* aPlusOne) const = 0;
     virtual status_t toUpper(const String8& str, String8* upperStr) const = 0;
     // As mentioned above, sp<IBinder> is already tested by setDeathToken
     virtual void callMeBack(const sp<ICallback>& callback, int32_t a) const = 0;
     virtual status_t increment(int32_t a, int32_t* aPlusOne) const = 0;
     virtual status_t increment(uint32_t a, uint32_t* aPlusOne) const = 0;
-    virtual status_t increment(int64_t a, int64_t* aPlusOne) const = 0;
-    virtual status_t increment(uint64_t a, uint64_t* aPlusOne) const = 0;
 
     // This tests that input/output parameter interleaving works correctly
     virtual status_t increment(int32_t a, int32_t* aPlusOne, int32_t b,
@@ -254,10 +213,6 @@ public:
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         return callRemote<decltype(&ISafeInterfaceTest::logicalNot)>(Tag::LogicalNot, a, notA);
     }
-    status_t modifyEnum(TestEnum a, TestEnum* b) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        return callRemote<decltype(&ISafeInterfaceTest::modifyEnum)>(Tag::ModifyEnum, a, b);
-    }
     status_t increment(const TestFlattenable& a, TestFlattenable* aPlusOne) const override {
         using Signature =
                 status_t (ISafeInterfaceTest::*)(const TestFlattenable&, TestFlattenable*) const;
@@ -270,12 +225,6 @@ public:
                                                            TestLightFlattenable*) const;
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         return callRemote<Signature>(Tag::IncrementLightFlattenable, a, aPlusOne);
-    }
-    status_t increment(const sp<TestLightRefBaseFlattenable>& a,
-                       sp<TestLightRefBaseFlattenable>* aPlusOne) const override {
-        using Signature = status_t (ISafeInterfaceTest::*)(const sp<TestLightRefBaseFlattenable>&,
-                                                           sp<TestLightRefBaseFlattenable>*) const;
-        return callRemote<Signature>(Tag::IncrementLightRefBaseFlattenable, a, aPlusOne);
     }
     status_t increment(const NoCopyNoMove& a, NoCopyNoMove* aPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
@@ -301,16 +250,6 @@ public:
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         using Signature = status_t (ISafeInterfaceTest::*)(uint32_t, uint32_t*) const;
         return callRemote<Signature>(Tag::IncrementUint32, a, aPlusOne);
-    }
-    status_t increment(int64_t a, int64_t* aPlusOne) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        using Signature = status_t (ISafeInterfaceTest::*)(int64_t, int64_t*) const;
-        return callRemote<Signature>(Tag::IncrementInt64, a, aPlusOne);
-    }
-    status_t increment(uint64_t a, uint64_t* aPlusOne) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        using Signature = status_t (ISafeInterfaceTest::*)(uint64_t, uint64_t*) const;
-        return callRemote<Signature>(Tag::IncrementUint64, a, aPlusOne);
     }
     status_t increment(int32_t a, int32_t* aPlusOne, int32_t b, int32_t* bPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
@@ -351,11 +290,6 @@ public:
         *notA = !a;
         return NO_ERROR;
     }
-    status_t modifyEnum(TestEnum a, TestEnum* b) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        *b = (a == TestEnum::INITIAL) ? TestEnum::FINAL : TestEnum::INVALID;
-        return NO_ERROR;
-    }
     status_t increment(const TestFlattenable& a, TestFlattenable* aPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         aPlusOne->value = a.value + 1;
@@ -365,12 +299,6 @@ public:
                        TestLightFlattenable* aPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         aPlusOne->value = a.value + 1;
-        return NO_ERROR;
-    }
-    status_t increment(const sp<TestLightRefBaseFlattenable>& a,
-                       sp<TestLightRefBaseFlattenable>* aPlusOne) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        *aPlusOne = new TestLightRefBaseFlattenable(a->value + 1);
         return NO_ERROR;
     }
     status_t increment(const NoCopyNoMove& a, NoCopyNoMove* aPlusOne) const override {
@@ -398,16 +326,6 @@ public:
         *aPlusOne = a + 1;
         return NO_ERROR;
     }
-    status_t increment(int64_t a, int64_t* aPlusOne) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        *aPlusOne = a + 1;
-        return NO_ERROR;
-    }
-    status_t increment(uint64_t a, uint64_t* aPlusOne) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        *aPlusOne = a + 1;
-        return NO_ERROR;
-    }
     status_t increment(int32_t a, int32_t* aPlusOne, int32_t b, int32_t* bPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         *aPlusOne = a + 1;
@@ -431,9 +349,6 @@ public:
             case ISafeInterfaceTest::Tag::LogicalNot: {
                 return callLocal(data, reply, &ISafeInterfaceTest::logicalNot);
             }
-            case ISafeInterfaceTest::Tag::ModifyEnum: {
-                return callLocal(data, reply, &ISafeInterfaceTest::modifyEnum);
-            }
             case ISafeInterfaceTest::Tag::IncrementFlattenable: {
                 using Signature = status_t (ISafeInterfaceTest::*)(const TestFlattenable& a,
                                                                    TestFlattenable* aPlusOne) const;
@@ -443,12 +358,6 @@ public:
                 using Signature =
                         status_t (ISafeInterfaceTest::*)(const TestLightFlattenable& a,
                                                          TestLightFlattenable* aPlusOne) const;
-                return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
-            }
-            case ISafeInterfaceTest::Tag::IncrementLightRefBaseFlattenable: {
-                using Signature =
-                        status_t (ISafeInterfaceTest::*)(const sp<TestLightRefBaseFlattenable>&,
-                                                         sp<TestLightRefBaseFlattenable>*) const;
                 return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
             }
             case ISafeInterfaceTest::Tag::IncrementNoCopyNoMove: {
@@ -468,14 +377,6 @@ public:
             }
             case ISafeInterfaceTest::Tag::IncrementUint32: {
                 using Signature = status_t (ISafeInterfaceTest::*)(uint32_t, uint32_t*) const;
-                return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
-            }
-            case ISafeInterfaceTest::Tag::IncrementInt64: {
-                using Signature = status_t (ISafeInterfaceTest::*)(int64_t, int64_t*) const;
-                return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
-            }
-            case ISafeInterfaceTest::Tag::IncrementUint64: {
-                using Signature = status_t (ISafeInterfaceTest::*)(uint64_t, uint64_t*) const;
                 return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
             }
             case ISafeInterfaceTest::Tag::IncrementTwo: {
@@ -564,14 +465,6 @@ TEST_F(SafeInterfaceTest, TestLogicalNot) {
     ASSERT_EQ(!b, notB);
 }
 
-TEST_F(SafeInterfaceTest, TestModifyEnum) {
-    const TestEnum a = TestEnum::INITIAL;
-    TestEnum b = TestEnum::INVALID;
-    status_t result = mSafeInterfaceTest->modifyEnum(a, &b);
-    ASSERT_EQ(NO_ERROR, result);
-    ASSERT_EQ(TestEnum::FINAL, b);
-}
-
 TEST_F(SafeInterfaceTest, TestIncrementFlattenable) {
     const TestFlattenable a{1};
     TestFlattenable aPlusOne{0};
@@ -586,15 +479,6 @@ TEST_F(SafeInterfaceTest, TestIncrementLightFlattenable) {
     status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
     ASSERT_EQ(NO_ERROR, result);
     ASSERT_EQ(a.value + 1, aPlusOne.value);
-}
-
-TEST_F(SafeInterfaceTest, TestIncrementLightRefBaseFlattenable) {
-    sp<TestLightRefBaseFlattenable> a = new TestLightRefBaseFlattenable{1};
-    sp<TestLightRefBaseFlattenable> aPlusOne;
-    status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
-    ASSERT_EQ(NO_ERROR, result);
-    ASSERT_NE(nullptr, aPlusOne.get());
-    ASSERT_EQ(a->value + 1, aPlusOne->value);
 }
 
 TEST_F(SafeInterfaceTest, TestIncrementNoCopyNoMove) {
@@ -655,22 +539,6 @@ TEST_F(SafeInterfaceTest, TestIncrementInt32) {
 TEST_F(SafeInterfaceTest, TestIncrementUint32) {
     const uint32_t a = 1;
     uint32_t aPlusOne = 0;
-    status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
-    ASSERT_EQ(NO_ERROR, result);
-    ASSERT_EQ(a + 1, aPlusOne);
-}
-
-TEST_F(SafeInterfaceTest, TestIncrementInt64) {
-    const int64_t a = 1;
-    int64_t aPlusOne = 0;
-    status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
-    ASSERT_EQ(NO_ERROR, result);
-    ASSERT_EQ(a + 1, aPlusOne);
-}
-
-TEST_F(SafeInterfaceTest, TestIncrementUint64) {
-    const uint64_t a = 1;
-    uint64_t aPlusOne = 0;
     status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
     ASSERT_EQ(NO_ERROR, result);
     ASSERT_EQ(a + 1, aPlusOne);

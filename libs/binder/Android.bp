@@ -12,16 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library_headers {
-    name: "libbinder_headers",
-    export_include_dirs: ["include"],
-}
-
 cc_library {
     name: "libbinder",
-
-    // for vndbinder
-    vendor_available: true,
 
     srcs: [
         "AppOpsManager.cpp",

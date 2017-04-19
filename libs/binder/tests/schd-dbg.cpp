@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fstream>
 
 using namespace std;
 using namespace android;
@@ -39,7 +40,9 @@ vector<sp<IBinder> > workers;
 // GOOD_SYNC_MIN is considered as good
 #define GOOD_SYNC_MIN (0.6)
 
-#define DUMP_PRICISION 3
+#define DUMP_PRESICION 2
+
+string trace_path = "/sys/kernel/debug/tracing";
 
 // the default value
 int no_process = 2;
@@ -48,6 +51,23 @@ int payload_size = 16;
 int no_inherent = 0;
 int no_sync = 0;
 int verbose = 0;
+int trace;
+
+bool traceIsOn() {
+  fstream file;
+  file.open(trace_path + "/tracing_on", ios::in);
+  char on;
+  file >> on;
+  file.close();
+  return on == '1';
+}
+
+void traceStop() {
+  ofstream file;
+  file.open(trace_path + "/tracing_on", ios::out | ios::trunc);
+  file << '0' << endl;
+  file.close();
+}
 
 // the deadline latency that we are interested in
 uint64_t deadline_us = 2500;
@@ -197,23 +217,41 @@ struct Results {
   uint64_t m_transactions = 0;
   uint64_t m_total_time = 0;
   uint64_t m_miss = 0;
-
+  bool tracing;
+  Results(bool _tracing) : tracing(_tracing) {
+  }
+  inline bool miss_deadline(uint64_t nano) {
+    return nano > deadline_us * 1000;
+  }
   void add_time(uint64_t nano) {
     m_best = min(nano, m_best);
     m_worst = max(nano, m_worst);
     m_transactions += 1;
     m_total_time += nano;
-    if (nano > deadline_us * 1000) m_miss++;
+    if (miss_deadline(nano)) m_miss++;
+    if (miss_deadline(nano) && tracing) {
+      // There might be multiple process pair running the test concurrently
+      // each may execute following statements and only the first one actually
+      // stop the trace and any traceStop() afterthen has no effect.
+      traceStop();
+      cout << endl;
+      cout << "deadline triggered: halt & stop trace" << endl;
+      cout << "log:" + trace_path + "/trace" << endl;
+      cout << endl;
+      exit(1);
+    }
   }
   void dump() {
     double best = (double)m_best / 1.0E6;
     double worst = (double)m_worst / 1.0E6;
     double average = (double)m_total_time / m_transactions / 1.0E6;
     // FIXME: libjson?
-    cout << std::setprecision(DUMP_PRICISION) << "{ \"avg\":" << setw(5) << left
-         << average << ", \"wst\":" << setw(5) << left << worst
-         << ", \"bst\":" << setw(5) << left << best << ", \"miss\":" << m_miss
-         << "}";
+    int W = DUMP_PRESICION + 2;
+    cout << setprecision(DUMP_PRESICION) << "{ \"avg\":" << setw(W) << left
+         << average << ",\"wst\":" << setw(W) << left << worst
+         << ",\"bst\":" << setw(W) << left << best << ",\"miss\":" << left
+         << m_miss << ",\"meetR\":" << left << setprecision(DUMP_PRESICION + 3)
+         << (1.0 - (double)m_miss / m_transactions) << "}";
   }
 };
 
@@ -235,8 +273,15 @@ static void parcel_fill(Parcel& data, int sz, int priority, int cpu) {
   }
 }
 
+typedef struct {
+  void* result;
+  int target;
+} thread_priv_t;
+
 static void* thread_start(void* p) {
-  Results* results_fifo = (Results*)p;
+  thread_priv_t* priv = (thread_priv_t*)p;
+  int target = priv->target;
+  Results* results_fifo = (Results*)priv->result;
   Parcel data, reply;
   Tick sta, end;
 
@@ -244,7 +289,7 @@ static void* thread_start(void* p) {
   thread_dump("fifo-caller");
 
   sta = tickNow();
-  status_t ret = workers[0]->transact(BINDER_NOP, data, &reply);
+  status_t ret = workers[target]->transact(BINDER_NOP, data, &reply);
   end = tickNow();
   results_fifo->add_time(tickNano(sta, end));
 
@@ -254,16 +299,19 @@ static void* thread_start(void* p) {
 }
 
 // create a fifo thread to transact and wait it to finished
-static void thread_transaction(Results* results_fifo) {
+static void thread_transaction(int target, Results* results_fifo) {
+  thread_priv_t thread_priv;
   void* dummy;
   pthread_t thread;
   pthread_attr_t attr;
   struct sched_param param;
+  thread_priv.target = target;
+  thread_priv.result = results_fifo;
   ASSERT(!pthread_attr_init(&attr));
   ASSERT(!pthread_attr_setschedpolicy(&attr, SCHED_FIFO));
   param.sched_priority = sched_get_priority_max(SCHED_FIFO);
   ASSERT(!pthread_attr_setschedparam(&attr, &param));
-  ASSERT(!pthread_create(&thread, &attr, &thread_start, results_fifo));
+  ASSERT(!pthread_create(&thread, &attr, &thread_start, &thread_priv));
   ASSERT(!pthread_join(thread, &dummy));
 }
 
@@ -272,14 +320,16 @@ static void thread_transaction(Results* results_fifo) {
 void worker_fx(int num, int no_process, int iterations, int payload_size,
                Pipe p) {
   int dummy;
-  Results results_other, results_fifo;
+  Results results_other(false), results_fifo(trace);
 
   // Create BinderWorkerService and for go.
   ProcessState::self()->startThreadPool();
   sp<IServiceManager> serviceMgr = defaultServiceManager();
   sp<BinderWorkerService> service = new BinderWorkerService;
   serviceMgr->addService(generateServiceName(num), service);
+  // init done
   p.signal();
+  // wait for kick-off
   p.wait();
 
   // If client/server pairs, then half the workers are
@@ -301,7 +351,7 @@ void worker_fx(int num, int no_process, int iterations, int payload_size,
     int target = num % server_count;
 
     // 1. transaction by fifo thread
-    thread_transaction(&results_fifo);
+    thread_transaction(target, &results_fifo);
     parcel_fill(data, payload_size, thread_pri(), sched_getcpu());
     thread_dump("other-caller");
 
@@ -319,6 +369,7 @@ void worker_fx(int num, int no_process, int iterations, int payload_size,
   p.wait();
 
   p.send(&dummy);
+  // wait for kill
   p.wait();
   // Client for each pair dump here
   if (is_client(num)) {
@@ -330,10 +381,10 @@ void worker_fx(int num, int no_process, int iterations, int payload_size,
          << "\"S\":" << (no_trans - no_sync) << ",\"I\":" << no_trans << ","
          << "\"R\":" << sync_ratio << "," << endl;
 
-    cout << "      \"other_ms\":";
+    cout << "  \"other_ms\":";
     results_other.dump();
     cout << "," << endl;
-    cout << "      \"fifo_ms\": ";
+    cout << "  \"fifo_ms\": ";
     results_fifo.dump();
     cout << endl;
     cout << "}," << endl;
@@ -389,8 +440,28 @@ int main(int argc, char** argv) {
     }
     if (string(argv[i]) == "-v") {
       verbose = 1;
-      i++;
     }
+    // The -trace argument is used like that:
+    //
+    // First start trace with atrace command as usual
+    // >atrace --async_start sched freq
+    //
+    // then use schd-dbg with -trace arguments
+    //./schd-dbg -trace -deadline_us 2500
+    //
+    // This makes schd-dbg to stop trace once it detects a transaction
+    // duration over the deadline. By writing '0' to
+    // /sys/kernel/debug/tracing and halt the process. The tracelog is
+    // then available on /sys/kernel/debug/trace
+    if (string(argv[i]) == "-trace") {
+      trace = 1;
+    }
+  }
+  if (trace && !traceIsOn()) {
+    cout << "trace is not running" << endl;
+    cout << "check " << trace_path + "/tracing_on" << endl;
+    cout << "use atrace --async_start first" << endl;
+    exit(-1);
   }
   vector<Pipe> pipes;
   thread_dump("main");
@@ -406,12 +477,17 @@ int main(int argc, char** argv) {
   for (int i = 0; i < no_process; i++) {
     pipes.push_back(make_process(i, iterations, no_process, payload_size));
   }
+  // wait for init done
   wait_all(pipes);
+  // kick-off iterations
   signal_all(pipes);
+  // wait for completion
   wait_all(pipes);
+  // start to send result
   signal_all(pipes);
   for (int i = 0; i < no_process; i++) {
     int status;
+    // kill
     pipes[i].signal();
     wait(&status);
     // the exit status is number of transactions without priority inheritance

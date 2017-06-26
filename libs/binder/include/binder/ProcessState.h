@@ -35,6 +35,11 @@ class ProcessState : public virtual RefBase
 {
 public:
     static  sp<ProcessState>    self();
+    /* initWithDriver() can be used to configure libbinder to use
+     * a different binder driver dev node. It must be called *before*
+     * any call to ProcessState::self(). /dev/binder remains the default.
+     */
+    static  sp<ProcessState>    initWithDriver(const char *driver);
 
             void                setContextObject(const sp<IBinder>& object);
             sp<IBinder>         getContextObject(const sp<IBinder>& caller);
@@ -64,10 +69,12 @@ public:
             status_t            setThreadPoolMaxThreadCount(size_t maxThreads);
             void                giveThreadPoolName();
 
+            String8             getDriverName();
+
 private:
     friend class IPCThreadState;
     
-                                ProcessState();
+                                ProcessState(const char* driver);
                                 ~ProcessState();
 
                                 ProcessState(const ProcessState& o);
@@ -81,6 +88,7 @@ private:
 
             handle_entry*       lookupHandleLocked(int32_t handle);
 
+            String8             mDriverName;
             int                 mDriverFD;
             void*               mVMStart;
 

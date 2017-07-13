@@ -94,10 +94,6 @@ cc_library {
         "libbinder_headers",
     ],
 
-    export_include_dirs: [
-        "include",
-    ],
-
     clang: true,
     sanitize: {
         misc_undefined: ["integer"],

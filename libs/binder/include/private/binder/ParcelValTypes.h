@@ -14,28 +14,32 @@
  * limitations under the License.
  */
 
-// All static variables go here, to control initialization and
-// destruction order in the library.
-
-#include <utils/threads.h>
-
-#include <binder/IBinder.h>
-#include <binder/ProcessState.h>
-#include <binder/IPermissionController.h>
-#include <binder/IServiceManager.h>
-
 namespace android {
+namespace binder {
 
-// For TextStream.cpp
-extern Vector<int32_t> gTextBuffers;
+// Keep in sync with frameworks/base/core/java/android/os/Parcel.java.
+enum {
+    VAL_NULL = -1,
+    VAL_STRING = 0,
+    VAL_INTEGER = 1,
+    VAL_MAP = 2,
+    VAL_BUNDLE = 3,
+    VAL_PARCELABLE = 4,
+    VAL_SHORT = 5,
+    VAL_LONG = 6,
+    VAL_DOUBLE = 8,
+    VAL_BOOLEAN = 9,
+    VAL_BYTEARRAY = 13,
+    VAL_STRINGARRAY = 14,
+    VAL_IBINDER = 15,
+    VAL_INTARRAY = 18,
+    VAL_LONGARRAY = 19,
+    VAL_BYTE = 20,
+    VAL_SERIALIZABLE = 21,
+    VAL_BOOLEANARRAY = 23,
+    VAL_PERSISTABLEBUNDLE = 25,
+    VAL_DOUBLEARRAY = 28,
+};
 
-// For ProcessState.cpp
-extern Mutex gProcessMutex;
-extern sp<ProcessState> gProcess;
-
-// For IServiceManager.cpp
-extern Mutex gDefaultServiceManagerLock;
-extern sp<IServiceManager> gDefaultServiceManager;
-extern sp<IPermissionController> gPermissionController;
-
-}   // namespace android
+} // namespace binder
+} // namespace android

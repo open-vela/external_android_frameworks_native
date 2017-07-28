@@ -514,7 +514,7 @@ void bio_put_obj(struct binder_io *bio, void *ptr)
         return;
 
     obj->flags = 0x7f | FLAT_BINDER_FLAG_ACCEPTS_FDS;
-    obj->hdr.type = BINDER_TYPE_BINDER;
+    obj->type = BINDER_TYPE_BINDER;
     obj->binder = (uintptr_t)ptr;
     obj->cookie = 0;
 }
@@ -532,7 +532,7 @@ void bio_put_ref(struct binder_io *bio, uint32_t handle)
         return;
 
     obj->flags = 0x7f | FLAT_BINDER_FLAG_ACCEPTS_FDS;
-    obj->hdr.type = BINDER_TYPE_HANDLE;
+    obj->type = BINDER_TYPE_HANDLE;
     obj->handle = handle;
     obj->cookie = 0;
 }
@@ -649,7 +649,7 @@ uint32_t bio_get_ref(struct binder_io *bio)
     if (!obj)
         return 0;
 
-    if (obj->hdr.type == BINDER_TYPE_HANDLE)
+    if (obj->type == BINDER_TYPE_HANDLE)
         return obj->handle;
 
     return 0;

@@ -33,9 +33,6 @@ cc_library {
 
     // for vndbinder
     vendor_available: true,
-    vndk: {
-        enabled: true,
-    },
 
     srcs: [
         "AppOpsManager.cpp",
@@ -43,7 +40,6 @@ cc_library {
         "BpBinder.cpp",
         "BufferedTextOutput.cpp",
         "Debug.cpp",
-        "IActivityManager.cpp",
         "IAppOpsCallback.cpp",
         "IAppOpsService.cpp",
         "IBatteryStats.cpp",
@@ -55,7 +51,6 @@ cc_library {
         "IProcessInfoService.cpp",
         "IResultReceiver.cpp",
         "IServiceManager.cpp",
-        "IShellCallback.cpp",
         "MemoryBase.cpp",
         "MemoryDealer.cpp",
         "MemoryHeapBase.cpp",
@@ -67,8 +62,6 @@ cc_library {
         "Static.cpp",
         "Status.cpp",
         "TextOutput.cpp",
-        "IpPrefix.cpp",
-        "Value.cpp",
     ],
 
     cflags: [

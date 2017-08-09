@@ -43,6 +43,7 @@ cc_library {
         "BpBinder.cpp",
         "BufferedTextOutput.cpp",
         "Debug.cpp",
+        "IActivityManager.cpp",
         "IAppOpsCallback.cpp",
         "IAppOpsService.cpp",
         "IBatteryStats.cpp",
@@ -54,6 +55,7 @@ cc_library {
         "IProcessInfoService.cpp",
         "IResultReceiver.cpp",
         "IServiceManager.cpp",
+        "IShellCallback.cpp",
         "MemoryBase.cpp",
         "MemoryDealer.cpp",
         "MemoryHeapBase.cpp",
@@ -65,6 +67,8 @@ cc_library {
         "Static.cpp",
         "Status.cpp",
         "TextOutput.cpp",
+        "IpPrefix.cpp",
+        "Value.cpp",
     ],
 
     cflags: [
@@ -91,6 +95,10 @@ cc_library {
 
     export_header_lib_headers: [
         "libbinder_headers",
+    ],
+
+    export_include_dirs: [
+        "include",
     ],
 
     clang: true,

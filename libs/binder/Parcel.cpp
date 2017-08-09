@@ -37,7 +37,6 @@
 #include <binder/ProcessState.h>
 #include <binder/Status.h>
 #include <binder/TextOutput.h>
-#include <binder/Value.h>
 
 #include <cutils/ashmem.h>
 #include <utils/Debug.h>
@@ -104,7 +103,7 @@ enum {
 void acquire_object(const sp<ProcessState>& proc,
     const flat_binder_object& obj, const void* who, size_t* outAshmemSize)
 {
-    switch (obj.type) {
+    switch (obj.hdr.type) {
         case BINDER_TYPE_BINDER:
             if (obj.binder) {
                 LOG_REFS("Parcel %p acquiring reference on local %p", who, obj.cookie);
@@ -140,7 +139,7 @@ void acquire_object(const sp<ProcessState>& proc,
         }
     }
 
-    ALOGD("Invalid object type 0x%08x", obj.type);
+    ALOGD("Invalid object type 0x%08x", obj.hdr.type);
 }
 
 void acquire_object(const sp<ProcessState>& proc,
@@ -152,7 +151,7 @@ void acquire_object(const sp<ProcessState>& proc,
 static void release_object(const sp<ProcessState>& proc,
     const flat_binder_object& obj, const void* who, size_t* outAshmemSize)
 {
-    switch (obj.type) {
+    switch (obj.hdr.type) {
         case BINDER_TYPE_BINDER:
             if (obj.binder) {
                 LOG_REFS("Parcel %p releasing reference on local %p", who, obj.cookie);
@@ -191,7 +190,7 @@ static void release_object(const sp<ProcessState>& proc,
         }
     }
 
-    ALOGE("Invalid object type 0x%08x", obj.type);
+    ALOGE("Invalid object type 0x%08x", obj.hdr.type);
 }
 
 void release_object(const sp<ProcessState>& proc,
@@ -211,14 +210,7 @@ status_t flatten_binder(const sp<ProcessState>& /*proc*/,
 {
     flat_binder_object obj;
 
-    if (IPCThreadState::self()->backgroundSchedulingDisabled()) {
-        /* minimum priority for all nodes is nice 0 */
-        obj.flags = FLAT_BINDER_FLAG_ACCEPTS_FDS;
-    } else {
-        /* minimum priority for all nodes is MAX_NICE(19) */
-        obj.flags = 0x13 | FLAT_BINDER_FLAG_ACCEPTS_FDS;
-    }
-
+    obj.flags = 0x7f | FLAT_BINDER_FLAG_ACCEPTS_FDS;
     if (binder != NULL) {
         IBinder *local = binder->localBinder();
         if (!local) {
@@ -227,17 +219,17 @@ status_t flatten_binder(const sp<ProcessState>& /*proc*/,
                 ALOGE("null proxy");
             }
             const int32_t handle = proxy ? proxy->handle() : 0;
-            obj.type = BINDER_TYPE_HANDLE;
+            obj.hdr.type = BINDER_TYPE_HANDLE;
             obj.binder = 0; /* Don't pass uninitialized stack data to a remote process */
             obj.handle = handle;
             obj.cookie = 0;
         } else {
-            obj.type = BINDER_TYPE_BINDER;
+            obj.hdr.type = BINDER_TYPE_BINDER;
             obj.binder = reinterpret_cast<uintptr_t>(local->getWeakRefs());
             obj.cookie = reinterpret_cast<uintptr_t>(local);
         }
     } else {
-        obj.type = BINDER_TYPE_BINDER;
+        obj.hdr.type = BINDER_TYPE_BINDER;
         obj.binder = 0;
         obj.cookie = 0;
     }
@@ -261,12 +253,12 @@ status_t flatten_binder(const sp<ProcessState>& /*proc*/,
                     ALOGE("null proxy");
                 }
                 const int32_t handle = proxy ? proxy->handle() : 0;
-                obj.type = BINDER_TYPE_WEAK_HANDLE;
+                obj.hdr.type = BINDER_TYPE_WEAK_HANDLE;
                 obj.binder = 0; /* Don't pass uninitialized stack data to a remote process */
                 obj.handle = handle;
                 obj.cookie = 0;
             } else {
-                obj.type = BINDER_TYPE_WEAK_BINDER;
+                obj.hdr.type = BINDER_TYPE_WEAK_BINDER;
                 obj.binder = reinterpret_cast<uintptr_t>(binder.get_refs());
                 obj.cookie = reinterpret_cast<uintptr_t>(binder.unsafe_get());
             }
@@ -281,13 +273,13 @@ status_t flatten_binder(const sp<ProcessState>& /*proc*/,
         // but we can't do that with the different reference counting
         // implementation we are using.
         ALOGE("Unable to unflatten Binder weak reference!");
-        obj.type = BINDER_TYPE_BINDER;
+        obj.hdr.type = BINDER_TYPE_BINDER;
         obj.binder = 0;
         obj.cookie = 0;
         return finish_flatten_binder(NULL, obj, out);
 
     } else {
-        obj.type = BINDER_TYPE_BINDER;
+        obj.hdr.type = BINDER_TYPE_BINDER;
         obj.binder = 0;
         obj.cookie = 0;
         return finish_flatten_binder(NULL, obj, out);
@@ -307,7 +299,7 @@ status_t unflatten_binder(const sp<ProcessState>& proc,
     const flat_binder_object* flat = in.readObject(false);
 
     if (flat) {
-        switch (flat->type) {
+        switch (flat->hdr.type) {
             case BINDER_TYPE_BINDER:
                 *out = reinterpret_cast<IBinder*>(flat->cookie);
                 return finish_unflatten_binder(NULL, *flat, in);
@@ -326,7 +318,7 @@ status_t unflatten_binder(const sp<ProcessState>& proc,
     const flat_binder_object* flat = in.readObject(false);
 
     if (flat) {
-        switch (flat->type) {
+        switch (flat->hdr.type) {
             case BINDER_TYPE_BINDER:
                 *out = reinterpret_cast<IBinder*>(flat->cookie);
                 return finish_unflatten_binder(NULL, *flat, in);
@@ -543,11 +535,11 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
                 = reinterpret_cast<flat_binder_object*>(mData + off);
             acquire_object(proc, *flat, this, &mOpenAshmemSize);
 
-            if (flat->type == BINDER_TYPE_FD) {
+            if (flat->hdr.type == BINDER_TYPE_FD) {
                 // If this is a file descriptor, we need to dup it so the
                 // new Parcel now owns its own fd, and can declare that we
                 // officially know we have fds.
-                flat->handle = fcntl(flat->handle, F_DUPFD_CLOEXEC, 0);
+                flat->handle = dup(flat->handle);
                 flat->cookie = 1;
                 mHasFds = mFdsKnown = true;
                 if (!mAllowFds) {
@@ -558,14 +550,6 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
     }
 
     return err;
-}
-
-int Parcel::compareData(const Parcel& other) {
-    size_t size = dataSize();
-    if (size != other.dataSize()) {
-        return size < other.dataSize() ? -1 : 1;
-    }
-    return memcmp(data(), other.data(), size);
 }
 
 bool Parcel::allowFds() const
@@ -1122,10 +1106,6 @@ status_t Parcel::writeParcelable(const Parcelable& parcelable) {
     return parcelable.writeToParcel(this);
 }
 
-status_t Parcel::writeValue(const binder::Value& value) {
-    return value.writeToParcel(this);
-}
-
 status_t Parcel::writeNativeHandle(const native_handle* handle)
 {
     if (!handle || handle->version != sizeof(native_handle))
@@ -1152,7 +1132,7 @@ status_t Parcel::writeNativeHandle(const native_handle* handle)
 status_t Parcel::writeFileDescriptor(int fd, bool takeOwnership)
 {
     flat_binder_object obj;
-    obj.type = BINDER_TYPE_FD;
+    obj.hdr.type = BINDER_TYPE_FD;
     obj.flags = 0x7f | FLAT_BINDER_FLAG_ACCEPTS_FDS;
     obj.binder = 0; /* Don't pass uninitialized stack data to a remote process */
     obj.handle = fd;
@@ -1162,7 +1142,7 @@ status_t Parcel::writeFileDescriptor(int fd, bool takeOwnership)
 
 status_t Parcel::writeDupFileDescriptor(int fd)
 {
-    int dupFd = fcntl(fd, F_DUPFD_CLOEXEC, 0);
+    int dupFd = dup(fd);
     if (dupFd < 0) {
         return -errno;
     }
@@ -1171,12 +1151,6 @@ status_t Parcel::writeDupFileDescriptor(int fd)
         close(dupFd);
     }
     return err;
-}
-
-status_t Parcel::writeParcelFileDescriptor(int fd, bool takeOwnership)
-{
-    writeInt32(0);
-    return writeFileDescriptor(fd, takeOwnership);
 }
 
 status_t Parcel::writeUniqueFileDescriptor(const base::unique_fd& fd) {
@@ -1310,7 +1284,7 @@ restart_write:
         *reinterpret_cast<flat_binder_object*>(mData+mDataPos) = val;
 
         // remember if it's a file descriptor
-        if (val.type == BINDER_TYPE_FD) {
+        if (val.hdr.type == BINDER_TYPE_FD) {
             if (!mAllowFds) {
                 // fail before modifying our object index
                 return FDS_NOT_ALLOWED;
@@ -1349,120 +1323,6 @@ status_t Parcel::writeNoException()
     binder::Status status;
     return status.writeToParcel(this);
 }
-
-status_t Parcel::writeMap(const ::android::binder::Map& map_in)
-{
-    using ::std::map;
-    using ::android::binder::Value;
-    using ::android::binder::Map;
-
-    Map::const_iterator iter;
-    status_t ret;
-
-    ret = writeInt32(map_in.size());
-
-    if (ret != NO_ERROR) {
-        return ret;
-    }
-
-    for (iter = map_in.begin(); iter != map_in.end(); ++iter) {
-        ret = writeValue(Value(iter->first));
-        if (ret != NO_ERROR) {
-            return ret;
-        }
-
-        ret = writeValue(iter->second);
-        if (ret != NO_ERROR) {
-            return ret;
-        }
-    }
-
-    return ret;
-}
-
-status_t Parcel::writeNullableMap(const std::unique_ptr<binder::Map>& map)
-{
-    if (map == NULL) {
-        return writeInt32(-1);
-    }
-
-    return writeMap(*map.get());
-}
-
-status_t Parcel::readMap(::android::binder::Map* map_out)const
-{
-    using ::std::map;
-    using ::android::String16;
-    using ::android::String8;
-    using ::android::binder::Value;
-    using ::android::binder::Map;
-
-    status_t ret = NO_ERROR;
-    int32_t count;
-
-    ret = readInt32(&count);
-    if (ret != NO_ERROR) {
-        return ret;
-    }
-
-    if (count < 0) {
-        ALOGE("readMap: Unexpected count: %d", count);
-        return (count == -1)
-            ? UNEXPECTED_NULL
-            : BAD_VALUE;
-    }
-
-    map_out->clear();
-
-    while (count--) {
-        Map::key_type key;
-        Value value;
-
-        ret = readValue(&value);
-        if (ret != NO_ERROR) {
-            return ret;
-        }
-
-        if (!value.getString(&key)) {
-            ALOGE("readMap: Key type not a string (parcelType = %d)", value.parcelType());
-            return BAD_VALUE;
-        }
-
-        ret = readValue(&value);
-        if (ret != NO_ERROR) {
-            return ret;
-        }
-
-        (*map_out)[key] = value;
-    }
-
-    return ret;
-}
-
-status_t Parcel::readNullableMap(std::unique_ptr<binder::Map>* map) const
-{
-    const size_t start = dataPosition();
-    int32_t count;
-    status_t status = readInt32(&count);
-    map->reset();
-
-    if (status != OK || count == -1) {
-        return status;
-    }
-
-    setDataPosition(start);
-    map->reset(new binder::Map());
-
-    status = readMap(map->get());
-
-    if (status != OK) {
-        map->reset();
-    }
-
-    return status;
-}
-
-
 
 void Parcel::remove(size_t /*start*/, size_t /*amt*/)
 {
@@ -1567,13 +1427,13 @@ status_t readByteVectorInternal(const Parcel* parcel,
         return status;
     }
 
-    T* data = const_cast<T*>(reinterpret_cast<const T*>(parcel->readInplace(size)));
+    const void* data = parcel->readInplace(size);
     if (!data) {
         status = BAD_VALUE;
         return status;
     }
-    val->reserve(size);
-    val->insert(val->end(), data, data + size);
+    val->resize(size);
+    memcpy(val->data(), data, size);
 
     return status;
 }
@@ -2084,10 +1944,6 @@ status_t Parcel::readParcelable(Parcelable* parcelable) const {
     return parcelable->readFromParcel(this);
 }
 
-status_t Parcel::readValue(binder::Value* value) const {
-    return value->readFromParcel(this);
-}
-
 int32_t Parcel::readExceptionCode() const
 {
     binder::Status status;
@@ -2110,7 +1966,7 @@ native_handle* Parcel::readNativeHandle() const
     }
 
     for (int i=0 ; err==NO_ERROR && i<numFds ; i++) {
-        h->data[i] = fcntl(readFileDescriptor(), F_DUPFD_CLOEXEC, 0);
+        h->data[i] = dup(readFileDescriptor());
         if (h->data[i] < 0) {
             for (int j = 0; j < i; j++) {
                 close(h->data[j]);
@@ -2128,26 +1984,16 @@ native_handle* Parcel::readNativeHandle() const
     return h;
 }
 
+
 int Parcel::readFileDescriptor() const
 {
     const flat_binder_object* flat = readObject(true);
 
-    if (flat && flat->type == BINDER_TYPE_FD) {
+    if (flat && flat->hdr.type == BINDER_TYPE_FD) {
         return flat->handle;
     }
 
     return BAD_TYPE;
-}
-
-int Parcel::readParcelFileDescriptor() const
-{
-    int32_t hasComm = readInt32();
-    int fd = readFileDescriptor();
-    if (hasComm != 0) {
-        // skip
-        readFileDescriptor();
-    }
-    return fd;
 }
 
 status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
@@ -2158,7 +2004,7 @@ status_t Parcel::readUniqueFileDescriptor(base::unique_fd* val) const
         return BAD_TYPE;
     }
 
-    val->reset(fcntl(got, F_DUPFD_CLOEXEC, 0));
+    val->reset(dup(got));
 
     if (val->get() < 0) {
         return BAD_VALUE;
@@ -2232,15 +2078,11 @@ status_t Parcel::read(FlattenableHelperInterface& val) const
 
     status_t err = NO_ERROR;
     for (size_t i=0 ; i<fd_count && err==NO_ERROR ; i++) {
-        int fd = this->readFileDescriptor();
-        if (fd < 0 || ((fds[i] = fcntl(fd, F_DUPFD_CLOEXEC, 0)) < 0)) {
+        fds[i] = dup(this->readFileDescriptor());
+        if (fds[i] < 0) {
             err = BAD_VALUE;
-            ALOGE("fcntl(F_DUPFD_CLOEXEC) failed in Parcel::read, i is %zu, fds[i] is %d, fd_count is %zu, error: %s",
-                  i, fds[i], fd_count, strerror(fd < 0 ? -fd : errno));
-            // Close all the file descriptors that were dup-ed.
-            for (size_t j=0; j<i ;j++) {
-                close(fds[j]);
-            }
+            ALOGE("dup() failed in Parcel::read, i is %zu, fds[i] is %d, fd_count is %zu, error: %s",
+                i, fds[i], fd_count, strerror(errno));
         }
     }
 
@@ -2325,7 +2167,7 @@ void Parcel::closeFileDescriptors()
         i--;
         const flat_binder_object* flat
             = reinterpret_cast<flat_binder_object*>(mData+mObjects[i]);
-        if (flat->type == BINDER_TYPE_FD) {
+        if (flat->hdr.type == BINDER_TYPE_FD) {
             //ALOGI("Closing fd: %ld", flat->handle);
             close(flat->handle);
         }
@@ -2397,7 +2239,7 @@ void Parcel::print(TextOutput& to, uint32_t /*flags*/) const
             const flat_binder_object* flat
                 = reinterpret_cast<const flat_binder_object*>(DATA+OBJS[i]);
             to << endl << "Object #" << i << " @ " << (void*)OBJS[i] << ": "
-                << TypeCode(flat->type & 0x7f7f7f00)
+                << TypeCode(flat->hdr.type & 0x7f7f7f00)
                 << " = " << flat->binder;
         }
     } else {
@@ -2618,7 +2460,7 @@ status_t Parcel::continueWrite(size_t desired)
             for (size_t i=objectsSize; i<mObjectsSize; i++) {
                 const flat_binder_object* flat
                     = reinterpret_cast<flat_binder_object*>(mData+mObjects[i]);
-                if (flat->type == BINDER_TYPE_FD) {
+                if (flat->hdr.type == BINDER_TYPE_FD) {
                     // will need to rescan because we may have lopped off the only FDs
                     mFdsKnown = false;
                 }
@@ -2728,7 +2570,7 @@ void Parcel::scanForFds() const
     for (size_t i=0; i<mObjectsSize; i++) {
         const flat_binder_object* flat
             = reinterpret_cast<const flat_binder_object*>(mData + mObjects[i]);
-        if (flat->type == BINDER_TYPE_FD) {
+        if (flat->hdr.type == BINDER_TYPE_FD) {
             hasFds = true;
             break;
         }

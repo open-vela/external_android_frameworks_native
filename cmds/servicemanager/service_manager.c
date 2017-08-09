@@ -16,12 +16,13 @@
 
 #include "binder.h"
 
-#ifdef VENDORSERVICEMANAGER
-#define LOG_TAG "VendorServiceManager"
+#if 0
+#define ALOGI(x...) fprintf(stderr, "svcmgr: " x)
+#define ALOGE(x...) fprintf(stderr, "svcmgr: " x)
 #else
 #define LOG_TAG "ServiceManager"
-#endif
 #include <log/log.h>
+#endif
 
 struct audit_data {
     pid_t pid;
@@ -286,11 +287,7 @@ int svcmgr_handler(struct binder_state *bs,
     }
 
     if (sehandle && selinux_status_updated() > 0) {
-#ifdef VENDORSERVICEMANAGER
-        struct selabel_handle *tmp_sehandle = selinux_android_vendor_service_context_handle();
-#else
         struct selabel_handle *tmp_sehandle = selinux_android_service_context_handle();
-#endif
         if (tmp_sehandle) {
             selabel_close(sehandle);
             sehandle = tmp_sehandle;
@@ -362,28 +359,14 @@ static int audit_callback(void *data, __unused security_class_t cls, char *buf, 
     return 0;
 }
 
-int main(int argc, char** argv)
+int main()
 {
     struct binder_state *bs;
     union selinux_callback cb;
-    char *driver;
 
-    if (argc > 1) {
-        driver = argv[1];
-    } else {
-        driver = "/dev/binder";
-    }
-
-    bs = binder_open(driver, 128*1024);
+    bs = binder_open(128*1024);
     if (!bs) {
-#ifdef VENDORSERVICEMANAGER
-        ALOGW("failed to open binder driver %s\n", driver);
-        while (true) {
-            sleep(UINT_MAX);
-        }
-#else
-        ALOGE("failed to open binder driver %s\n", driver);
-#endif
+        ALOGE("failed to open binder driver\n");
         return -1;
     }
 
@@ -397,11 +380,7 @@ int main(int argc, char** argv)
     cb.func_log = selinux_log_callback;
     selinux_set_callback(SELINUX_CB_LOG, cb);
 
-#ifdef VENDORSERVICEMANAGER
-    sehandle = selinux_android_vendor_service_context_handle();
-#else
     sehandle = selinux_android_service_context_handle();
-#endif
     selinux_status_open(true);
 
     if (sehandle == NULL) {

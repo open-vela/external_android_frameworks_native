@@ -94,7 +94,7 @@ struct binder_state
     size_t mapsize;
 };
 
-struct binder_state *binder_open(const char* driver, size_t mapsize)
+struct binder_state *binder_open(size_t mapsize)
 {
     struct binder_state *bs;
     struct binder_version vers;
@@ -105,10 +105,10 @@ struct binder_state *binder_open(const char* driver, size_t mapsize)
         return NULL;
     }
 
-    bs->fd = open(driver, O_RDWR | O_CLOEXEC);
+    bs->fd = open("/dev/binder", O_RDWR | O_CLOEXEC);
     if (bs->fd < 0) {
-        fprintf(stderr,"binder: cannot open %s (%s)\n",
-                driver, strerror(errno));
+        fprintf(stderr,"binder: cannot open device (%s)\n",
+                strerror(errno));
         goto fail_open;
     }
 
@@ -514,7 +514,7 @@ void bio_put_obj(struct binder_io *bio, void *ptr)
         return;
 
     obj->flags = 0x7f | FLAT_BINDER_FLAG_ACCEPTS_FDS;
-    obj->type = BINDER_TYPE_BINDER;
+    obj->hdr.type = BINDER_TYPE_BINDER;
     obj->binder = (uintptr_t)ptr;
     obj->cookie = 0;
 }
@@ -532,7 +532,7 @@ void bio_put_ref(struct binder_io *bio, uint32_t handle)
         return;
 
     obj->flags = 0x7f | FLAT_BINDER_FLAG_ACCEPTS_FDS;
-    obj->type = BINDER_TYPE_HANDLE;
+    obj->hdr.type = BINDER_TYPE_HANDLE;
     obj->handle = handle;
     obj->cookie = 0;
 }
@@ -649,7 +649,7 @@ uint32_t bio_get_ref(struct binder_io *bio)
     if (!obj)
         return 0;
 
-    if (obj->type == BINDER_TYPE_HANDLE)
+    if (obj->hdr.type == BINDER_TYPE_HANDLE)
         return obj->handle;
 
     return 0;

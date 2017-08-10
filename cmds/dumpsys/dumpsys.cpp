@@ -176,7 +176,7 @@ int Dumpsys::main(int argc, char* const argv[]) {
     }
 
     for (size_t i = 0; i < N; i++) {
-        const String16& service_name = std::move(services[i]);
+        String16 service_name = std::move(services[i]);
         if (IsSkipped(skippedServices, service_name)) continue;
 
         sp<IBinder> service = sm_->checkService(service_name);

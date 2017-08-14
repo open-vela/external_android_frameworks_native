@@ -72,16 +72,13 @@ TextOutput& aerr(gStderrTextOutput);
 
 // ------------ ProcessState.cpp
 
-Mutex& gProcessMutex = *new Mutex;
+Mutex gProcessMutex;
 sp<ProcessState> gProcess;
 
 // ------------ IServiceManager.cpp
 
 Mutex gDefaultServiceManagerLock;
 sp<IServiceManager> gDefaultServiceManager;
-#ifndef __ANDROID_VNDK__
 sp<IPermissionController> gPermissionController;
-#endif
-bool gSystemBootCompleted = false;
 
 }   // namespace android

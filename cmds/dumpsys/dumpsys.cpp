@@ -16,7 +16,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <iomanip>
 #include <thread>
 
 #include <android-base/file.h>
@@ -177,7 +176,7 @@ int Dumpsys::main(int argc, char* const argv[]) {
     }
 
     for (size_t i = 0; i < N; i++) {
-        const String16& service_name = std::move(services[i]);
+        String16 service_name = std::move(services[i]);
         if (IsSkipped(skippedServices, service_name)) continue;
 
         sp<IBinder> service = sm_->checkService(service_name);
@@ -283,14 +282,7 @@ int Dumpsys::main(int argc, char* const argv[]) {
               std::chrono::duration<double> elapsed_seconds =
                   std::chrono::steady_clock::now() - start;
               aout << StringPrintf("--------- %.3fs ", elapsed_seconds.count()).c_str()
-                   << "was the duration of dumpsys " << service_name;
-
-              using std::chrono::system_clock;
-              const auto finish = system_clock::to_time_t(system_clock::now());
-              std::tm finish_tm;
-              localtime_r(&finish, &finish_tm);
-              aout << ", ending at: " << std::put_time(&finish_tm, "%Y-%m-%d %H:%M:%S")
-                   << endl;
+                   << "was the duration of dumpsys " << service_name << endl;
             }
         } else {
             aerr << "Can't find service: " << service_name << endl;

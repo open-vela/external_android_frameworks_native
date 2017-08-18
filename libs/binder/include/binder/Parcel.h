@@ -31,7 +31,6 @@
 
 #include <binder/IInterface.h>
 #include <binder/Parcelable.h>
-#include <binder/Map.h>
 
 // ---------------------------------------------------------------------------
 namespace android {
@@ -43,10 +42,6 @@ class IPCThreadState;
 class ProcessState;
 class String8;
 class TextOutput;
-
-namespace binder {
-class Value;
-};
 
 class Parcel {
     friend class IPCThreadState;
@@ -71,8 +66,6 @@ public:
 
     status_t            appendFrom(const Parcel *parcel,
                                    size_t start, size_t len);
-
-    int                 compareData(const Parcel& other);
 
     bool                allowFds() const;
     bool                pushAllowFds(bool allowFds);
@@ -160,16 +153,12 @@ public:
     template<typename T>
     status_t            writeParcelableVector(const std::unique_ptr<std::vector<std::unique_ptr<T>>>& val);
     template<typename T>
-    status_t            writeParcelableVector(const std::shared_ptr<std::vector<std::unique_ptr<T>>>& val);
-    template<typename T>
     status_t            writeParcelableVector(const std::vector<T>& val);
 
     template<typename T>
     status_t            writeNullableParcelable(const std::unique_ptr<T>& parcelable);
 
     status_t            writeParcelable(const Parcelable& parcelable);
-
-    status_t            writeValue(const binder::Value& value);
 
     template<typename T>
     status_t            write(const Flattenable<T>& val);
@@ -182,28 +171,20 @@ public:
     template<typename T>
     status_t            writeVectorSize(const std::unique_ptr<std::vector<T>>& val);
 
-    status_t            writeMap(const binder::Map& map);
-    status_t            writeNullableMap(const std::unique_ptr<binder::Map>& map);
-
     // Place a native_handle into the parcel (the native_handle's file-
     // descriptors are dup'ed, so it is safe to delete the native_handle
     // when this function returns).
     // Doesn't take ownership of the native_handle.
     status_t            writeNativeHandle(const native_handle* handle);
-
+    
     // Place a file descriptor into the parcel.  The given fd must remain
     // valid for the lifetime of the parcel.
     // The Parcel does not take ownership of the given fd unless you ask it to.
     status_t            writeFileDescriptor(int fd, bool takeOwnership = false);
-
+    
     // Place a file descriptor into the parcel.  A dup of the fd is made, which
     // will be closed once the parcel is destroyed.
     status_t            writeDupFileDescriptor(int fd);
-
-    // Place a Java "parcel file descriptor" into the parcel.  The given fd must remain
-    // valid for the lifetime of the parcel.
-    // The Parcel does not take ownership of the given fd unless you ask it to.
-    status_t            writeParcelFileDescriptor(int fd, bool takeOwnership = false);
 
     // Place a file descriptor into the parcel.  This will not affect the
     // semantics of the smart file descriptor. A new descriptor will be
@@ -290,8 +271,6 @@ public:
     template<typename T>
     status_t            readParcelable(std::unique_ptr<T>* parcelable) const;
 
-    status_t            readValue(binder::Value* value) const;
-
     template<typename T>
     status_t            readStrongBinder(sp<T>* val) const;
 
@@ -335,9 +314,6 @@ public:
     template<typename T>
     status_t            resizeOutVector(std::unique_ptr<std::vector<T>>* val) const;
 
-    status_t            readMap(binder::Map* map)const;
-    status_t            readNullableMap(std::unique_ptr<binder::Map>* map) const;
-
     // Like Parcel.java's readExceptionCode().  Reads the first int32
     // off of a Parcel's header, returning 0 or the negative error
     // code on exceptions, but also deals with skipping over rich
@@ -355,10 +331,6 @@ public:
     // Retrieve a file descriptor from the parcel.  This returns the raw fd
     // in the parcel, which you do not own -- use dup() to get your own copy.
     int                 readFileDescriptor() const;
-
-    // Retrieve a Java "parcel file descriptor" from the parcel.  This returns the raw fd
-    // in the parcel, which you do not own -- use dup() to get your own copy.
-    int                 readParcelFileDescriptor() const;
 
     // Retrieve a smart file descriptor from the parcel.
     status_t            readUniqueFileDescriptor(
@@ -496,8 +468,6 @@ private:
     #pragma clang diagnostic ignored "-Wweak-vtables"
     #endif
 
-    // FlattenableHelperInterface and FlattenableHelper avoid generating a vtable entry in objects
-    // following Flattenable template/protocol.
     class FlattenableHelperInterface {
     protected:
         ~FlattenableHelperInterface() { }
@@ -512,9 +482,6 @@ private:
     #pragma clang diagnostic pop
     #endif
 
-    // Concrete implementation of FlattenableHelperInterface that delegates virtual calls to the
-    // specified class T implementing the Flattenable protocol. It "virtualizes" a compile-time
-    // protocol.
     template<typename T>
     class FlattenableHelper : public FlattenableHelperInterface {
         friend class Parcel;
@@ -888,16 +855,7 @@ status_t Parcel::writeParcelableVector(const std::unique_ptr<std::vector<std::un
         return this->writeInt32(-1);
     }
 
-    return unsafeWriteTypedVector(*val, &Parcel::writeNullableParcelable<T>);
-}
-
-template<typename T>
-status_t Parcel::writeParcelableVector(const std::shared_ptr<std::vector<std::unique_ptr<T>>>& val) {
-    if (val.get() == nullptr) {
-        return this->writeInt32(-1);
-    }
-
-    return unsafeWriteTypedVector(*val, &Parcel::writeNullableParcelable<T>);
+    return unsafeWriteTypedVector(*val, &Parcel::writeParcelable);
 }
 
 // ---------------------------------------------------------------------------

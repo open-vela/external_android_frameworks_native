@@ -12,4 +12,3 @@ service servicemanager /system/bin/servicemanager
     onrestart restart drm
     onrestart restart cameraserver
     writepid /dev/cpuset/system-background/tasks
-    shutdown critical

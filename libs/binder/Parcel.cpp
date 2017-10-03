@@ -2645,7 +2645,7 @@ status_t Parcel::continueWrite(size_t desired)
                 pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
                 mData = data;
                 mDataCapacity = desired;
-            } else {
+            } else if (desired > mDataCapacity) {
                 mError = NO_MEMORY;
                 return NO_MEMORY;
             }

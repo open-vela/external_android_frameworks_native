@@ -35,7 +35,6 @@ using ::testing::DoAll;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::MakeAction;
-using ::testing::Mock;
 using ::testing::Not;
 using ::testing::Return;
 using ::testing::StrEq;
@@ -50,8 +49,8 @@ class ServiceManagerMock : public IServiceManager {
   public:
     MOCK_CONST_METHOD1(getService, sp<IBinder>(const String16&));
     MOCK_CONST_METHOD1(checkService, sp<IBinder>(const String16&));
-    MOCK_METHOD4(addService, status_t(const String16&, const sp<IBinder>&, bool, int));
-    MOCK_METHOD1(listServices, Vector<String16>(int));
+    MOCK_METHOD3(addService, status_t(const String16&, const sp<IBinder>&, bool));
+    MOCK_METHOD0(listServices, Vector<String16>());
 
   protected:
     MOCK_METHOD0(onAsBinder, IBinder*());
@@ -96,7 +95,7 @@ MATCHER_P(AndroidElementsAre, expected, "") {
     }
     int i = 0;
     std::ostringstream actual_stream, expected_stream;
-    for (const String16& actual : arg) {
+    for (String16 actual : arg) {
         std::string actual_str = String8(actual).c_str();
         std::string expected_str = expected[i];
         actual_stream << "'" << actual_str << "' ";
@@ -131,16 +130,7 @@ class DumpsysTest : public Test {
         for (auto& service : services) {
             services16.add(String16(service.c_str()));
         }
-        EXPECT_CALL(sm_, listServices(IServiceManager::DUMP_PRIORITY_ALL))
-            .WillRepeatedly(Return(services16));
-    }
-
-    void ExpectListServicesWithPriority(std::vector<std::string> services, int dumpPriority) {
-        Vector<String16> services16;
-        for (auto& service : services) {
-            services16.add(String16(service.c_str()));
-        }
-        EXPECT_CALL(sm_, listServices(dumpPriority)).WillRepeatedly(Return(services16));
+        EXPECT_CALL(sm_, listServices()).WillRepeatedly(Return(services16));
     }
 
     sp<BinderMock> ExpectCheckService(const char* name, bool running = true) {
@@ -165,11 +155,10 @@ class DumpsysTest : public Test {
             .WillRepeatedly(DoAll(WithArg<0>(WriteOnFd(output)), Return(0)));
     }
 
-    sp<BinderMock> ExpectDumpAndHang(const char* name, int timeout_s, const std::string& output) {
+    void ExpectDumpAndHang(const char* name, int timeout_s, const std::string& output) {
         sp<BinderMock> binder_mock = ExpectCheckService(name);
         EXPECT_CALL(*binder_mock, dump(_, _))
             .WillRepeatedly(DoAll(Sleep(timeout_s), WithArg<0>(WriteOnFd(output)), Return(0)));
-        return binder_mock;
     }
 
     void CallMain(const std::vector<std::string>& args) {
@@ -188,10 +177,7 @@ class DumpsysTest : public Test {
     }
 
     void AssertRunningServices(const std::vector<std::string>& services) {
-        std::string expected;
-        if (services.size() > 1) {
-            expected.append("Currently running services:\n");
-        }
+        std::string expected("Currently running services:\n");
         for (const std::string& service : services) {
             expected.append("  ").append(service).append("\n");
         }
@@ -248,26 +234,6 @@ TEST_F(DumpsysTest, ListRunningServices) {
     AssertNotDumped({"Valet"});
 }
 
-// Tests 'dumpsys -l --priority HIGH'
-TEST_F(DumpsysTest, ListAllServicesWithPriority) {
-    ExpectListServicesWithPriority({"Locksmith", "Valet"}, IServiceManager::DUMP_PRIORITY_HIGH);
-    ExpectCheckService("Locksmith");
-    ExpectCheckService("Valet");
-
-    CallMain({"-l", "--priority", "HIGH"});
-
-    AssertRunningServices({"Locksmith", "Valet"});
-}
-
-// Tests 'dumpsys -l --priority HIGH' with and empty list
-TEST_F(DumpsysTest, ListEmptyServicesWithPriority) {
-    ExpectListServicesWithPriority({}, IServiceManager::DUMP_PRIORITY_HIGH);
-
-    CallMain({"-l", "--priority", "HIGH"});
-
-    AssertRunningServices({});
-}
-
 // Tests 'dumpsys service_name' on a service is running
 TEST_F(DumpsysTest, DumpRunningService) {
     ExpectDump("Valet", "Here's your car");
@@ -279,15 +245,15 @@ TEST_F(DumpsysTest, DumpRunningService) {
 
 // Tests 'dumpsys -t 1 service_name' on a service that times out after 2s
 TEST_F(DumpsysTest, DumpRunningServiceTimeout) {
-    sp<BinderMock> binder_mock = ExpectDumpAndHang("Valet", 2, "Here's your car");
+    ExpectDumpAndHang("Valet", 2, "Here's your car");
 
     CallMain({"-t", "1", "Valet"});
 
     AssertOutputContains("SERVICE 'Valet' DUMP TIMEOUT (1s) EXPIRED");
     AssertNotDumped("Here's your car");
 
-    // TODO(b/65056227): BinderMock is not destructed because thread is detached on dumpsys.cpp
-    Mock::AllowLeak(binder_mock.get());
+    // Must wait so binder mock is deleted, otherwise test will fail with a leaked object
+    sleep(1);
 }
 
 // Tests 'dumpsys service_name Y U NO HAVE ARGS' on a service that is running
@@ -331,66 +297,4 @@ TEST_F(DumpsysTest, DumpWithSkip) {
     AssertStopped("stopped2");
     AssertNotDumped("dump3");
     AssertNotDumped("dump5");
-}
-
-// Tests 'dumpsys --skip skipped3 skipped5 --priority CRITICAL', which should skip these services
-TEST_F(DumpsysTest, DumpWithSkipAndPriority) {
-    ExpectListServicesWithPriority({"running1", "stopped2", "skipped3", "running4", "skipped5"},
-                                   IServiceManager::DUMP_PRIORITY_CRITICAL);
-    ExpectDump("running1", "dump1");
-    ExpectCheckService("stopped2", false);
-    ExpectDump("skipped3", "dump3");
-    ExpectDump("running4", "dump4");
-    ExpectDump("skipped5", "dump5");
-
-    CallMain({"--priority", "CRITICAL", "--skip", "skipped3", "skipped5"});
-
-    AssertRunningServices({"running1", "running4", "skipped3 (skipped)", "skipped5 (skipped)"});
-    AssertDumped("running1", "dump1");
-    AssertDumped("running4", "dump4");
-    AssertStopped("stopped2");
-    AssertNotDumped("dump3");
-    AssertNotDumped("dump5");
-}
-
-// Tests 'dumpsys --priority CRITICAL'
-TEST_F(DumpsysTest, DumpWithPriorityCritical) {
-    ExpectListServicesWithPriority({"runningcritical1", "runningcritical2"},
-                                   IServiceManager::DUMP_PRIORITY_CRITICAL);
-    ExpectDump("runningcritical1", "dump1");
-    ExpectDump("runningcritical2", "dump2");
-
-    CallMain({"--priority", "CRITICAL"});
-
-    AssertRunningServices({"runningcritical1", "runningcritical2"});
-    AssertDumped("runningcritical1", "dump1");
-    AssertDumped("runningcritical2", "dump2");
-}
-
-// Tests 'dumpsys --priority HIGH'
-TEST_F(DumpsysTest, DumpWithPriorityHigh) {
-    ExpectListServicesWithPriority({"runninghigh1", "runninghigh2"},
-                                   IServiceManager::DUMP_PRIORITY_HIGH);
-    ExpectDump("runninghigh1", "dump1");
-    ExpectDump("runninghigh2", "dump2");
-
-    CallMain({"--priority", "HIGH"});
-
-    AssertRunningServices({"runninghigh1", "runninghigh2"});
-    AssertDumped("runninghigh1", "dump1");
-    AssertDumped("runninghigh2", "dump2");
-}
-
-// Tests 'dumpsys --priority NORMAL'
-TEST_F(DumpsysTest, DumpWithPriorityNormal) {
-    ExpectListServicesWithPriority({"runningnormal1", "runningnormal2"},
-                                   IServiceManager::DUMP_PRIORITY_NORMAL);
-    ExpectDump("runningnormal1", "dump1");
-    ExpectDump("runningnormal2", "dump2");
-
-    CallMain({"--priority", "NORMAL"});
-
-    AssertRunningServices({"runningnormal1", "runningnormal2"});
-    AssertDumped("runningnormal1", "dump1");
-    AssertDumped("runningnormal2", "dump2");
 }

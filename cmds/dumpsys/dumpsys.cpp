@@ -25,6 +25,7 @@
 #include <binder/Parcel.h>
 #include <binder/ProcessState.h>
 #include <binder/TextOutput.h>
+#include <serviceutils/PriorityDumper.h>
 #include <utils/Log.h>
 #include <utils/Vector.h>
 
@@ -53,13 +54,16 @@ static int sort_func(const String16* lhs, const String16* rhs)
 
 static void usage() {
     fprintf(stderr,
-        "usage: dumpsys\n"
+            "usage: dumpsys\n"
             "         To dump all services.\n"
             "or:\n"
-            "       dumpsys [-t TIMEOUT] [--help | -l | --skip SERVICES | SERVICE [ARGS]]\n"
+            "       dumpsys [-t TIMEOUT] [--priority LEVEL] [--help | -l | --skip SERVICES | "
+            "SERVICE [ARGS]]\n"
             "         --help: shows this help\n"
             "         -l: only list services, do not dump them\n"
             "         -t TIMEOUT: TIMEOUT to use in seconds instead of default 10 seconds\n"
+            "         --priority LEVEL: filter services based on specified priority\n"
+            "               LEVEL must be one of CRITICAL | HIGH | NORMAL\n"
             "         --skip SERVICES: dumps all services but SERVICES (comma-separated list)\n"
             "         SERVICE [ARGS]: dumps only service SERVICE, optionally passing ARGS to it\n");
 }
@@ -73,18 +77,35 @@ static bool IsSkipped(const Vector<String16>& skipped, const String16& service) 
     return false;
 }
 
+static bool ConvertPriorityTypeToBitmask(String16& type, int& bitmask) {
+    if (type == PRIORITY_ARG_CRITICAL) {
+        bitmask = IServiceManager::DUMP_PRIORITY_CRITICAL;
+        return true;
+    }
+    if (type == PRIORITY_ARG_HIGH) {
+        bitmask = IServiceManager::DUMP_PRIORITY_HIGH;
+        return true;
+    }
+    if (type == PRIORITY_ARG_NORMAL) {
+        bitmask = IServiceManager::DUMP_PRIORITY_NORMAL;
+        return true;
+    }
+    return false;
+}
+
 int Dumpsys::main(int argc, char* const argv[]) {
     Vector<String16> services;
     Vector<String16> args;
+    String16 priorityType;
     Vector<String16> skippedServices;
     bool showListOnly = false;
     bool skipServices = false;
     int timeoutArg = 10;
-    static struct option longOptions[] = {
-        {"skip", no_argument, 0,  0 },
-        {"help", no_argument, 0,  0 },
-        {     0,           0, 0,  0 }
-    };
+    int dumpPriority = IServiceManager::DUMP_PRIORITY_ALL;
+    static struct option longOptions[] = {{"priority", required_argument, 0, 0},
+                                          {"skip", no_argument, 0, 0},
+                                          {"help", no_argument, 0, 0},
+                                          {0, 0, 0, 0}};
 
     // Must reset optind, otherwise subsequent calls will fail (wouldn't happen on main.cpp, but
     // happens on test cases).
@@ -106,6 +127,13 @@ int Dumpsys::main(int argc, char* const argv[]) {
             } else if (!strcmp(longOptions[optionIndex].name, "help")) {
                 usage();
                 return 0;
+            } else if (!strcmp(longOptions[optionIndex].name, "priority")) {
+                priorityType = String16(String8(optarg));
+                if (!ConvertPriorityTypeToBitmask(priorityType, dumpPriority)) {
+                    fprintf(stderr, "\n");
+                    usage();
+                    return -1;
+                }
             }
             break;
 
@@ -151,9 +179,14 @@ int Dumpsys::main(int argc, char* const argv[]) {
 
     if (services.empty() || showListOnly) {
         // gets all services
-        services = sm_->listServices();
+        services = sm_->listServices(dumpPriority);
         services.sort(sort_func);
-        args.add(String16("-a"));
+        if (dumpPriority != IServiceManager::DUMP_PRIORITY_ALL) {
+            args.insertAt(String16(PRIORITY_ARG), 0);
+            args.insertAt(priorityType, 1);
+        } else {
+            args.add(String16("-a"));
+        }
     }
 
     const size_t N = services.size();
@@ -197,7 +230,11 @@ int Dumpsys::main(int argc, char* const argv[]) {
             if (N > 1) {
                 aout << "------------------------------------------------------------"
                         "-------------------" << endl;
-                aout << "DUMP OF SERVICE " << service_name << ":" << endl;
+                if (dumpPriority == IServiceManager::DUMP_PRIORITY_ALL) {
+                    aout << "DUMP OF SERVICE " << service_name << ":" << endl;
+                } else {
+                    aout << "DUMP OF SERVICE " << priorityType << " " << service_name << ":" << endl;
+                }
             }
 
             // dump blocks until completion, so spawn a thread..

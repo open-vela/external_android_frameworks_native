@@ -22,6 +22,7 @@
 #include <gtest/gtest.h>
 
 #include <android-base/file.h>
+#include <serviceutils/PriorityDumper.h>
 #include <utils/String16.h>
 #include <utils/String8.h>
 #include <utils/Vector.h>
@@ -50,8 +51,8 @@ class ServiceManagerMock : public IServiceManager {
   public:
     MOCK_CONST_METHOD1(getService, sp<IBinder>(const String16&));
     MOCK_CONST_METHOD1(checkService, sp<IBinder>(const String16&));
-    MOCK_METHOD3(addService, status_t(const String16&, const sp<IBinder>&, bool));
-    MOCK_METHOD0(listServices, Vector<String16>());
+    MOCK_METHOD4(addService, status_t(const String16&, const sp<IBinder>&, bool, int));
+    MOCK_METHOD1(listServices, Vector<String16>(int));
 
   protected:
     MOCK_METHOD0(onAsBinder, IBinder*());
@@ -131,7 +132,16 @@ class DumpsysTest : public Test {
         for (auto& service : services) {
             services16.add(String16(service.c_str()));
         }
-        EXPECT_CALL(sm_, listServices()).WillRepeatedly(Return(services16));
+        EXPECT_CALL(sm_, listServices(IServiceManager::DUMP_FLAG_PRIORITY_ALL))
+            .WillRepeatedly(Return(services16));
+    }
+
+    void ExpectListServicesWithPriority(std::vector<std::string> services, int dumpFlags) {
+        Vector<String16> services16;
+        for (auto& service : services) {
+            services16.add(String16(service.c_str()));
+        }
+        EXPECT_CALL(sm_, listServices(dumpFlags)).WillRepeatedly(Return(services16));
     }
 
     sp<BinderMock> ExpectCheckService(const char* name, bool running = true) {
@@ -179,7 +189,10 @@ class DumpsysTest : public Test {
     }
 
     void AssertRunningServices(const std::vector<std::string>& services) {
-        std::string expected("Currently running services:\n");
+        std::string expected;
+        if (services.size() > 1) {
+            expected.append("Currently running services:\n");
+        }
         for (const std::string& service : services) {
             expected.append("  ").append(service).append("\n");
         }
@@ -196,6 +209,13 @@ class DumpsysTest : public Test {
 
     void AssertDumped(const std::string& service, const std::string& dump) {
         EXPECT_THAT(stdout_, HasSubstr("DUMP OF SERVICE " + service + ":\n" + dump));
+    }
+
+    void AssertDumpedWithPriority(const std::string& service, const std::string& dump,
+                                  const char16_t* priorityType) {
+        std::string priority = String8(priorityType).c_str();
+        EXPECT_THAT(stdout_,
+                    HasSubstr("DUMP OF SERVICE " + priority + " " + service + ":\n" + dump));
     }
 
     void AssertNotDumped(const std::string& dump) {
@@ -234,6 +254,39 @@ TEST_F(DumpsysTest, ListRunningServices) {
 
     AssertRunningServices({"Locksmith"});
     AssertNotDumped({"Valet"});
+}
+
+// Tests 'dumpsys -l --priority HIGH'
+TEST_F(DumpsysTest, ListAllServicesWithPriority) {
+    ExpectListServicesWithPriority({"Locksmith", "Valet"}, IServiceManager::DUMP_FLAG_PRIORITY_HIGH);
+    ExpectCheckService("Locksmith");
+    ExpectCheckService("Valet");
+
+    CallMain({"-l", "--priority", "HIGH"});
+
+    AssertRunningServices({"Locksmith", "Valet"});
+}
+
+// Tests 'dumpsys -l --priority HIGH' with and empty list
+TEST_F(DumpsysTest, ListEmptyServicesWithPriority) {
+    ExpectListServicesWithPriority({}, IServiceManager::DUMP_FLAG_PRIORITY_HIGH);
+
+    CallMain({"-l", "--priority", "HIGH"});
+
+    AssertRunningServices({});
+}
+
+// Tests 'dumpsys -l --proto'
+TEST_F(DumpsysTest, ListAllServicesWithProto) {
+    ExpectListServicesWithPriority({"Locksmith", "Valet", "Car"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_ALL);
+    ExpectListServicesWithPriority({"Valet", "Car"}, IServiceManager::DUMP_FLAG_PROTO);
+    ExpectCheckService("Car");
+    ExpectCheckService("Valet");
+
+    CallMain({"-l", "--proto"});
+
+    AssertRunningServices({"Car", "Valet"});
 }
 
 // Tests 'dumpsys service_name' on a service is running
@@ -299,4 +352,99 @@ TEST_F(DumpsysTest, DumpWithSkip) {
     AssertStopped("stopped2");
     AssertNotDumped("dump3");
     AssertNotDumped("dump5");
+}
+
+// Tests 'dumpsys --skip skipped3 skipped5 --priority CRITICAL', which should skip these services
+TEST_F(DumpsysTest, DumpWithSkipAndPriority) {
+    ExpectListServicesWithPriority({"running1", "stopped2", "skipped3", "running4", "skipped5"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_CRITICAL);
+    ExpectDump("running1", "dump1");
+    ExpectCheckService("stopped2", false);
+    ExpectDump("skipped3", "dump3");
+    ExpectDump("running4", "dump4");
+    ExpectDump("skipped5", "dump5");
+
+    CallMain({"--priority", "CRITICAL", "--skip", "skipped3", "skipped5"});
+
+    AssertRunningServices({"running1", "running4", "skipped3 (skipped)", "skipped5 (skipped)"});
+    AssertDumpedWithPriority("running1", "dump1", PriorityDumper::PRIORITY_ARG_CRITICAL);
+    AssertDumpedWithPriority("running4", "dump4", PriorityDumper::PRIORITY_ARG_CRITICAL);
+    AssertStopped("stopped2");
+    AssertNotDumped("dump3");
+    AssertNotDumped("dump5");
+}
+
+// Tests 'dumpsys --priority CRITICAL'
+TEST_F(DumpsysTest, DumpWithPriorityCritical) {
+    ExpectListServicesWithPriority({"runningcritical1", "runningcritical2"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_CRITICAL);
+    ExpectDump("runningcritical1", "dump1");
+    ExpectDump("runningcritical2", "dump2");
+
+    CallMain({"--priority", "CRITICAL"});
+
+    AssertRunningServices({"runningcritical1", "runningcritical2"});
+    AssertDumpedWithPriority("runningcritical1", "dump1", PriorityDumper::PRIORITY_ARG_CRITICAL);
+    AssertDumpedWithPriority("runningcritical2", "dump2", PriorityDumper::PRIORITY_ARG_CRITICAL);
+}
+
+// Tests 'dumpsys --priority HIGH'
+TEST_F(DumpsysTest, DumpWithPriorityHigh) {
+    ExpectListServicesWithPriority({"runninghigh1", "runninghigh2"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_HIGH);
+    ExpectDump("runninghigh1", "dump1");
+    ExpectDump("runninghigh2", "dump2");
+
+    CallMain({"--priority", "HIGH"});
+
+    AssertRunningServices({"runninghigh1", "runninghigh2"});
+    AssertDumpedWithPriority("runninghigh1", "dump1", PriorityDumper::PRIORITY_ARG_HIGH);
+    AssertDumpedWithPriority("runninghigh2", "dump2", PriorityDumper::PRIORITY_ARG_HIGH);
+}
+
+// Tests 'dumpsys --priority NORMAL'
+TEST_F(DumpsysTest, DumpWithPriorityNormal) {
+    ExpectListServicesWithPriority({"runningnormal1", "runningnormal2"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_NORMAL);
+    ExpectDump("runningnormal1", "dump1");
+    ExpectDump("runningnormal2", "dump2");
+
+    CallMain({"--priority", "NORMAL"});
+
+    AssertRunningServices({"runningnormal1", "runningnormal2"});
+    AssertDumpedWithPriority("runningnormal1", "dump1", PriorityDumper::PRIORITY_ARG_NORMAL);
+    AssertDumpedWithPriority("runningnormal2", "dump2", PriorityDumper::PRIORITY_ARG_NORMAL);
+}
+
+// Tests 'dumpsys --proto'
+TEST_F(DumpsysTest, DumpWithProto) {
+    ExpectListServicesWithPriority({"run8", "run1", "run2", "run5"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_ALL);
+    ExpectListServicesWithPriority({"run3", "run2", "run4", "run8"},
+                                   IServiceManager::DUMP_FLAG_PROTO);
+    ExpectDump("run2", "dump1");
+    ExpectDump("run8", "dump2");
+
+    CallMain({"--proto"});
+
+    AssertRunningServices({"run2", "run8"});
+    AssertDumped("run2", "dump1");
+    AssertDumped("run8", "dump2");
+}
+
+// Tests 'dumpsys --priority HIGH --proto'
+TEST_F(DumpsysTest, DumpWithPriorityHighAndProto) {
+    ExpectListServicesWithPriority({"runninghigh1", "runninghigh2"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_HIGH);
+    ExpectListServicesWithPriority({"runninghigh1", "runninghigh2", "runninghigh3"},
+                                   IServiceManager::DUMP_FLAG_PROTO);
+
+    ExpectDump("runninghigh1", "dump1");
+    ExpectDump("runninghigh2", "dump2");
+
+    CallMain({"--priority", "HIGH", "--proto"});
+
+    AssertRunningServices({"runninghigh1", "runninghigh2"});
+    AssertDumpedWithPriority("runninghigh1", "dump1", PriorityDumper::PRIORITY_ARG_HIGH);
+    AssertDumpedWithPriority("runninghigh2", "dump2", PriorityDumper::PRIORITY_ARG_HIGH);
 }

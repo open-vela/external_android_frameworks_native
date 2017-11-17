@@ -19,6 +19,7 @@
 #define ANDROID_ISERVICE_MANAGER_H
 
 #include <binder/IInterface.h>
+#include <binder/IPermissionController.h>
 #include <utils/Vector.h>
 #include <utils/String16.h>
 
@@ -30,22 +31,15 @@ class IServiceManager : public IInterface
 {
 public:
     DECLARE_META_INTERFACE(ServiceManager)
-    /**
+    /*
      * Must match values in IServiceManager.java
      */
-    /* Allows services to dump sections according to priorities. */
     static const int DUMP_FLAG_PRIORITY_CRITICAL = 1 << 0;
     static const int DUMP_FLAG_PRIORITY_HIGH = 1 << 1;
     static const int DUMP_FLAG_PRIORITY_NORMAL = 1 << 2;
-    /**
-     * Services are by default registered with a DEFAULT dump priority. DEFAULT priority has the
-     * same priority as NORMAL priority but the services are not called with dump priority
-     * arguments.
-     */
-    static const int DUMP_FLAG_PRIORITY_DEFAULT = 1 << 3;
-    static const int DUMP_FLAG_PRIORITY_ALL = DUMP_FLAG_PRIORITY_CRITICAL |
-            DUMP_FLAG_PRIORITY_HIGH | DUMP_FLAG_PRIORITY_NORMAL | DUMP_FLAG_PRIORITY_DEFAULT;
-    static const int DUMP_FLAG_PROTO = 1 << 4;
+    static const int DUMP_FLAG_PRIORITY_ALL =
+            DUMP_FLAG_PRIORITY_CRITICAL | DUMP_FLAG_PRIORITY_HIGH | DUMP_FLAG_PRIORITY_NORMAL;
+    static const int DUMP_FLAG_PROTO = 1 << 3;
 
     /**
      * Retrieve an existing service, blocking for a few seconds
@@ -61,15 +55,13 @@ public:
     /**
      * Register a service.
      */
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t addService(const String16& name, const sp<IBinder>& service,
                                 bool allowIsolated = false,
-                                int dumpsysFlags = DUMP_FLAG_PRIORITY_DEFAULT) = 0;
+                                int dumpsysFlags = DUMP_FLAG_PRIORITY_NORMAL) = 0;
 
     /**
      * Return list of all existing services.
      */
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual Vector<String16> listServices(int dumpsysFlags = DUMP_FLAG_PRIORITY_ALL) = 0;
 
     enum {
@@ -86,7 +78,7 @@ template<typename INTERFACE>
 status_t getService(const String16& name, sp<INTERFACE>* outService)
 {
     const sp<IServiceManager> sm = defaultServiceManager();
-    if (sm != nullptr) {
+    if (sm != NULL) {
         *outService = interface_cast<INTERFACE>(sm->getService(name));
         if ((*outService) != NULL) return NO_ERROR;
     }

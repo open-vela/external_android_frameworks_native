@@ -75,7 +75,7 @@ void PermissionCache::purge() {
 }
 
 bool PermissionCache::checkCallingPermission(const String16& permission) {
-    return PermissionCache::checkCallingPermission(permission, nullptr, nullptr);
+    return PermissionCache::checkCallingPermission(permission, NULL, NULL);
 }
 
 bool PermissionCache::checkCallingPermission(

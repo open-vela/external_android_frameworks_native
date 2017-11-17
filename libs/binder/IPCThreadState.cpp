@@ -17,7 +17,6 @@
 #define LOG_TAG "IPCThreadState"
 
 #include <binder/IPCThreadState.h>
-#include <binderthreadstate/IPCThreadStateBase.h>
 
 #include <binder/Binder.h>
 #include <binder/BpBinder.h>
@@ -290,7 +289,7 @@ restart:
 
     if (gShutdown) {
         ALOGW("Calling IPCThreadState::self() during shutdown is dangerous, expect a crash.\n");
-        return nullptr;
+        return NULL;
     }
 
     pthread_mutex_lock(&gTLSMutex);
@@ -300,7 +299,7 @@ restart:
             pthread_mutex_unlock(&gTLSMutex);
             ALOGW("IPCThreadState::self() unable to create TLS key, expect a crash: %s\n",
                     strerror(key_create_value));
-            return nullptr;
+            return NULL;
         }
         gHaveTLS = true;
     }
@@ -315,7 +314,7 @@ IPCThreadState* IPCThreadState::selfOrNull()
         IPCThreadState* st = (IPCThreadState*)pthread_getspecific(k);
         return st;
     }
-    return nullptr;
+    return NULL;
 }
 
 void IPCThreadState::shutdown()
@@ -327,7 +326,7 @@ void IPCThreadState::shutdown()
         IPCThreadState* st = (IPCThreadState*)pthread_getspecific(gTLS);
         if (st) {
             delete st;
-            pthread_setspecific(gTLS, nullptr);
+            pthread_setspecific(gTLS, NULL);
         }
         pthread_key_delete(gTLS);
         gHaveTLS = false;
@@ -410,15 +409,6 @@ void IPCThreadState::flushCommands()
     if (mProcess->mDriverFD <= 0)
         return;
     talkWithDriver(false);
-    // The flush could have caused post-write refcount decrements to have
-    // been executed, which in turn could result in BC_RELEASE/BC_DECREFS
-    // being queued in mOut. So flush again, if we need to.
-    if (mOut.dataSize() > 0) {
-        talkWithDriver(false);
-    }
-    if (mOut.dataSize() > 0) {
-        ALOGW("mOut.dataSize() > 0 after flushCommands()");
-    }
 }
 
 void IPCThreadState::blockUntilThreadAvailable()
@@ -511,21 +501,6 @@ void IPCThreadState::processPendingDerefs()
     }
 }
 
-void IPCThreadState::processPostWriteDerefs()
-{
-    for (size_t i = 0; i < mPostWriteWeakDerefs.size(); i++) {
-        RefBase::weakref_type* refs = mPostWriteWeakDerefs[i];
-        refs->decWeak(mProcess.get());
-    }
-    mPostWriteWeakDerefs.clear();
-
-    for (size_t i = 0; i < mPostWriteStrongDerefs.size(); i++) {
-        RefBase* obj = mPostWriteStrongDerefs[i];
-        obj->decStrong(mProcess.get());
-    }
-    mPostWriteStrongDerefs.clear();
-}
-
 void IPCThreadState::joinThreadPool(bool isMain)
 {
     LOG_THREADPOOL("**** THREAD %p (PID %d) IS JOINING THE THREAD POOL\n", (void*)pthread_self(), getpid());
@@ -609,7 +584,7 @@ status_t IPCThreadState::transact(int32_t handle,
 
     LOG_ONEWAY(">>>> SEND from pid %d uid %d %s", getpid(), getuid(),
         (flags & TF_ONE_WAY) == 0 ? "READ REPLY" : "ONE WAY");
-    err = writeTransactionData(BC_TRANSACTION, flags, handle, code, data, nullptr);
+    err = writeTransactionData(BC_TRANSACTION, flags, handle, code, data, NULL);
 
     if (err != NO_ERROR) {
         if (reply) reply->setError(err);
@@ -646,20 +621,17 @@ status_t IPCThreadState::transact(int32_t handle,
             else alog << "(none requested)" << endl;
         }
     } else {
-        err = waitForResponse(nullptr, nullptr);
+        err = waitForResponse(NULL, NULL);
     }
 
     return err;
 }
 
-void IPCThreadState::incStrongHandle(int32_t handle, BpBinder *proxy)
+void IPCThreadState::incStrongHandle(int32_t handle)
 {
     LOG_REMOTEREFS("IPCThreadState::incStrongHandle(%d)\n", handle);
     mOut.writeInt32(BC_ACQUIRE);
     mOut.writeInt32(handle);
-    // Create a temp reference until the driver has handled this command.
-    proxy->incStrong(mProcess.get());
-    mPostWriteStrongDerefs.push(proxy);
 }
 
 void IPCThreadState::decStrongHandle(int32_t handle)
@@ -669,14 +641,11 @@ void IPCThreadState::decStrongHandle(int32_t handle)
     mOut.writeInt32(handle);
 }
 
-void IPCThreadState::incWeakHandle(int32_t handle, BpBinder *proxy)
+void IPCThreadState::incWeakHandle(int32_t handle)
 {
     LOG_REMOTEREFS("IPCThreadState::incWeakHandle(%d)\n", handle);
     mOut.writeInt32(BC_INCREFS);
     mOut.writeInt32(handle);
-    // Create a temp reference until the driver has handled this command.
-    proxy->getWeakRefs()->incWeak(mProcess.get());
-    mPostWriteWeakDerefs.push(proxy->getWeakRefs());
 }
 
 void IPCThreadState::decWeakHandle(int32_t handle)
@@ -743,7 +712,6 @@ IPCThreadState::IPCThreadState()
     clearCaller();
     mIn.setDataCapacity(256);
     mOut.setDataCapacity(256);
-    mIPCThreadStateBase = IPCThreadStateBase::self();
 }
 
 IPCThreadState::~IPCThreadState()
@@ -757,7 +725,7 @@ status_t IPCThreadState::sendReply(const Parcel& reply, uint32_t flags)
     err = writeTransactionData(BC_REPLY, flags, -1, 0, reply, &statusBuffer);
     if (err < NO_ERROR) return err;
 
-    return waitForResponse(nullptr, nullptr);
+    return waitForResponse(NULL, NULL);
 }
 
 status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
@@ -817,14 +785,14 @@ status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
                             freeBuffer, this);
                     } else {
                         err = *reinterpret_cast<const status_t*>(tr.data.ptr.buffer);
-                        freeBuffer(nullptr,
+                        freeBuffer(NULL,
                             reinterpret_cast<const uint8_t*>(tr.data.ptr.buffer),
                             tr.data_size,
                             reinterpret_cast<const binder_size_t*>(tr.data.ptr.offsets),
                             tr.offsets_size/sizeof(binder_size_t), this);
                     }
                 } else {
-                    freeBuffer(nullptr,
+                    freeBuffer(NULL,
                         reinterpret_cast<const uint8_t*>(tr.data.ptr.buffer),
                         tr.data_size,
                         reinterpret_cast<const binder_size_t*>(tr.data.ptr.offsets),
@@ -929,10 +897,8 @@ status_t IPCThreadState::talkWithDriver(bool doReceive)
         if (bwr.write_consumed > 0) {
             if (bwr.write_consumed < mOut.dataSize())
                 mOut.remove(0, bwr.write_consumed);
-            else {
+            else
                 mOut.setDataSize(0);
-                processPostWriteDerefs();
-            }
         }
         if (bwr.read_consumed > 0) {
             mIn.setDataSize(bwr.read_consumed);
@@ -1084,9 +1050,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                 "Not enough command data for brTRANSACTION");
             if (result != NO_ERROR) break;
 
-            //Record the fact that we're in a binder call.
-            mIPCThreadStateBase->pushCurrentState(
-                IPCThreadStateBase::CallState::BINDER);
             Parcel buffer;
             buffer.ipcSetDataReference(
                 reinterpret_cast<const uint8_t*>(tr.data.ptr.buffer),
@@ -1134,7 +1097,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                 error = the_context_object->transact(tr.code, buffer, &reply, tr.flags);
             }
 
-            mIPCThreadStateBase->popCurrentState();
             //ALOGI("<<<< TRANSACT from pid %d restore pid %d uid %d\n",
             //     mCallingPid, origPid, origUid);
 
@@ -1198,10 +1160,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
     return result;
 }
 
-bool IPCThreadState::isServingCall() const {
-    return mIPCThreadStateBase->getCurrentBinderCallState() == IPCThreadStateBase::CallState::BINDER;
-}
-
 void IPCThreadState::threadDestructor(void *st)
 {
         IPCThreadState* const self = static_cast<IPCThreadState*>(st);
@@ -1227,7 +1185,7 @@ void IPCThreadState::freeBuffer(Parcel* parcel, const uint8_t* data,
         alog << "Writing BC_FREE_BUFFER for " << data << endl;
     }
     ALOG_ASSERT(data != NULL, "Called with NULL data");
-    if (parcel != nullptr) parcel->closeFileDescriptors();
+    if (parcel != NULL) parcel->closeFileDescriptors();
     IPCThreadState* state = self();
     state->mOut.writeInt32(BC_FREE_BUFFER);
     state->mOut.writePointer((uintptr_t)data);

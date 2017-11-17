@@ -52,6 +52,6 @@ interface IPackageManagerNative {
      * Unknown or unknowable versions are returned as 0.
      */
 
-    long getVersionCodeForPackage(in String packageName);
+    int getVersionCodeForPackage(in String packageName);
 
 }

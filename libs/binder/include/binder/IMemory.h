@@ -54,8 +54,7 @@ public:
 class BnMemoryHeap : public BnInterface<IMemoryHeap>
 {
 public:
-    // NOLINTNEXTLINE(google-default-arguments)
-    virtual status_t onTransact(
+    virtual status_t onTransact( 
             uint32_t code,
             const Parcel& data,
             Parcel* reply,
@@ -73,8 +72,7 @@ class IMemory : public IInterface
 public:
     DECLARE_META_INTERFACE(Memory)
 
-    // NOLINTNEXTLINE(google-default-arguments)
-    virtual sp<IMemoryHeap> getMemory(ssize_t* offset=nullptr, size_t* size=nullptr) const = 0;
+    virtual sp<IMemoryHeap> getMemory(ssize_t* offset=0, size_t* size=0) const = 0;
 
     // helpers
     void* fastPointer(const sp<IBinder>& heap, ssize_t offset) const;
@@ -86,7 +84,6 @@ public:
 class BnMemory : public BnInterface<IMemory>
 {
 public:
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t onTransact(
             uint32_t code,
             const Parcel& data,

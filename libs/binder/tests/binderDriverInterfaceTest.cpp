@@ -20,7 +20,7 @@
 #include <stdlib.h>
 
 #include <gtest/gtest.h>
-#include <linux/binder.h>
+#include <linux/android/binder.h>
 #include <binder/IBinder.h>
 #include <sys/mman.h>
 #include <poll.h>
@@ -34,7 +34,7 @@ class BinderDriverInterfaceTestEnv : public ::testing::Environment {
             int ret;
             uint32_t max_threads = 0;
 
-            m_binderFd = open(BINDER_DEV_NAME, O_RDWR | O_NONBLOCK);
+            m_binderFd = open(BINDER_DEV_NAME, O_RDWR | O_NONBLOCK | O_CLOEXEC);
             ASSERT_GE(m_binderFd, 0);
             m_buffer = mmap(NULL, 64*1024, PROT_READ, MAP_SHARED, m_binderFd, 0);
             ASSERT_NE(m_buffer, (void *)NULL);
@@ -229,7 +229,9 @@ TEST_F(BinderDriverInterfaceTest, Transaction) {
             .sender_euid = 0,
             .data_size = 0,
             .offsets_size = 0,
-            .data = {0, 0},
+            .data = {
+                .ptr = {0, 0},
+            },
         },
     };
     struct {
@@ -350,4 +352,3 @@ int main(int argc, char **argv) {
 
     return RUN_ALL_TESTS();
 }
-

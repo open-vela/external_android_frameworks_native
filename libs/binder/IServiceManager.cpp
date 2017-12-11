@@ -161,18 +161,19 @@ public:
     }
 
     virtual status_t addService(const String16& name, const sp<IBinder>& service,
-                                bool allowIsolated, int dumpsysPriority) {
+            bool allowIsolated)
+    {
         Parcel data, reply;
         data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
         data.writeString16(name);
         data.writeStrongBinder(service);
         data.writeInt32(allowIsolated ? 1 : 0);
-        data.writeInt32(dumpsysPriority);
         status_t err = remote()->transact(ADD_SERVICE_TRANSACTION, data, &reply);
         return err == NO_ERROR ? reply.readExceptionCode() : err;
     }
 
-    virtual Vector<String16> listServices(int dumpsysPriority) {
+    virtual Vector<String16> listServices()
+    {
         Vector<String16> res;
         int n = 0;
 
@@ -180,7 +181,6 @@ public:
             Parcel data, reply;
             data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
             data.writeInt32(n++);
-            data.writeInt32(dumpsysPriority);
             status_t err = remote()->transact(LIST_SERVICES_TRANSACTION, data, &reply);
             if (err != NO_ERROR)
                 break;

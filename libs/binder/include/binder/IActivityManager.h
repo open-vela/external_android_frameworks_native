@@ -18,7 +18,6 @@
 #define ANDROID_IACTIVITY_MANAGER_H
 
 #include <binder/IInterface.h>
-#include <binder/IUidObserver.h>
 
 namespace android {
 
@@ -29,17 +28,10 @@ class IActivityManager : public IInterface
 public:
     DECLARE_META_INTERFACE(ActivityManager)
 
-    virtual int openContentUri(const String16& stringUri) = 0;
-    virtual void registerUidObserver(const sp<IUidObserver>& observer,
-                                     const int32_t event,
-                                     const int32_t cutpoint,
-                                     const String16& callingPackage) = 0;
-    virtual void unregisterUidObserver(const sp<IUidObserver>& observer) = 0;
+    virtual int openContentUri(const String16& /* stringUri */) = 0;
 
     enum {
-        OPEN_CONTENT_URI_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
-        REGISTER_UID_OBSERVER_TRANSACTION,
-        UNREGISTER_UID_OBSERVER_TRANSACTION
+        OPEN_CONTENT_URI_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION
     };
 };
 

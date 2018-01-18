@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  */
 
 //
-#ifndef ANDROID_ISHELL_CALLBACK_H
-#define ANDROID_ISHELL_CALLBACK_H
+#ifndef ANDROID_IUID_OBSERVER_H
+#define ANDROID_IUID_OBSERVER_H
 
 #include <binder/IInterface.h>
 
@@ -24,33 +24,35 @@ namespace android {
 
 // ----------------------------------------------------------------------
 
-class IShellCallback : public IInterface
+class IUidObserver : public IInterface
 {
 public:
-    DECLARE_META_INTERFACE(ShellCallback);
+    DECLARE_META_INTERFACE(UidObserver)
 
-    virtual int openFile(const String16& path, const String16& seLinuxContext,
-            const String16& mode) = 0;
+    virtual void onUidGone(uid_t uid, bool disabled) = 0;
+    virtual void onUidActive(uid_t uid) = 0;
+    virtual void onUidIdle(uid_t uid, bool disabled) = 0;
 
     enum {
-        OP_OPEN_OUTPUT_FILE = IBinder::FIRST_CALL_TRANSACTION
+        ON_UID_GONE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
+        ON_UID_ACTIVE_TRANSACTION,
+        ON_UID_IDLE_TRANSACTION
     };
 };
 
 // ----------------------------------------------------------------------
 
-class BnShellCallback : public BnInterface<IShellCallback>
+class BnUidObserver : public BnInterface<IUidObserver>
 {
 public:
-    virtual status_t    onTransact( uint32_t code,
-                                    const Parcel& data,
-                                    Parcel* reply,
-                                    uint32_t flags = 0);
+    virtual status_t  onTransact(uint32_t code,
+                                 const Parcel& data,
+                                 Parcel* reply,
+                                 uint32_t flags = 0);
 };
 
 // ----------------------------------------------------------------------
 
 }; // namespace android
 
-#endif // ANDROID_ISHELL_CALLBACK_H
-
+#endif // ANDROID_IUID_OBSERVER_H

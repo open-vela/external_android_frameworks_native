@@ -283,7 +283,7 @@ Vector<String16> Dumpsys::listServices(int priorityFilterFlags, bool filterByPro
     return services;
 }
 
-void Dumpsys::setServiceArgs(Vector<String16>& args, bool asProto, int priorityFlags) {
+void Dumpsys::setServiceArgs(Vector<String16>& args, bool asProto, int priorityFlags) const {
     if ((priorityFlags == IServiceManager::DUMP_FLAG_PRIORITY_ALL) ||
         (priorityFlags == IServiceManager::DUMP_FLAG_PRIORITY_NORMAL)) {
         args.add(String16("-a"));

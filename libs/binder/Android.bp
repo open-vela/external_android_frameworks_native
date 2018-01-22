@@ -63,7 +63,6 @@ cc_library {
         "MemoryHeapBase.cpp",
         "Parcel.cpp",
         "PermissionCache.cpp",
-        "PermissionController.cpp",
         "PersistableBundle.cpp",
         "ProcessInfoService.cpp",
         "ProcessState.cpp",
@@ -95,7 +94,6 @@ cc_library {
         "liblog",
         "libcutils",
         "libutils",
-        "libutilscallstack",
     ],
 
     header_libs: [

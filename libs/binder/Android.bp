@@ -38,7 +38,6 @@ cc_library {
     },
 
     srcs: [
-        "ActivityManager.cpp",
         "AppOpsManager.cpp",
         "Binder.cpp",
         "BpBinder.cpp",
@@ -57,13 +56,11 @@ cc_library {
         "IResultReceiver.cpp",
         "IServiceManager.cpp",
         "IShellCallback.cpp",
-        "IUidObserver.cpp",
         "MemoryBase.cpp",
         "MemoryDealer.cpp",
         "MemoryHeapBase.cpp",
         "Parcel.cpp",
         "PermissionCache.cpp",
-        "PermissionController.cpp",
         "PersistableBundle.cpp",
         "ProcessInfoService.cpp",
         "ProcessState.cpp",

@@ -8,8 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <cutils/android_filesystem_config.h>
 #include <cutils/multiuser.h>
+
+#include <private/android_filesystem_config.h>
 
 #include <selinux/android.h>
 #include <selinux/avc.h>
@@ -286,11 +287,7 @@ int svcmgr_handler(struct binder_state *bs,
     }
 
     if (sehandle && selinux_status_updated() > 0) {
-#ifdef VENDORSERVICEMANAGER
-        struct selabel_handle *tmp_sehandle = selinux_android_vendor_service_context_handle();
-#else
         struct selabel_handle *tmp_sehandle = selinux_android_service_context_handle();
-#endif
         if (tmp_sehandle) {
             selabel_close(sehandle);
             sehandle = tmp_sehandle;

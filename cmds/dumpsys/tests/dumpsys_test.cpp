@@ -35,7 +35,6 @@ using ::testing::DoAll;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::MakeAction;
-using ::testing::Mock;
 using ::testing::Not;
 using ::testing::Return;
 using ::testing::StrEq;
@@ -156,11 +155,10 @@ class DumpsysTest : public Test {
             .WillRepeatedly(DoAll(WithArg<0>(WriteOnFd(output)), Return(0)));
     }
 
-    sp<BinderMock> ExpectDumpAndHang(const char* name, int timeout_s, const std::string& output) {
+    void ExpectDumpAndHang(const char* name, int timeout_s, const std::string& output) {
         sp<BinderMock> binder_mock = ExpectCheckService(name);
         EXPECT_CALL(*binder_mock, dump(_, _))
             .WillRepeatedly(DoAll(Sleep(timeout_s), WithArg<0>(WriteOnFd(output)), Return(0)));
-        return binder_mock;
     }
 
     void CallMain(const std::vector<std::string>& args) {
@@ -247,15 +245,15 @@ TEST_F(DumpsysTest, DumpRunningService) {
 
 // Tests 'dumpsys -t 1 service_name' on a service that times out after 2s
 TEST_F(DumpsysTest, DumpRunningServiceTimeout) {
-    sp<BinderMock> binder_mock = ExpectDumpAndHang("Valet", 2, "Here's your car");
+    ExpectDumpAndHang("Valet", 2, "Here's your car");
 
     CallMain({"-t", "1", "Valet"});
 
     AssertOutputContains("SERVICE 'Valet' DUMP TIMEOUT (1s) EXPIRED");
     AssertNotDumped("Here's your car");
 
-    // TODO(b/65056227): BinderMock is not destructed because thread is detached on dumpsys.cpp
-    Mock::AllowLeak(binder_mock.get());
+    // Must wait so binder mock is deleted, otherwise test will fail with a leaked object
+    sleep(1);
 }
 
 // Tests 'dumpsys service_name Y U NO HAVE ARGS' on a service that is running

@@ -18,12 +18,12 @@
 
 #include <binder/ProcessState.h>
 
-#include <utils/Atomic.h>
 #include <binder/BpBinder.h>
 #include <binder/IPCThreadState.h>
+#include <binder/IServiceManager.h>
+#include <cutils/atomic.h>
 #include <utils/Log.h>
 #include <utils/String8.h>
-#include <binder/IServiceManager.h>
 #include <utils/String8.h>
 #include <utils/threads.h>
 
@@ -282,7 +282,7 @@ sp<IBinder> ProcessState::getStrongProxyForHandle(int32_t handle)
                    return NULL;
             }
 
-            b = BpBinder::create(handle);
+            b = new BpBinder(handle); 
             e->binder = b;
             if (b) e->refs = b->getWeakRefs();
             result = b;
@@ -316,7 +316,7 @@ wp<IBinder> ProcessState::getWeakProxyForHandle(int32_t handle)
         // arriving from the driver.
         IBinder* b = e->binder;
         if (b == NULL || !e->refs->attemptIncWeak(this)) {
-            b = BpBinder::create(handle);
+            b = new BpBinder(handle);
             result = b;
             e->binder = b;
             if (b) e->refs = b->getWeakRefs();

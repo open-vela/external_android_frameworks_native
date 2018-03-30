@@ -188,6 +188,22 @@ class DumpsysTest : public Test {
         EXPECT_THAT(status, Eq(0));
     }
 
+    void CallSingleService(const String16& serviceName, Vector<String16>& args, int priorityFlags,
+                           bool supportsProto, std::chrono::duration<double>& elapsedDuration,
+                           size_t& bytesWritten) {
+        CaptureStdout();
+        CaptureStderr();
+        dump_.setServiceArgs(args, supportsProto, priorityFlags);
+        status_t status = dump_.startDumpThread(serviceName, args);
+        EXPECT_THAT(status, Eq(0));
+        status = dump_.writeDump(STDOUT_FILENO, serviceName, std::chrono::milliseconds(500), false,
+                                 elapsedDuration, bytesWritten);
+        EXPECT_THAT(status, Eq(0));
+        dump_.stopDumpThread(/* dumpCompleted = */ true);
+        stdout_ = GetCapturedStdout();
+        stderr_ = GetCapturedStderr();
+    }
+
     void AssertRunningServices(const std::vector<std::string>& services) {
         std::string expected;
         if (services.size() > 1) {
@@ -209,6 +225,7 @@ class DumpsysTest : public Test {
 
     void AssertDumped(const std::string& service, const std::string& dump) {
         EXPECT_THAT(stdout_, HasSubstr("DUMP OF SERVICE " + service + ":\n" + dump));
+        EXPECT_THAT(stdout_, HasSubstr("was the duration of dumpsys " + service + ", ending at: "));
     }
 
     void AssertDumpedWithPriority(const std::string& service, const std::string& dump,
@@ -216,6 +233,7 @@ class DumpsysTest : public Test {
         std::string priority = String8(priorityType).c_str();
         EXPECT_THAT(stdout_,
                     HasSubstr("DUMP OF SERVICE " + priority + " " + service + ":\n" + dump));
+        EXPECT_THAT(stdout_, HasSubstr("was the duration of dumpsys " + service + ", ending at: "));
     }
 
     void AssertNotDumped(const std::string& dump) {
@@ -299,12 +317,25 @@ TEST_F(DumpsysTest, DumpRunningService) {
 }
 
 // Tests 'dumpsys -t 1 service_name' on a service that times out after 2s
-TEST_F(DumpsysTest, DumpRunningServiceTimeout) {
+TEST_F(DumpsysTest, DumpRunningServiceTimeoutInSec) {
     sp<BinderMock> binder_mock = ExpectDumpAndHang("Valet", 2, "Here's your car");
 
     CallMain({"-t", "1", "Valet"});
 
-    AssertOutputContains("SERVICE 'Valet' DUMP TIMEOUT (1s) EXPIRED");
+    AssertOutputContains("SERVICE 'Valet' DUMP TIMEOUT (1000ms) EXPIRED");
+    AssertNotDumped("Here's your car");
+
+    // TODO(b/65056227): BinderMock is not destructed because thread is detached on dumpsys.cpp
+    Mock::AllowLeak(binder_mock.get());
+}
+
+// Tests 'dumpsys -T 500 service_name' on a service that times out after 2s
+TEST_F(DumpsysTest, DumpRunningServiceTimeoutInMs) {
+    sp<BinderMock> binder_mock = ExpectDumpAndHang("Valet", 2, "Here's your car");
+
+    CallMain({"-T", "500", "Valet"});
+
+    AssertOutputContains("SERVICE 'Valet' DUMP TIMEOUT (500ms) EXPIRED");
     AssertNotDumped("Here's your car");
 
     // TODO(b/65056227): BinderMock is not destructed because thread is detached on dumpsys.cpp
@@ -318,6 +349,65 @@ TEST_F(DumpsysTest, DumpWithArgsRunningService) {
     CallMain({"SERVICE", "Y", "U", "NO", "HANDLE", "ARGS"});
 
     AssertOutput("I DO!");
+}
+
+// Tests dumpsys passes the -a flag when called on all services
+TEST_F(DumpsysTest, PassAllFlagsToServices) {
+    ExpectListServices({"Locksmith", "Valet"});
+    ExpectCheckService("Locksmith");
+    ExpectCheckService("Valet");
+    ExpectDumpWithArgs("Locksmith", {"-a"}, "dumped1");
+    ExpectDumpWithArgs("Valet", {"-a"}, "dumped2");
+
+    CallMain({"-T", "500"});
+
+    AssertDumped("Locksmith", "dumped1");
+    AssertDumped("Valet", "dumped2");
+}
+
+// Tests dumpsys passes the -a flag when called on NORMAL priority services
+TEST_F(DumpsysTest, PassAllFlagsToNormalServices) {
+    ExpectListServicesWithPriority({"Locksmith", "Valet"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_NORMAL);
+    ExpectCheckService("Locksmith");
+    ExpectCheckService("Valet");
+    ExpectDumpWithArgs("Locksmith", {"-a", "--dump-priority", "NORMAL"}, "dump1");
+    ExpectDumpWithArgs("Valet", {"-a", "--dump-priority", "NORMAL"}, "dump2");
+
+    CallMain({"--priority", "NORMAL"});
+
+    AssertDumped("Locksmith", "dump1");
+    AssertDumped("Valet", "dump2");
+}
+
+// Tests dumpsys passes only priority flags when called on CRITICAL priority services
+TEST_F(DumpsysTest, PassPriorityFlagsToCriticalServices) {
+    ExpectListServicesWithPriority({"Locksmith", "Valet"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_CRITICAL);
+    ExpectCheckService("Locksmith");
+    ExpectCheckService("Valet");
+    ExpectDumpWithArgs("Locksmith", {"--dump-priority", "CRITICAL"}, "dump1");
+    ExpectDumpWithArgs("Valet", {"--dump-priority", "CRITICAL"}, "dump2");
+
+    CallMain({"--priority", "CRITICAL"});
+
+    AssertDumpedWithPriority("Locksmith", "dump1", PriorityDumper::PRIORITY_ARG_CRITICAL);
+    AssertDumpedWithPriority("Valet", "dump2", PriorityDumper::PRIORITY_ARG_CRITICAL);
+}
+
+// Tests dumpsys passes only priority flags when called on HIGH priority services
+TEST_F(DumpsysTest, PassPriorityFlagsToHighServices) {
+    ExpectListServicesWithPriority({"Locksmith", "Valet"},
+                                   IServiceManager::DUMP_FLAG_PRIORITY_HIGH);
+    ExpectCheckService("Locksmith");
+    ExpectCheckService("Valet");
+    ExpectDumpWithArgs("Locksmith", {"--dump-priority", "HIGH"}, "dump1");
+    ExpectDumpWithArgs("Valet", {"--dump-priority", "HIGH"}, "dump2");
+
+    CallMain({"--priority", "HIGH"});
+
+    AssertDumpedWithPriority("Locksmith", "dump1", PriorityDumper::PRIORITY_ARG_HIGH);
+    AssertDumpedWithPriority("Valet", "dump2", PriorityDumper::PRIORITY_ARG_HIGH);
 }
 
 // Tests 'dumpsys' with no arguments
@@ -412,8 +502,8 @@ TEST_F(DumpsysTest, DumpWithPriorityNormal) {
     CallMain({"--priority", "NORMAL"});
 
     AssertRunningServices({"runningnormal1", "runningnormal2"});
-    AssertDumpedWithPriority("runningnormal1", "dump1", PriorityDumper::PRIORITY_ARG_NORMAL);
-    AssertDumpedWithPriority("runningnormal2", "dump2", PriorityDumper::PRIORITY_ARG_NORMAL);
+    AssertDumped("runningnormal1", "dump1");
+    AssertDumped("runningnormal2", "dump2");
 }
 
 // Tests 'dumpsys --proto'
@@ -447,4 +537,30 @@ TEST_F(DumpsysTest, DumpWithPriorityHighAndProto) {
     AssertRunningServices({"runninghigh1", "runninghigh2"});
     AssertDumpedWithPriority("runninghigh1", "dump1", PriorityDumper::PRIORITY_ARG_HIGH);
     AssertDumpedWithPriority("runninghigh2", "dump2", PriorityDumper::PRIORITY_ARG_HIGH);
+}
+
+TEST_F(DumpsysTest, GetBytesWritten) {
+    const char* serviceName = "service2";
+    const char* dumpContents = "dump1";
+    ExpectDump(serviceName, dumpContents);
+
+    String16 service(serviceName);
+    Vector<String16> args;
+    std::chrono::duration<double> elapsedDuration;
+    size_t bytesWritten;
+
+    CallSingleService(service, args, IServiceManager::DUMP_FLAG_PRIORITY_ALL,
+                      /* as_proto = */ false, elapsedDuration, bytesWritten);
+
+    AssertOutput(dumpContents);
+    EXPECT_THAT(bytesWritten, Eq(strlen(dumpContents)));
+}
+
+TEST_F(DumpsysTest, WriteDumpWithoutThreadStart) {
+    std::chrono::duration<double> elapsedDuration;
+    size_t bytesWritten;
+    status_t status =
+        dump_.writeDump(STDOUT_FILENO, String16("service"), std::chrono::milliseconds(500),
+                        /* as_proto = */ false, elapsedDuration, bytesWritten);
+    EXPECT_THAT(status, Eq(INVALID_OPERATION));
 }

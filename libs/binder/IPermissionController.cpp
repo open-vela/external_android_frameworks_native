@@ -31,7 +31,7 @@ namespace android {
 class BpPermissionController : public BpInterface<IPermissionController>
 {
 public:
-    explicit BpPermissionController(const sp<IBinder>& impl)
+    BpPermissionController(const sp<IBinder>& impl)
         : BpInterface<IPermissionController>(impl)
     {
     }
@@ -78,18 +78,6 @@ public:
         if (reply.readExceptionCode() != 0) return false;
         return reply.readInt32() != 0;
     }
-
-    virtual int getPackageUid(const String16& package, int flags)
-    {
-        Parcel data, reply;
-        data.writeInterfaceToken(IPermissionController::getInterfaceDescriptor());
-        data.writeString16(package);
-        data.writeInt32(flags);
-        remote()->transact(GET_PACKAGE_UID_TRANSACTION, data, &reply);
-        // fail on exception
-        if (reply.readExceptionCode() != 0) return false;
-        return reply.readInt32();
-    }
 };
 
 IMPLEMENT_META_INTERFACE(PermissionController, "android.os.IPermissionController");
@@ -131,16 +119,6 @@ status_t BnPermissionController::onTransact(
             const bool res = isRuntimePermission(permission);
             reply->writeNoException();
             reply->writeInt32(res ? 1 : 0);
-            return NO_ERROR;
-        } break;
-
-        case GET_PACKAGE_UID_TRANSACTION: {
-            CHECK_INTERFACE(IPermissionController, data, reply);
-            String16 package = data.readString16();
-            int flags = data.readInt32();
-            const int uid = getPackageUid(package, flags);
-            reply->writeNoException();
-            reply->writeInt32(uid);
             return NO_ERROR;
         } break;
 

@@ -126,7 +126,7 @@ class SimpleBestFitAllocator
         PAGE_ALIGNED = 0x00000001
     };
 public:
-    explicit SimpleBestFitAllocator(size_t size);
+    SimpleBestFitAllocator(size_t size);
     ~SimpleBestFitAllocator();
 
     size_t      allocate(size_t size, uint32_t flags = 0);
@@ -134,8 +134,6 @@ public:
     size_t      size() const;
     void        dump(const char* what) const;
     void        dump(String8& res, const char* what) const;
-
-    static size_t getAllocationAlignment() { return kMemoryAlign; }
 
 private:
 
@@ -266,12 +264,6 @@ SimpleBestFitAllocator* MemoryDealer::allocator() const {
     return mAllocator;
 }
 
-// static
-size_t MemoryDealer::getAllocationAlignment()
-{
-    return SimpleBestFitAllocator::getAllocationAlignment();
-}
-
 // ----------------------------------------------------------------------------
 
 // align all the memory blocks on a cache-line boundary
@@ -289,15 +281,7 @@ SimpleBestFitAllocator::SimpleBestFitAllocator(size_t size)
 SimpleBestFitAllocator::~SimpleBestFitAllocator()
 {
     while(!mList.isEmpty()) {
-        chunk_t* removed = mList.remove(mList.head());
-#ifdef __clang_analyzer__
-        // Clang static analyzer gets confused in this loop
-        // and generates a false positive warning about accessing
-        // memory that is already freed.
-        // Add an "assert" to avoid the confusion.
-        LOG_ALWAYS_FATAL_IF(mList.head() == removed);
-#endif
-        delete removed;
+        delete mList.remove(mList.head());
     }
 }
 

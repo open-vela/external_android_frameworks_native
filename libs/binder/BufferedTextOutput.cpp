@@ -17,11 +17,11 @@
 #include <binder/BufferedTextOutput.h>
 #include <binder/Debug.h>
 
-#include <cutils/atomic.h>
-#include <cutils/threads.h>
+#include <utils/Atomic.h>
 #include <utils/Log.h>
 #include <utils/RefBase.h>
 #include <utils/Vector.h>
+#include <cutils/threads.h>
 
 #include <private/binder/Static.h>
 
@@ -34,7 +34,7 @@ namespace android {
 
 struct BufferedTextOutput::BufferState : public RefBase
 {
-    explicit BufferState(int32_t _seq)
+    BufferState(int32_t _seq)
         : seq(_seq)
         , buffer(NULL)
         , bufferPos(0)

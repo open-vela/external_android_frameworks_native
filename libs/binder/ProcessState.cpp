@@ -18,12 +18,12 @@
 
 #include <binder/ProcessState.h>
 
-#include <utils/Atomic.h>
 #include <binder/BpBinder.h>
 #include <binder/IPCThreadState.h>
+#include <binder/IServiceManager.h>
+#include <cutils/atomic.h>
 #include <utils/Log.h>
 #include <utils/String8.h>
-#include <binder/IServiceManager.h>
 #include <utils/String8.h>
 #include <utils/threads.h>
 
@@ -86,7 +86,19 @@ sp<ProcessState> ProcessState::initWithDriver(const char* driver)
         }
         LOG_ALWAYS_FATAL("ProcessState was already initialized.");
     }
+
+    if (access(driver, R_OK) == -1) {
+        ALOGE("Binder driver %s is unavailable. Using /dev/binder instead.", driver);
+        driver = "/dev/binder";
+    }
+
     gProcess = new ProcessState(driver);
+    return gProcess;
+}
+
+sp<ProcessState> ProcessState::selfOrNull()
+{
+    Mutex::Autolock _l(gProcessMutex);
     return gProcess;
 }
 
@@ -176,6 +188,46 @@ bool ProcessState::becomeContextManager(context_check_func checkFunc, void* user
     return mManagesContexts;
 }
 
+// Get references to userspace objects held by the kernel binder driver
+// Writes up to count elements into buf, and returns the total number
+// of references the kernel has, which may be larger than count.
+// buf may be NULL if count is 0.  The pointers returned by this method
+// should only be used for debugging and not dereferenced, they may
+// already be invalid.
+ssize_t ProcessState::getKernelReferences(size_t buf_count, uintptr_t* buf)
+{
+    // TODO: remove these when they are defined by bionic's binder.h
+    struct binder_node_debug_info {
+        binder_uintptr_t ptr;
+        binder_uintptr_t cookie;
+        __u32 has_strong_ref;
+        __u32 has_weak_ref;
+    };
+#define BINDER_GET_NODE_DEBUG_INFO _IOWR('b', 11, struct binder_node_debug_info)
+
+    binder_node_debug_info info = {};
+
+    uintptr_t* end = buf ? buf + buf_count : NULL;
+    size_t count = 0;
+
+    do {
+        status_t result = ioctl(mDriverFD, BINDER_GET_NODE_DEBUG_INFO, &info);
+        if (result < 0) {
+            return -1;
+        }
+        if (info.ptr != 0) {
+            if (buf && buf < end)
+                *buf++ = info.ptr;
+            count++;
+            if (buf && buf < end)
+                *buf++ = info.cookie;
+            count++;
+        }
+    } while (info.ptr != 0);
+
+    return count;
+}
+
 ProcessState::handle_entry* ProcessState::lookupHandleLocked(int32_t handle)
 {
     const size_t N=mHandleToObject.size();
@@ -230,7 +282,7 @@ sp<IBinder> ProcessState::getStrongProxyForHandle(int32_t handle)
                    return NULL;
             }
 
-            b = new BpBinder(handle); 
+            b = BpBinder::create(handle);
             e->binder = b;
             if (b) e->refs = b->getWeakRefs();
             result = b;
@@ -264,7 +316,7 @@ wp<IBinder> ProcessState::getWeakProxyForHandle(int32_t handle)
         // arriving from the driver.
         IBinder* b = e->binder;
         if (b == NULL || !e->refs->attemptIncWeak(this)) {
-            b = new BpBinder(handle);
+            b = BpBinder::create(handle);
             result = b;
             e->binder = b;
             if (b) e->refs = b->getWeakRefs();
@@ -374,7 +426,7 @@ ProcessState::ProcessState(const char *driver)
         mVMStart = mmap(0, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, 0);
         if (mVMStart == MAP_FAILED) {
             // *sigh*
-            ALOGE("Using /dev/binder failed: unable to mmap transaction memory.\n");
+            ALOGE("Using %s failed: unable to mmap transaction memory.\n", mDriverName.c_str());
             close(mDriverFD);
             mDriverFD = -1;
             mDriverName.clear();

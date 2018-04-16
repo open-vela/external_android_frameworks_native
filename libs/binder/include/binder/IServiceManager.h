@@ -19,6 +19,7 @@
 #define ANDROID_ISERVICE_MANAGER_H
 
 #include <binder/IInterface.h>
+#include <binder/IPermissionController.h>
 #include <utils/Vector.h>
 #include <utils/String16.h>
 

@@ -100,12 +100,11 @@ int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPa
             : APP_OPS_MANAGER_UNAVAILABLE_MODE;
 }
 
-int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
-        bool startIfModeDefault) {
+int32_t AppOpsManager::startOp(int32_t op, int32_t uid, const String16& callingPackage) {
     sp<IAppOpsService> service = getService();
     return service != NULL
-            ? service->startOperation(getToken(service), op, uid, callingPackage,
-                    startIfModeDefault) : APP_OPS_MANAGER_UNAVAILABLE_MODE;
+            ? service->startOperation(getToken(service), op, uid, callingPackage)
+            : APP_OPS_MANAGER_UNAVAILABLE_MODE;
 }
 
 void AppOpsManager::finishOp(int32_t op, int32_t uid, const String16& callingPackage) {

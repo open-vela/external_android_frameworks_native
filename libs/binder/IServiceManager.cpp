@@ -20,6 +20,9 @@
 
 #include <utils/Log.h>
 #include <binder/IPCThreadState.h>
+#ifndef __ANDROID_VNDK__
+#include <binder/IPermissionController.h>
+#endif
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 #include <utils/SystemClock.h>
@@ -47,6 +50,9 @@ sp<IServiceManager> defaultServiceManager()
 
     return gDefaultServiceManager;
 }
+
+#ifndef __ANDROID_VNDK__
+// IPermissionController is not accessible to vendors
 
 bool checkCallingPermission(const String16& permission)
 {
@@ -122,6 +128,8 @@ bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
     }
 }
 
+#endif //__ANDROID_VNDK__
+
 // ----------------------------------------------------------------------
 
 class BpServiceManager : public BpInterface<IServiceManager>
@@ -161,19 +169,18 @@ public:
     }
 
     virtual status_t addService(const String16& name, const sp<IBinder>& service,
-            bool allowIsolated)
-    {
+                                bool allowIsolated, int dumpsysPriority) {
         Parcel data, reply;
         data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
         data.writeString16(name);
         data.writeStrongBinder(service);
         data.writeInt32(allowIsolated ? 1 : 0);
+        data.writeInt32(dumpsysPriority);
         status_t err = remote()->transact(ADD_SERVICE_TRANSACTION, data, &reply);
         return err == NO_ERROR ? reply.readExceptionCode() : err;
     }
 
-    virtual Vector<String16> listServices()
-    {
+    virtual Vector<String16> listServices(int dumpsysPriority) {
         Vector<String16> res;
         int n = 0;
 
@@ -181,6 +188,7 @@ public:
             Parcel data, reply;
             data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
             data.writeInt32(n++);
+            data.writeInt32(dumpsysPriority);
             status_t err = remote()->transact(LIST_SERVICES_TRANSACTION, data, &reply);
             if (err != NO_ERROR)
                 break;

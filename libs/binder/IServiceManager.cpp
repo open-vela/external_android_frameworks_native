@@ -20,9 +20,14 @@
 
 #include <utils/Log.h>
 #include <binder/IPCThreadState.h>
+#ifndef __ANDROID_VNDK__
+#include <binder/IPermissionController.h>
+#endif
 #include <binder/Parcel.h>
+#include <cutils/properties.h>
 #include <utils/String8.h>
 #include <utils/SystemClock.h>
+#include <utils/CallStack.h>
 
 #include <private/binder/Static.h>
 
@@ -47,6 +52,9 @@ sp<IServiceManager> defaultServiceManager()
     return gDefaultServiceManager;
 }
 
+#ifndef __ANDROID_VNDK__
+// IPermissionController is not accessible to vendors
+
 bool checkCallingPermission(const String16& permission)
 {
     return checkCallingPermission(permission, NULL, NULL);
@@ -67,11 +75,6 @@ bool checkCallingPermission(const String16& permission, int32_t* outPid, int32_t
 
 bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
 {
-#ifdef __BRILLO__
-    // Brillo doesn't currently run ActivityManager or support framework permissions.
-    return true;
-#endif
-
     sp<IPermissionController> pc;
     gDefaultServiceManagerLock.lock();
     pc = gPermissionController;
@@ -126,25 +129,49 @@ bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
     }
 }
 
+#endif //__ANDROID_VNDK__
+
 // ----------------------------------------------------------------------
 
 class BpServiceManager : public BpInterface<IServiceManager>
 {
 public:
-    BpServiceManager(const sp<IBinder>& impl)
+    explicit BpServiceManager(const sp<IBinder>& impl)
         : BpInterface<IServiceManager>(impl)
     {
     }
 
     virtual sp<IBinder> getService(const String16& name) const
     {
-        unsigned n;
-        for (n = 0; n < 5; n++){
+        sp<IBinder> svc = checkService(name);
+        if (svc != NULL) return svc;
+
+        const bool isVendorService =
+            strcmp(ProcessState::self()->getDriverName().c_str(), "/dev/vndbinder") == 0;
+        const long timeout = uptimeMillis() + 5000;
+        if (!gSystemBootCompleted) {
+            char bootCompleted[PROPERTY_VALUE_MAX];
+            property_get("sys.boot_completed", bootCompleted, "0");
+            gSystemBootCompleted = strcmp(bootCompleted, "1") == 0 ? true : false;
+        }
+        // retry interval in millisecond.
+        const long sleepTime = gSystemBootCompleted ? 1000 : 100;
+
+        int n = 0;
+        while (uptimeMillis() < timeout) {
+            n++;
+            if (isVendorService) {
+                ALOGI("Waiting for vendor service %s...", String8(name).string());
+                CallStack stack(LOG_TAG);
+            } else if (n%10 == 0) {
+                ALOGI("Waiting for service %s...", String8(name).string());
+            }
+            usleep(1000*sleepTime);
+
             sp<IBinder> svc = checkService(name);
             if (svc != NULL) return svc;
-            ALOGI("Waiting for service %s...\n", String8(name).string());
-            sleep(1);
         }
+        ALOGW("Service %s didn't start. Returning NULL", String8(name).string());
         return NULL;
     }
 
@@ -158,19 +185,18 @@ public:
     }
 
     virtual status_t addService(const String16& name, const sp<IBinder>& service,
-            bool allowIsolated)
-    {
+                                bool allowIsolated, int dumpsysPriority) {
         Parcel data, reply;
         data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
         data.writeString16(name);
         data.writeStrongBinder(service);
         data.writeInt32(allowIsolated ? 1 : 0);
+        data.writeInt32(dumpsysPriority);
         status_t err = remote()->transact(ADD_SERVICE_TRANSACTION, data, &reply);
         return err == NO_ERROR ? reply.readExceptionCode() : err;
     }
 
-    virtual Vector<String16> listServices()
-    {
+    virtual Vector<String16> listServices(int dumpsysPriority) {
         Vector<String16> res;
         int n = 0;
 
@@ -178,6 +204,7 @@ public:
             Parcel data, reply;
             data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
             data.writeInt32(n++);
+            data.writeInt32(dumpsysPriority);
             status_t err = remote()->transact(LIST_SERVICES_TRANSACTION, data, &reply);
             if (err != NO_ERROR)
                 break;

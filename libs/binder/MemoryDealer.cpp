@@ -126,7 +126,7 @@ class SimpleBestFitAllocator
         PAGE_ALIGNED = 0x00000001
     };
 public:
-    SimpleBestFitAllocator(size_t size);
+    explicit SimpleBestFitAllocator(size_t size);
     ~SimpleBestFitAllocator();
 
     size_t      allocate(size_t size, uint32_t flags = 0);
@@ -289,7 +289,15 @@ SimpleBestFitAllocator::SimpleBestFitAllocator(size_t size)
 SimpleBestFitAllocator::~SimpleBestFitAllocator()
 {
     while(!mList.isEmpty()) {
-        delete mList.remove(mList.head());
+        chunk_t* removed = mList.remove(mList.head());
+#ifdef __clang_analyzer__
+        // Clang static analyzer gets confused in this loop
+        // and generates a false positive warning about accessing
+        // memory that is already freed.
+        // Add an "assert" to avoid the confusion.
+        LOG_ALWAYS_FATAL_IF(mList.head() == removed);
+#endif
+        delete removed;
     }
 }
 

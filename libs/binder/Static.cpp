@@ -48,7 +48,7 @@ protected:
 class FdTextOutput : public BufferedTextOutput
 {
 public:
-    FdTextOutput(int fd) : BufferedTextOutput(MULTITHREADED), mFD(fd) { }
+    explicit FdTextOutput(int fd) : BufferedTextOutput(MULTITHREADED), mFD(fd) { }
     virtual ~FdTextOutput() { };
 
 protected:
@@ -94,6 +94,9 @@ static LibBinderIPCtStatics gIPCStatics;
 
 Mutex gDefaultServiceManagerLock;
 sp<IServiceManager> gDefaultServiceManager;
+#ifndef __ANDROID_VNDK__
 sp<IPermissionController> gPermissionController;
+#endif
+bool gSystemBootCompleted = false;
 
 }   // namespace android

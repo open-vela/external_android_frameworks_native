@@ -8,22 +8,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <cutils/android_filesystem_config.h>
 #include <cutils/multiuser.h>
-
-#include <private/android_filesystem_config.h>
 
 #include <selinux/android.h>
 #include <selinux/avc.h>
 
 #include "binder.h"
 
-#if 0
-#define ALOGI(x...) fprintf(stderr, "svcmgr: " x)
-#define ALOGE(x...) fprintf(stderr, "svcmgr: " x)
+#ifdef VENDORSERVICEMANAGER
+#define LOG_TAG "VendorServiceManager"
 #else
 #define LOG_TAG "ServiceManager"
-#include <cutils/log.h>
 #endif
+#include <log/log.h>
 
 struct audit_data {
     pid_t pid;
@@ -60,7 +58,6 @@ int str16eq(const uint16_t *a, const char *b)
     return 1;
 }
 
-static int selinux_enabled;
 static char *service_manager_context;
 static struct selabel_handle* sehandle;
 
@@ -89,10 +86,6 @@ static bool check_mac_perms(pid_t spid, uid_t uid, const char *tctx, const char 
 
 static bool check_mac_perms_from_getcon(pid_t spid, uid_t uid, const char *perm)
 {
-    if (selinux_enabled <= 0) {
-        return true;
-    }
-
     return check_mac_perms(spid, uid, service_manager_context, perm, NULL);
 }
 
@@ -100,10 +93,6 @@ static bool check_mac_perms_from_lookup(pid_t spid, uid_t uid, const char *perm,
 {
     bool allowed;
     char *tctx = NULL;
-
-    if (selinux_enabled <= 0) {
-        return true;
-    }
 
     if (!sehandle) {
         ALOGE("SELinux: Failed to find sehandle. Aborting service_manager.\n");
@@ -149,6 +138,7 @@ struct svcinfo
     uint32_t handle;
     struct binder_death death;
     int allow_isolated;
+    uint32_t dumpsys_priority;
     size_t len;
     uint16_t name[0];
 };
@@ -209,11 +199,8 @@ uint32_t do_find_service(const uint16_t *s, size_t len, uid_t uid, pid_t spid)
     return si->handle;
 }
 
-int do_add_service(struct binder_state *bs,
-                   const uint16_t *s, size_t len,
-                   uint32_t handle, uid_t uid, int allow_isolated,
-                   pid_t spid)
-{
+int do_add_service(struct binder_state *bs, const uint16_t *s, size_t len, uint32_t handle,
+                   uid_t uid, int allow_isolated, uint32_t dumpsys_priority, pid_t spid) {
     struct svcinfo *si;
 
     //ALOGI("add_service('%s',%x,%s) uid=%d\n", str8(s, len), handle,
@@ -250,6 +237,7 @@ int do_add_service(struct binder_state *bs,
         si->death.func = (void*) svcinfo_death;
         si->death.ptr = si;
         si->allow_isolated = allow_isolated;
+        si->dumpsys_priority = dumpsys_priority;
         si->next = svclist;
         svclist = si;
     }
@@ -270,6 +258,7 @@ int svcmgr_handler(struct binder_state *bs,
     uint32_t handle;
     uint32_t strict_policy;
     int allow_isolated;
+    uint32_t dumpsys_priority;
 
     //ALOGI("target=%p code=%d pid=%d uid=%d\n",
     //      (void*) txn->target.ptr, txn->code, txn->sender_pid, txn->sender_euid);
@@ -297,7 +286,11 @@ int svcmgr_handler(struct binder_state *bs,
     }
 
     if (sehandle && selinux_status_updated() > 0) {
+#ifdef VENDORSERVICEMANAGER
+        struct selabel_handle *tmp_sehandle = selinux_android_vendor_service_context_handle();
+#else
         struct selabel_handle *tmp_sehandle = selinux_android_service_context_handle();
+#endif
         if (tmp_sehandle) {
             selabel_close(sehandle);
             sehandle = tmp_sehandle;
@@ -324,13 +317,15 @@ int svcmgr_handler(struct binder_state *bs,
         }
         handle = bio_get_ref(msg);
         allow_isolated = bio_get_uint32(msg) ? 1 : 0;
-        if (do_add_service(bs, s, len, handle, txn->sender_euid,
-            allow_isolated, txn->sender_pid))
+        dumpsys_priority = bio_get_uint32(msg);
+        if (do_add_service(bs, s, len, handle, txn->sender_euid, allow_isolated, dumpsys_priority,
+                           txn->sender_pid))
             return -1;
         break;
 
     case SVC_MGR_LIST_SERVICES: {
         uint32_t n = bio_get_uint32(msg);
+        uint32_t req_dumpsys_priority = bio_get_uint32(msg);
 
         if (!svc_can_list(txn->sender_pid, txn->sender_euid)) {
             ALOGE("list_service() uid=%d - PERMISSION DENIED\n",
@@ -338,8 +333,15 @@ int svcmgr_handler(struct binder_state *bs,
             return -1;
         }
         si = svclist;
-        while ((n-- > 0) && si)
+        // walk through the list of services n times skipping services that
+        // do not support the requested priority
+        while (si) {
+            if (si->dumpsys_priority & req_dumpsys_priority) {
+                if (n == 0) break;
+                n--;
+            }
             si = si->next;
+        }
         if (si) {
             bio_put_string16(reply, si->name);
             return 0;
@@ -369,13 +371,28 @@ static int audit_callback(void *data, __unused security_class_t cls, char *buf, 
     return 0;
 }
 
-int main()
+int main(int argc, char** argv)
 {
     struct binder_state *bs;
+    union selinux_callback cb;
+    char *driver;
 
-    bs = binder_open(128*1024);
+    if (argc > 1) {
+        driver = argv[1];
+    } else {
+        driver = "/dev/binder";
+    }
+
+    bs = binder_open(driver, 128*1024);
     if (!bs) {
-        ALOGE("failed to open binder driver\n");
+#ifdef VENDORSERVICEMANAGER
+        ALOGW("failed to open binder driver %s\n", driver);
+        while (true) {
+            sleep(UINT_MAX);
+        }
+#else
+        ALOGE("failed to open binder driver %s\n", driver);
+#endif
         return -1;
     }
 
@@ -384,27 +401,28 @@ int main()
         return -1;
     }
 
-    selinux_enabled = is_selinux_enabled();
-    sehandle = selinux_android_service_context_handle();
-    selinux_status_open(true);
-
-    if (selinux_enabled > 0) {
-        if (sehandle == NULL) {
-            ALOGE("SELinux: Failed to acquire sehandle. Aborting.\n");
-            abort();
-        }
-
-        if (getcon(&service_manager_context) != 0) {
-            ALOGE("SELinux: Failed to acquire service_manager context. Aborting.\n");
-            abort();
-        }
-    }
-
-    union selinux_callback cb;
     cb.func_audit = audit_callback;
     selinux_set_callback(SELINUX_CB_AUDIT, cb);
     cb.func_log = selinux_log_callback;
     selinux_set_callback(SELINUX_CB_LOG, cb);
+
+#ifdef VENDORSERVICEMANAGER
+    sehandle = selinux_android_vendor_service_context_handle();
+#else
+    sehandle = selinux_android_service_context_handle();
+#endif
+    selinux_status_open(true);
+
+    if (sehandle == NULL) {
+        ALOGE("SELinux: Failed to acquire sehandle. Aborting.\n");
+        abort();
+    }
+
+    if (getcon(&service_manager_context) != 0) {
+        ALOGE("SELinux: Failed to acquire service_manager context. Aborting.\n");
+        abort();
+    }
+
 
     binder_loop(bs, svcmgr_handler);
 

@@ -68,6 +68,13 @@ static String8 good_old_string(const String16& src)
 
 int main(int argc, char* const argv[])
 {
+    sp<IServiceManager> sm = defaultServiceManager();
+    fflush(stdout);
+    if (sm == NULL) {
+        aerr << "service: Unable to get default service manager!" << endl;
+        return 20;
+    }
+    
     bool wantsUsage = false;
     int result = 0;
     
@@ -87,15 +94,6 @@ int main(int argc, char* const argv[])
             result = 10;
             break;
         }
-    }
-#ifdef VENDORSERVICES
-    ProcessState::initWithDriver("/dev/vndbinder");
-#endif
-    sp<IServiceManager> sm = defaultServiceManager();
-    fflush(stdout);
-    if (sm == NULL) {
-        aerr << "service: Unable to get default service manager!" << endl;
-        return 20;
     }
     
     if (optind >= argc) {

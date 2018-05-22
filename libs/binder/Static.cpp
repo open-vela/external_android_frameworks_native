@@ -79,9 +79,6 @@ sp<ProcessState> gProcess;
 
 Mutex gDefaultServiceManagerLock;
 sp<IServiceManager> gDefaultServiceManager;
-#ifndef __ANDROID_VNDK__
 sp<IPermissionController> gPermissionController;
-#endif
-bool gSystemBootCompleted = false;
 
 }   // namespace android

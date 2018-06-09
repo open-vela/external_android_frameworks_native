@@ -295,7 +295,7 @@ static void* thread_start(void* p) {
 
   no_inherent += reply.readInt32();
   no_sync += reply.readInt32();
-  return nullptr;
+  return 0;
 }
 
 // create a fifo thread to transact and wait it to finished

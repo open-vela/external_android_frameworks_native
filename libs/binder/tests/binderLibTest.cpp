@@ -89,7 +89,7 @@ pid_t start_server_process(int arg2, bool usePoll = false)
         strpipefd1,
         usepoll,
         binderserversuffix,
-        nullptr
+        NULL
     };
 
     ret = pipe(pipefd);
@@ -124,7 +124,7 @@ pid_t start_server_process(int arg2, bool usePoll = false)
         }
     }
     if (ret < 0) {
-        wait(nullptr);
+        wait(NULL);
         return ret;
     }
     return pid;
@@ -146,7 +146,7 @@ class BinderLibTestEnv : public ::testing::Environment {
             sp<IServiceManager> sm = defaultServiceManager();
             //printf("%s: pid %d, get service\n", __func__, m_pid);
             m_server = sm->getService(binderLibTestServiceName);
-            ASSERT_TRUE(m_server != nullptr);
+            ASSERT_TRUE(m_server != NULL);
             //printf("%s: pid %d, get service done\n", __func__, m_pid);
         }
         virtual void TearDown() {
@@ -156,7 +156,7 @@ class BinderLibTestEnv : public ::testing::Environment {
             pid_t pid;
 
             //printf("%s: pid %d\n", __func__, m_pid);
-            if (m_server != nullptr) {
+            if (m_server != NULL) {
                 ret = m_server->transact(BINDER_LIB_TEST_GET_STATUS_TRANSACTION, data, &reply);
                 EXPECT_EQ(0, ret);
                 ret = m_server->transact(BINDER_LIB_TEST_EXIT_TRANSACTION, data, &reply, TF_ONE_WAY);
@@ -193,9 +193,9 @@ class BinderLibTest : public ::testing::Test {
             ret = m_server->transact(code, data, &reply);
             EXPECT_EQ(NO_ERROR, ret);
 
-            EXPECT_FALSE(binder != nullptr);
+            EXPECT_FALSE(binder != NULL);
             binder = reply.readStrongBinder();
-            EXPECT_TRUE(binder != nullptr);
+            EXPECT_TRUE(binder != NULL);
             ret = reply.readInt32(&id);
             EXPECT_EQ(NO_ERROR, ret);
             if (idPtr)
@@ -203,12 +203,12 @@ class BinderLibTest : public ::testing::Test {
             return binder;
         }
 
-        sp<IBinder> addServer(int32_t *idPtr = nullptr)
+        sp<IBinder> addServer(int32_t *idPtr = NULL)
         {
             return addServerEtc(idPtr, BINDER_LIB_TEST_ADD_SERVER);
         }
 
-        sp<IBinder> addPollServer(int32_t *idPtr = nullptr)
+        sp<IBinder> addPollServer(int32_t *idPtr = NULL)
         {
             return addServerEtc(idPtr, BINDER_LIB_TEST_ADD_POLL_SERVER);
         }
@@ -275,8 +275,8 @@ class BinderLibTestEvent
         BinderLibTestEvent(void)
             : m_eventTriggered(false)
         {
-            pthread_mutex_init(&m_waitMutex, nullptr);
-            pthread_cond_init(&m_waitCond, nullptr);
+            pthread_mutex_init(&m_waitMutex, NULL);
+            pthread_cond_init(&m_waitCond, NULL);
         }
         int waitEvent(int timeout_s)
         {
@@ -316,7 +316,7 @@ class BinderLibTestCallBack : public BBinder, public BinderLibTestEvent
     public:
         BinderLibTestCallBack()
             : m_result(NOT_ENOUGH_DATA)
-            , m_prev_end(nullptr)
+            , m_prev_end(NULL)
         {
         }
         status_t getResult(void)
@@ -414,7 +414,7 @@ TEST_F(BinderLibTest, PtrSize) {
     int32_t ptrsize;
     Parcel data, reply;
     sp<IBinder> server = addServer();
-    ASSERT_TRUE(server != nullptr);
+    ASSERT_TRUE(server != NULL);
     ret = server->transact(BINDER_LIB_TEST_GET_PTR_SIZE_TRANSACTION, data, &reply);
     EXPECT_EQ(NO_ERROR, ret);
     ret = reply.readInt32(&ptrsize);
@@ -437,7 +437,7 @@ TEST_F(BinderLibTest, IndirectGetId2)
         BinderLibTestBundle datai;
 
         server = addServer(&serverId[i]);
-        ASSERT_TRUE(server != nullptr);
+        ASSERT_TRUE(server != NULL);
         data.writeStrongBinder(server);
         data.writeInt32(BINDER_LIB_TEST_GET_ID_TRANSACTION);
         datai.appendTo(&data);
@@ -481,7 +481,7 @@ TEST_F(BinderLibTest, IndirectGetId3)
         BinderLibTestBundle datai2;
 
         server = addServer(&serverId[i]);
-        ASSERT_TRUE(server != nullptr);
+        ASSERT_TRUE(server != NULL);
         data.writeStrongBinder(server);
         data.writeInt32(BINDER_LIB_TEST_INDIRECT_TRANSACTION);
 
@@ -547,7 +547,7 @@ TEST_F(BinderLibTest, CallBack)
 TEST_F(BinderLibTest, AddServer)
 {
     sp<IBinder> server = addServer();
-    ASSERT_TRUE(server != nullptr);
+    ASSERT_TRUE(server != NULL);
 }
 
 TEST_F(BinderLibTest, DeathNotificationNoRefs)
@@ -558,7 +558,7 @@ TEST_F(BinderLibTest, DeathNotificationNoRefs)
 
     {
         sp<IBinder> binder = addServer();
-        ASSERT_TRUE(binder != nullptr);
+        ASSERT_TRUE(binder != NULL);
         ret = binder->linkToDeath(testDeathRecipient);
         EXPECT_EQ(NO_ERROR, ret);
     }
@@ -580,7 +580,7 @@ TEST_F(BinderLibTest, DeathNotificationWeakRef)
 
     {
         sp<IBinder> binder = addServer();
-        ASSERT_TRUE(binder != nullptr);
+        ASSERT_TRUE(binder != NULL);
         ret = binder->linkToDeath(testDeathRecipient);
         EXPECT_EQ(NO_ERROR, ret);
         wbinder = binder;
@@ -603,7 +603,7 @@ TEST_F(BinderLibTest, DeathNotificationStrongRef)
 
     {
         sp<IBinder> binder = addServer();
-        ASSERT_TRUE(binder != nullptr);
+        ASSERT_TRUE(binder != NULL);
         ret = binder->linkToDeath(testDeathRecipient);
         EXPECT_EQ(NO_ERROR, ret);
         sbinder = binder;
@@ -630,13 +630,13 @@ TEST_F(BinderLibTest, DeathNotificationMultiple)
     sp<IBinder> passiveclient[clientcount];
 
     target = addServer();
-    ASSERT_TRUE(target != nullptr);
+    ASSERT_TRUE(target != NULL);
     for (int i = 0; i < clientcount; i++) {
         {
             Parcel data, reply;
 
             linkedclient[i] = addServer();
-            ASSERT_TRUE(linkedclient[i] != nullptr);
+            ASSERT_TRUE(linkedclient[i] != NULL);
             callBack[i] = new BinderLibTestCallBack();
             data.writeStrongBinder(target);
             data.writeStrongBinder(callBack[i]);
@@ -647,7 +647,7 @@ TEST_F(BinderLibTest, DeathNotificationMultiple)
             Parcel data, reply;
 
             passiveclient[i] = addServer();
-            ASSERT_TRUE(passiveclient[i] != nullptr);
+            ASSERT_TRUE(passiveclient[i] != NULL);
             data.writeStrongBinder(target);
             ret = passiveclient[i]->transact(BINDER_LIB_TEST_ADD_STRONG_REF_TRANSACTION, data, &reply, TF_ONE_WAY);
             EXPECT_EQ(NO_ERROR, ret);
@@ -672,9 +672,9 @@ TEST_F(BinderLibTest, DeathNotificationThread)
     status_t ret;
     sp<BinderLibTestCallBack> callback;
     sp<IBinder> target = addServer();
-    ASSERT_TRUE(target != nullptr);
+    ASSERT_TRUE(target != NULL);
     sp<IBinder> client = addServer();
-    ASSERT_TRUE(client != nullptr);
+    ASSERT_TRUE(client != NULL);
 
     sp<TestDeathRecipient> testDeathRecipient = new TestDeathRecipient();
 
@@ -803,12 +803,12 @@ TEST_F(BinderLibTest, PromoteLocal) {
     sp<IBinder> strong = new BBinder();
     wp<IBinder> weak = strong;
     sp<IBinder> strong_from_weak = weak.promote();
-    EXPECT_TRUE(strong != nullptr);
+    EXPECT_TRUE(strong != NULL);
     EXPECT_EQ(strong, strong_from_weak);
-    strong = nullptr;
-    strong_from_weak = nullptr;
+    strong = NULL;
+    strong_from_weak = NULL;
     strong_from_weak = weak.promote();
-    EXPECT_TRUE(strong_from_weak == nullptr);
+    EXPECT_TRUE(strong_from_weak == NULL);
 }
 
 TEST_F(BinderLibTest, PromoteRemote) {
@@ -817,8 +817,8 @@ TEST_F(BinderLibTest, PromoteRemote) {
     sp<IBinder> strong = new BBinder();
     sp<IBinder> server = addServer();
 
-    ASSERT_TRUE(server != nullptr);
-    ASSERT_TRUE(strong != nullptr);
+    ASSERT_TRUE(server != NULL);
+    ASSERT_TRUE(strong != NULL);
 
     ret = data.writeWeakBinder(strong);
     EXPECT_EQ(NO_ERROR, ret);
@@ -835,7 +835,7 @@ TEST_F(BinderLibTest, CheckHandleZeroBinderHighBitsZeroCookie) {
     EXPECT_EQ(NO_ERROR, ret);
 
     const flat_binder_object *fb = reply.readObject(false);
-    ASSERT_TRUE(fb != nullptr);
+    ASSERT_TRUE(fb != NULL);
     EXPECT_EQ(BINDER_TYPE_HANDLE, fb->hdr.type);
     EXPECT_EQ(m_server, ProcessState::self()->getStrongProxyForHandle(fb->handle));
     EXPECT_EQ((binder_uintptr_t)0, fb->cookie);
@@ -846,7 +846,7 @@ TEST_F(BinderLibTest, FreedBinder) {
     status_t ret;
 
     sp<IBinder> server = addServer();
-    ASSERT_TRUE(server != nullptr);
+    ASSERT_TRUE(server != NULL);
 
     __u32 freedHandle;
     wp<IBinder> keepFreedBinder;
@@ -917,12 +917,12 @@ TEST_F(BinderLibTest, OnewayQueueing)
     data2.writeStrongBinder(callBack2);
     data2.writeInt32(0); // delay in us
 
-    ret = pollServer->transact(BINDER_LIB_TEST_DELAYED_CALL_BACK, data, nullptr, TF_ONE_WAY);
+    ret = pollServer->transact(BINDER_LIB_TEST_DELAYED_CALL_BACK, data, NULL, TF_ONE_WAY);
     EXPECT_EQ(NO_ERROR, ret);
 
     // The delay ensures that this second transaction will end up on the async_todo list
     // (for a single-threaded server)
-    ret = pollServer->transact(BINDER_LIB_TEST_DELAYED_CALL_BACK, data2, nullptr, TF_ONE_WAY);
+    ret = pollServer->transact(BINDER_LIB_TEST_DELAYED_CALL_BACK, data2, NULL, TF_ONE_WAY);
     EXPECT_EQ(NO_ERROR, ret);
 
     // The server will ensure that the two transactions are handled in the expected order;
@@ -945,10 +945,10 @@ class BinderLibTestService : public BBinder
             : m_id(id)
             , m_nextServerId(id + 1)
             , m_serverStartRequested(false)
-            , m_callback(nullptr)
+            , m_callback(NULL)
         {
-            pthread_mutex_init(&m_serverWaitMutex, nullptr);
-            pthread_cond_init(&m_serverWaitCond, nullptr);
+            pthread_mutex_init(&m_serverWaitMutex, NULL);
+            pthread_cond_init(&m_serverWaitCond, NULL);
         }
         ~BinderLibTestService()
         {
@@ -956,11 +956,11 @@ class BinderLibTestService : public BBinder
         }
 
         void processPendingCall() {
-            if (m_callback != nullptr) {
+            if (m_callback != NULL) {
                 Parcel data;
                 data.writeInt32(NO_ERROR);
                 m_callback->transact(BINDER_LIB_TEST_CALL_BACK, data, nullptr, TF_ONE_WAY);
-                m_callback = nullptr;
+                m_callback = NULL;
             }
         }
 
@@ -979,7 +979,7 @@ class BinderLibTestService : public BBinder
                 sp<IBinder> binder;
                 id = data.readInt32();
                 binder = data.readStrongBinder();
-                if (binder == nullptr) {
+                if (binder == NULL) {
                     return BAD_VALUE;
                 }
 
@@ -1029,7 +1029,7 @@ class BinderLibTestService : public BBinder
                     } else {
                         reply->writeStrongBinder(m_serverStarted);
                         reply->writeInt32(serverid);
-                        m_serverStarted = nullptr;
+                        m_serverStarted = NULL;
                         ret = NO_ERROR;
                     }
                 } else if (ret >= 0) {
@@ -1044,7 +1044,7 @@ class BinderLibTestService : public BBinder
             case BINDER_LIB_TEST_DELAYED_CALL_BACK: {
                 // Note: this transaction is only designed for use with a
                 // poll() server. See comments around epoll_wait().
-                if (m_callback != nullptr) {
+                if (m_callback != NULL) {
                     // A callback was already pending; this means that
                     // we received a second call while still processing
                     // the first one. Fail the test.
@@ -1052,7 +1052,7 @@ class BinderLibTestService : public BBinder
                     Parcel data2;
                     data2.writeInt32(UNKNOWN_ERROR);
 
-                    callback->transact(BINDER_LIB_TEST_CALL_BACK, data2, nullptr, TF_ONE_WAY);
+                    callback->transact(BINDER_LIB_TEST_CALL_BACK, data2, NULL, TF_ONE_WAY);
                 } else {
                     m_callback = data.readStrongBinder();
                     int32_t delayUs = data.readInt32();
@@ -1081,7 +1081,7 @@ class BinderLibTestService : public BBinder
                 Parcel data2, reply2;
                 sp<IBinder> binder;
                 binder = data.readStrongBinder();
-                if (binder == nullptr) {
+                if (binder == NULL) {
                     return BAD_VALUE;
                 }
                 data2.writeInt32(NO_ERROR);
@@ -1104,7 +1104,7 @@ class BinderLibTestService : public BBinder
                 reply->writeInt32(count);
                 for (int i = 0; i < count; i++) {
                     binder = data.readStrongBinder();
-                    if (binder == nullptr) {
+                    if (binder == NULL) {
                         return BAD_VALUE;
                     }
                     indirect_code = data.readInt32();
@@ -1137,11 +1137,11 @@ class BinderLibTestService : public BBinder
                 sp<IBinder> callback;
 
                 target = data.readStrongBinder();
-                if (target == nullptr) {
+                if (target == NULL) {
                     return BAD_VALUE;
                 }
                 callback = data.readStrongBinder();
-                if (callback == nullptr) {
+                if (callback == NULL) {
                     return BAD_VALUE;
                 }
                 ret = target->linkToDeath(testDeathRecipient);
@@ -1166,7 +1166,7 @@ class BinderLibTestService : public BBinder
                     return ret;
                 }
                 buf = data.readInplace(size);
-                if (buf == nullptr) {
+                if (buf == NULL) {
                     return BAD_VALUE;
                 }
                 ret = write(fd, buf, size);
@@ -1205,7 +1205,7 @@ class BinderLibTestService : public BBinder
                 sp<IBinder> server = sm->getService(binderLibTestServiceName);
 
                 weak = data.readWeakBinder();
-                if (weak == nullptr) {
+                if (weak == NULL) {
                     return BAD_VALUE;
                 }
                 strong = weak.promote();
@@ -1214,7 +1214,7 @@ class BinderLibTestService : public BBinder
                 if (ret != NO_ERROR)
                     exit(EXIT_FAILURE);
 
-                if (strong == nullptr) {
+                if (strong == NULL) {
                     reply->setError(1);
                 }
                 return NO_ERROR;
@@ -1223,7 +1223,7 @@ class BinderLibTestService : public BBinder
                 alarm(10);
                 return NO_ERROR;
             case BINDER_LIB_TEST_EXIT_TRANSACTION:
-                while (wait(nullptr) != -1 || errno != ECHILD)
+                while (wait(NULL) != -1 || errno != ECHILD)
                     ;
                 exit(EXIT_SUCCESS);
             case BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION: {

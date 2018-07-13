@@ -74,7 +74,7 @@ static size_t pad_size(size_t s) {
 }
 
 // Note: must be kept in sync with android/os/StrictMode.java's PENALTY_GATHER
-#define STRICT_MODE_PENALTY_GATHER (1 << 31)
+#define STRICT_MODE_PENALTY_GATHER (0x40 << 16)
 
 // XXX This can be made public if we want to provide
 // support for typed data.
@@ -433,7 +433,6 @@ void Parcel::setDataPosition(size_t pos) const
 
     mDataPos = pos;
     mNextObjectHint = 0;
-    mObjectsSorted = false;
 }
 
 status_t Parcel::setDataCapacity(size_t size)
@@ -1290,7 +1289,7 @@ status_t Parcel::write(const FlattenableHelperInterface& val)
     if (err) return err;
 
     // payload
-    void* const buf = this->writeInplace(len);
+    void* const buf = this->writeInplace(pad_size(len));
     if (buf == nullptr)
         return BAD_VALUE;
 
@@ -1483,59 +1482,6 @@ void Parcel::remove(size_t /*start*/, size_t /*amt*/)
     LOG_ALWAYS_FATAL("Parcel::remove() not yet implemented!");
 }
 
-status_t Parcel::validateReadData(size_t upperBound) const
-{
-    // Don't allow non-object reads on object data
-    if (mObjectsSorted || mObjectsSize <= 1) {
-data_sorted:
-        // Expect to check only against the next object
-        if (mNextObjectHint < mObjectsSize && upperBound > mObjects[mNextObjectHint]) {
-            // For some reason the current read position is greater than the next object
-            // hint. Iterate until we find the right object
-            size_t nextObject = mNextObjectHint;
-            do {
-                if (mDataPos < mObjects[nextObject] + sizeof(flat_binder_object)) {
-                    // Requested info overlaps with an object
-                    ALOGE("Attempt to read from protected data in Parcel %p", this);
-                    return PERMISSION_DENIED;
-                }
-                nextObject++;
-            } while (nextObject < mObjectsSize && upperBound > mObjects[nextObject]);
-            mNextObjectHint = nextObject;
-        }
-        return NO_ERROR;
-    }
-    // Quickly determine if mObjects is sorted.
-    binder_size_t* currObj = mObjects + mObjectsSize - 1;
-    binder_size_t* prevObj = currObj;
-    while (currObj > mObjects) {
-        prevObj--;
-        if(*prevObj > *currObj) {
-            goto data_unsorted;
-        }
-        currObj--;
-    }
-    mObjectsSorted = true;
-    goto data_sorted;
-
-data_unsorted:
-    // Insertion Sort mObjects
-    // Great for mostly sorted lists. If randomly sorted or reverse ordered mObjects become common,
-    // switch to std::sort(mObjects, mObjects + mObjectsSize);
-    for (binder_size_t* iter0 = mObjects + 1; iter0 < mObjects + mObjectsSize; iter0++) {
-        binder_size_t temp = *iter0;
-        binder_size_t* iter1 = iter0 - 1;
-        while (iter1 >= mObjects && *iter1 > temp) {
-            *(iter1 + 1) = *iter1;
-            iter1--;
-        }
-        *(iter1 + 1) = temp;
-    }
-    mNextObjectHint = 0;
-    mObjectsSorted = true;
-    goto data_sorted;
-}
-
 status_t Parcel::read(void* outData, size_t len) const
 {
     if (len > INT32_MAX) {
@@ -1546,15 +1492,6 @@ status_t Parcel::read(void* outData, size_t len) const
 
     if ((mDataPos+pad_size(len)) >= mDataPos && (mDataPos+pad_size(len)) <= mDataSize
             && len <= pad_size(len)) {
-        if (mObjectsSize > 0) {
-            status_t err = validateReadData(mDataPos + pad_size(len));
-            if(err != NO_ERROR) {
-                // Still increment the data position by the expected length
-                mDataPos += pad_size(len);
-                ALOGV("read Setting data pos of %p to %zu", this, mDataPos);
-                return err;
-            }
-        }
         memcpy(outData, mData+mDataPos, len);
         mDataPos += pad_size(len);
         ALOGV("read Setting data pos of %p to %zu", this, mDataPos);
@@ -1573,16 +1510,6 @@ const void* Parcel::readInplace(size_t len) const
 
     if ((mDataPos+pad_size(len)) >= mDataPos && (mDataPos+pad_size(len)) <= mDataSize
             && len <= pad_size(len)) {
-        if (mObjectsSize > 0) {
-            status_t err = validateReadData(mDataPos + pad_size(len));
-            if(err != NO_ERROR) {
-                // Still increment the data position by the expected length
-                mDataPos += pad_size(len);
-                ALOGV("readInplace Setting data pos of %p to %zu", this, mDataPos);
-                return nullptr;
-            }
-        }
-
         const void* data = mData+mDataPos;
         mDataPos += pad_size(len);
         ALOGV("readInplace Setting data pos of %p to %zu", this, mDataPos);
@@ -1596,15 +1523,6 @@ status_t Parcel::readAligned(T *pArg) const {
     COMPILE_TIME_ASSERT_FUNCTION_SCOPE(PAD_SIZE_UNSAFE(sizeof(T)) == sizeof(T));
 
     if ((mDataPos+sizeof(T)) <= mDataSize) {
-        if (mObjectsSize > 0) {
-            status_t err = validateReadData(mDataPos + sizeof(T));
-            if(err != NO_ERROR) {
-                // Still increment the data position by the expected length
-                mDataPos += sizeof(T);
-                return err;
-            }
-        }
-
         const void* data = mData+mDataPos;
         mDataPos += sizeof(T);
         *pArg =  *reinterpret_cast<const T*>(data);
@@ -2307,15 +2225,6 @@ status_t Parcel::readBlob(size_t len, ReadableBlob* outBlob) const
     int fd = readFileDescriptor();
     if (fd == int(BAD_TYPE)) return BAD_VALUE;
 
-    if (!ashmem_valid(fd)) {
-        ALOGE("invalid fd");
-        return BAD_VALUE;
-    }
-    int size = ashmem_get_size_region(fd);
-    if (size < 0 || size_t(size) < len) {
-        ALOGE("request size %zu does not match fd size %d", len, size);
-        return BAD_VALUE;
-    }
     void* ptr = ::mmap(nullptr, len, isMutable ? PROT_READ | PROT_WRITE : PROT_READ,
             MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) return NO_MEMORY;
@@ -2486,7 +2395,6 @@ void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
     mObjects = const_cast<binder_size_t*>(objects);
     mObjectsSize = mObjectsCapacity = objectsCount;
     mNextObjectHint = 0;
-    mObjectsSorted = false;
     mOwner = relFunc;
     mOwnerCookie = relCookie;
     for (size_t i = 0; i < mObjectsSize; i++) {
@@ -2645,7 +2553,6 @@ status_t Parcel::restartWrite(size_t desired)
     mObjects = nullptr;
     mObjectsSize = mObjectsCapacity = 0;
     mNextObjectHint = 0;
-    mObjectsSorted = false;
     mHasFds = false;
     mFdsKnown = true;
     mAllowFds = true;
@@ -2732,7 +2639,6 @@ status_t Parcel::continueWrite(size_t desired)
         mDataCapacity = desired;
         mObjectsSize = mObjectsCapacity = objectsSize;
         mNextObjectHint = 0;
-        mObjectsSorted = false;
 
     } else if (mData) {
         if (objectsSize < mObjectsSize) {
@@ -2754,7 +2660,6 @@ status_t Parcel::continueWrite(size_t desired)
             }
             mObjectsSize = objectsSize;
             mNextObjectHint = 0;
-            mObjectsSorted = false;
         }
 
         // We own the data, so we can just do a realloc().
@@ -2827,7 +2732,6 @@ void Parcel::initState()
     mObjectsSize = 0;
     mObjectsCapacity = 0;
     mNextObjectHint = 0;
-    mObjectsSorted = false;
     mHasFds = false;
     mFdsKnown = true;
     mAllowFds = true;

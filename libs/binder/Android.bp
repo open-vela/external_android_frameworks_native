@@ -107,6 +107,7 @@ cc_library_shared {
         "-Wall",
         "-Wextra",
         "-Werror",
+        "-Wzero-as-null-pointer-constant",
     ],
     product_variables: {
         binder32bit: {
@@ -119,6 +120,7 @@ cc_library_shared {
         "liblog",
         "libcutils",
         "libutils",
+        "libutilscallstack",
     ],
 
     header_libs: [

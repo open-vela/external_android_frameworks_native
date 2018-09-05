@@ -81,8 +81,7 @@ public:
         int32_t out;
         CHECK(EX_NONE == AParcel_readInt32(parcelOut, &out));
 
-        AParcel_delete(&parcelOut);
-
+        CHECK(EX_NONE == AIBinder_finalizeTransaction(mBinder, &parcelOut));
         return out;
     }
 

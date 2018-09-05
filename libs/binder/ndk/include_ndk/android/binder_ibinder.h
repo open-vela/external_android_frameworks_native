@@ -14,16 +14,6 @@
  * limitations under the License.
  */
 
-/**
- * @addtogroup NdkBinder
- * @{
- */
-
-/**
- * @file binder_ibinder.h
- * @brief Object which can receive transactions and be sent across processes.
- */
-
 #pragma once
 
 #include <stdint.h>
@@ -154,7 +144,7 @@ __attribute__((warn_unused_result)) AIBinder* AIBinder_new(const AIBinder_Class*
 /**
  * If this is hosted in a process other than the current one.
  */
-bool AIBinder_isRemote(const AIBinder* binder);
+bool AIBinder_isRemote(AIBinder* binder);
 
 /**
  * This can only be called if a strong reference to this object already exists in process.
@@ -245,7 +235,7 @@ __attribute__((warn_unused_result)) AIBinder_Weak* AIBinder_Weak_new(AIBinder* b
 /*
  * Deletes the weak reference. This will have no impact on the lifetime of the binder.
  */
-void AIBinder_Weak_delete(AIBinder_Weak** weakBinder);
+void AIBinder_Weak_delete(AIBinder_Weak* weakBinder);
 
 /**
  * If promotion succeeds, result will have one strong refcount added to it. Otherwise, this returns
@@ -254,5 +244,3 @@ void AIBinder_Weak_delete(AIBinder_Weak** weakBinder);
 __attribute__((warn_unused_result)) AIBinder* AIBinder_Weak_promote(AIBinder_Weak* weakBinder);
 
 __END_DECLS
-
-/** @} */

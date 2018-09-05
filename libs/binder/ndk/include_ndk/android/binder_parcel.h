@@ -14,16 +14,6 @@
  * limitations under the License.
  */
 
-/**
- * @addtogroup NdkBinder
- * @{
- */
-
-/**
- * @file binder_parcel.h
- * @brief A collection of data that can be sent as a single packet.
- */
-
 #pragma once
 
 #include <sys/cdefs.h>
@@ -155,5 +145,3 @@ binder_status_t AParcel_readByte(const AParcel* parcel, int8_t* value);
 // @END
 
 __END_DECLS
-
-/** @} */

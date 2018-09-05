@@ -189,7 +189,7 @@ status_t BufferedTextOutput::print(const char* txt, size_t len)
                 // them out without going through the buffer.
                 
                 // Slurp up all of the lines.
-                const char* lastLine = txt;
+                const char* lastLine = txt+1;
                 while (txt < end) {
                     if (*txt++ == '\n') lastLine = txt;
                 }

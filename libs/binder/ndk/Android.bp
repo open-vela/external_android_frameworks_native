@@ -24,10 +24,10 @@ cc_library {
     ],
 
     srcs: [
-        "ibinder.cpp",
-        "parcel.cpp",
-        "process.cpp",
-        "service_manager.cpp",
+        "ABinderProcess.cpp",
+        "AIBinder.cpp",
+        "AParcel.cpp",
+        "AServiceManager.cpp",
     ],
 
     shared_libs: [

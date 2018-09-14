@@ -27,7 +27,6 @@ cc_library {
         "ibinder.cpp",
         "parcel.cpp",
         "process.cpp",
-        "status.cpp",
         "service_manager.cpp",
     ],
 

@@ -33,7 +33,7 @@ int main() {
     // Strong reference to MyFoo kept by service manager.
     binder_status_t status = (new MyFoo)->addService(IFoo::kSomeInstanceName);
 
-    if (status != STATUS_OK) {
+    if (status != EX_NONE) {
         LOG(FATAL) << "Could not register: " << status;
     }
 

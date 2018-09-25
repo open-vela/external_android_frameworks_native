@@ -15,7 +15,6 @@
  */
 
 #include <android-base/logging.h>
-#include <android/binder_ibinder_jni.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
 #include <gtest/gtest.h>
@@ -101,11 +100,6 @@ TEST(NdkBinder, EqualityOfRemoteBinderPointer) {
 
     AIBinder_decStrong(binderA);
     AIBinder_decStrong(binderB);
-}
-
-TEST(NdkBinder, ToFromJavaNullptr) {
-    EXPECT_EQ(nullptr, AIBinder_toJavaBinder(nullptr, nullptr));
-    EXPECT_EQ(nullptr, AIBinder_fromJavaBinder(nullptr, nullptr));
 }
 
 TEST(NdkBinder, ABpBinderRefCount) {

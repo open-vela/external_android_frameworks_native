@@ -24,17 +24,11 @@ Status Status::ok() {
 }
 
 Status Status::fromExceptionCode(int32_t exceptionCode) {
-    if (exceptionCode == EX_TRANSACTION_FAILED) {
-        return Status(exceptionCode, FAILED_TRANSACTION);
-    }
     return Status(exceptionCode, OK);
 }
 
 Status Status::fromExceptionCode(int32_t exceptionCode,
                                  const String8& message) {
-    if (exceptionCode == EX_TRANSACTION_FAILED) {
-        return Status(exceptionCode, FAILED_TRANSACTION, message);
-    }
     return Status(exceptionCode, OK, message);
 }
 
@@ -142,7 +136,7 @@ status_t Status::writeToParcel(Parcel* parcel) const {
     // Something really bad has happened, and we're not going to even
     // try returning rich error data.
     if (mException == EX_TRANSACTION_FAILED) {
-        return mErrorCode;
+        return mErrorCode == OK ? FAILED_TRANSACTION : mErrorCode;
     }
 
     status_t status = parcel->writeInt32(mException);
@@ -164,7 +158,7 @@ status_t Status::writeToParcel(Parcel* parcel) const {
 
 void Status::setException(int32_t ex, const String8& message) {
     mException = ex;
-    mErrorCode = ex == EX_TRANSACTION_FAILED ? FAILED_TRANSACTION : NO_ERROR;
+    mErrorCode = NO_ERROR;  // an exception, not a transaction failure.
     mMessage.setTo(message);
 }
 

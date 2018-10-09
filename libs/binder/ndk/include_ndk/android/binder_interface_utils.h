@@ -56,15 +56,6 @@ public:
         return std::static_pointer_cast<CHILD>(ref());
     }
 
-    /**
-     * Convenience method for making an object directly with a reference.
-     */
-    template<class T, class... Args>
-    static std::shared_ptr<T> make(Args&&... args) {
-        T* t = new T(std::forward<Args>(args)...);
-        return t->template ref<T>();
-    }
-
 private:
     std::once_flag mFlagThis;
     std::weak_ptr<SharedRefBase> mThis;
@@ -78,12 +69,6 @@ public:
 
     // This either returns the single existing implementation or creates a new implementation.
     virtual SpAIBinder asBinder() = 0;
-
-    /**
-     * Returns whether this interface is in a remote process. If it cannot be determined locally,
-     * this will be checked using AIBinder_isRemote.
-     */
-    virtual bool isRemote() = 0;
 };
 
 // wrapper analog to BnInterface
@@ -94,8 +79,6 @@ public:
     virtual ~BnCInterface() {}
 
     SpAIBinder asBinder() override;
-
-    bool isRemote() override { return true; }
 
 protected:
     // This function should only be called by asBinder. Otherwise, there is a possibility of
@@ -115,8 +98,6 @@ public:
     virtual ~BpCInterface() {}
 
     SpAIBinder asBinder() override;
-
-    bool isRemote() override { return AIBinder_isRemote(mBinder.get()); }
 
 private:
     SpAIBinder mBinder;

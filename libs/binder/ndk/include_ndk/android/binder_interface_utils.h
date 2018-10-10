@@ -37,18 +37,12 @@
 
 namespace ndk {
 
-/**
- * analog using std::shared_ptr for internally held refcount
- */
+// analog using std::shared_ptr for RefBase-like semantics
 class SharedRefBase {
 public:
     SharedRefBase() {}
     virtual ~SharedRefBase() {}
 
-    /**
-     * A shared_ptr must be held to this object when this is called. This must be called once during
-     * the lifetime of this object.
-     */
     std::shared_ptr<SharedRefBase> ref() {
         std::shared_ptr<SharedRefBase> thiz = mThis.lock();
 
@@ -57,9 +51,6 @@ public:
         return thiz;
     }
 
-    /**
-     * Convenience method for a ref (see above) which automatically casts to the desired child type.
-     */
     template <typename CHILD>
     std::shared_ptr<CHILD> ref() {
         return std::static_pointer_cast<CHILD>(ref());
@@ -79,17 +70,13 @@ private:
     std::weak_ptr<SharedRefBase> mThis;
 };
 
-/**
- * wrapper analog to IInterface
- */
+// wrapper analog to IInterface
 class ICInterface : public SharedRefBase {
 public:
     ICInterface() {}
     virtual ~ICInterface() {}
 
-    /**
-     * This either returns the single existing implementation or creates a new implementation.
-     */
+    // This either returns the single existing implementation or creates a new implementation.
     virtual SpAIBinder asBinder() = 0;
 
     /**
@@ -99,9 +86,7 @@ public:
     virtual bool isRemote() = 0;
 };
 
-/**
- * implementation of IInterface for server (n = native)
- */
+// wrapper analog to BnInterface
 template <typename INTERFACE>
 class BnCInterface : public INTERFACE {
 public:
@@ -113,10 +98,8 @@ public:
     bool isRemote() override { return true; }
 
 protected:
-    /**
-     * This function should only be called by asBinder. Otherwise, there is a possibility of
-     * multiple AIBinder* objects being created for the same instance of an object.
-     */
+    // This function should only be called by asBinder. Otherwise, there is a possibility of
+    // multiple AIBinder* objects being created for the same instance of an object.
     virtual SpAIBinder createBinder() = 0;
 
 private:
@@ -124,9 +107,7 @@ private:
     ScopedAIBinder_Weak mWeakBinder;
 };
 
-/**
- * implementation of IInterface for client (p = proxy)
- */
+// wrapper analog to BpInterfae
 template <typename INTERFACE>
 class BpCInterface : public INTERFACE {
 public:

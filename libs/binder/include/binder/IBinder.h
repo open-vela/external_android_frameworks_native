@@ -86,7 +86,6 @@ public:
                                          Vector<String16>& args, const sp<IShellCallback>& callback,
                                          const sp<IResultReceiver>& resultReceiver);
 
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        transact(   uint32_t code,
                                         const Parcel& data,
                                         Parcel* reply,
@@ -132,7 +131,6 @@ public:
      * (Nor should you need to, as there is nothing useful you can
      * directly do with it now that it has passed on.)
      */
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        linkToDeath(const sp<DeathRecipient>& recipient,
                                         void* cookie = nullptr,
                                         uint32_t flags = 0) = 0;
@@ -144,7 +142,6 @@ public:
      * supply a NULL @a recipient, and the recipient previously
      * added with that cookie will be unlinked.
      */
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        unlinkToDeath(  const wp<DeathRecipient>& recipient,
                                             void* cookie = nullptr,
                                             uint32_t flags = 0,

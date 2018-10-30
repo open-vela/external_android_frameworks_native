@@ -43,7 +43,7 @@ public:
     virtual void*       getBase() const = 0;
     virtual size_t      getSize() const = 0;
     virtual uint32_t    getFlags() const = 0;
-    virtual off_t       getOffset() const = 0;
+    virtual uint32_t    getOffset() const = 0;
 
     // these are there just for backward source compatibility
     int32_t heapID() const { return getHeapID(); }
@@ -54,8 +54,7 @@ public:
 class BnMemoryHeap : public BnInterface<IMemoryHeap>
 {
 public:
-    // NOLINTNEXTLINE(google-default-arguments)
-    virtual status_t onTransact(
+    virtual status_t onTransact( 
             uint32_t code,
             const Parcel& data,
             Parcel* reply,
@@ -73,7 +72,6 @@ class IMemory : public IInterface
 public:
     DECLARE_META_INTERFACE(Memory)
 
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual sp<IMemoryHeap> getMemory(ssize_t* offset=nullptr, size_t* size=nullptr) const = 0;
 
     // helpers
@@ -86,7 +84,6 @@ public:
 class BnMemory : public BnInterface<IMemory>
 {
 public:
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t onTransact(
             uint32_t code,
             const Parcel& data,

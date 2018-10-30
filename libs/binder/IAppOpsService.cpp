@@ -129,7 +129,6 @@ IMPLEMENT_META_INTERFACE(AppOpsService, "com.android.internal.app.IAppOpsService
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnAppOpsService::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {

@@ -41,7 +41,6 @@ LIBBINDER_NDK { # introduced=29
     AParcel_readParcelFileDescriptor;
     AParcel_readStatusHeader;
     AParcel_readString;
-    AParcel_readStringArray;
     AParcel_readStrongBinder;
     AParcel_readUint32;
     AParcel_readUint32Array;
@@ -64,7 +63,6 @@ LIBBINDER_NDK { # introduced=29
     AParcel_writeParcelFileDescriptor;
     AParcel_writeStatusHeader;
     AParcel_writeString;
-    AParcel_writeStringArray;
     AParcel_writeStrongBinder;
     AParcel_writeUint32;
     AParcel_writeUint32Array;

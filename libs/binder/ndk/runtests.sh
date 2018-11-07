@@ -22,13 +22,12 @@ fi
 set -ex
 
 function run_libbinder_ndk_test() {
-    adb shell /data/nativetest64/libbinder_ndk_test_server/libbinder_ndk_test_server &
-
-    # avoid getService 1s delay for most runs, non-critical
-    sleep 0.1
-
-    adb shell /data/nativetest64/libbinder_ndk_test_client/libbinder_ndk_test_client; \
-        adb shell killall libbinder_ndk_test_server
+	adb shell /data/nativetest64/libbinder_ndk_test_server/libbinder_ndk_test_server &
+	local pid=$!
+	trap "kill $pid" ERR
+	adb shell /data/nativetest64/libbinder_ndk_test_client/libbinder_ndk_test_client
+	trap '' ERR
+	kill $pid
 }
 
 [ "$1" != "--skip-build" ] && $ANDROID_BUILD_TOP/build/soong/soong_ui.bash --make-mode \
@@ -41,5 +40,4 @@ adb sync data
 # very simple unit tests, tests things outside of the NDK as well
 run_libbinder_ndk_test
 
-# CTS tests (much more comprehensive, new tests should ideally go here)
-atest android.binder.cts
+atest android.binder.cts.NdkBinderTest

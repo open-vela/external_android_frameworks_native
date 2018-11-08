@@ -109,11 +109,11 @@ typedef char* (*AParcel_stringArrayElementAllocator)(void* arrayData, size_t ind
  *
  * \param arrayData some external representation of an array.
  * \param index the index at which a string should be allocated.
- * \param outLength an out parameter for the length of the string at the specified index. This
- * should not include the length for a null-terminator if there is one.
+ * \param outLength an out parameter for the length of the string (not including the
+ * null-terminator)
  *
- * \param a buffer of size outLength or more representing the string at the provided index. This is
- * not required to be null-terminated.
+ * \param a null-terminated buffer of size 'outLength + 1' representing the string at the provided
+ * index including the null-terminator.
  */
 typedef const char* (*AParcel_stringArrayElementGetter)(const void* arrayData, size_t index,
                                                         size_t* outLength);
@@ -382,7 +382,8 @@ binder_status_t AParcel_readStatusHeader(const AParcel* parcel, AStatus** status
  * Writes utf-8 string value to the next location in a non-null parcel.
  *
  * \param parcel the parcel to write to.
- * \param string the null-terminated string to write to the parcel, at least of size 'length'.
+ * \param string the null-terminated string to write to the parcel. The buffer including the null
+ * terminator should be of size 'length' + 1.
  * \param length the length of the string to be written.
  *
  * \return STATUS_OK on successful write.

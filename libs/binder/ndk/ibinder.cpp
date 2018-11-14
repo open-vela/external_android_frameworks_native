@@ -22,7 +22,6 @@
 #include "status_internal.h"
 
 #include <android-base/logging.h>
-#include <binder/IPCThreadState.h>
 
 using DeathRecipient = ::android::IBinder::DeathRecipient;
 
@@ -345,14 +344,6 @@ binder_status_t AIBinder_unlinkToDeath(AIBinder* binder, AIBinder_DeathRecipient
 
     // returns binder_status_t
     return recipient->unlinkToDeath(binder, cookie);
-}
-
-uid_t AIBinder_getCallingUid() {
-    return ::android::IPCThreadState::self()->getCallingUid();
-}
-
-pid_t AIBinder_getCallingPid() {
-    return ::android::IPCThreadState::self()->getCallingPid();
 }
 
 void AIBinder_incStrong(AIBinder* binder) {

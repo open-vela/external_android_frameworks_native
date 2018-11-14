@@ -109,6 +109,10 @@ static const char *kCommandStrings[] = {
     "BC_DEAD_BINDER_DONE"
 };
 
+// The work source represents the UID of the process we should attribute the transaction to.
+// We use -1 to specify that the work source was not set using #setWorkSource.
+static const int kUnsetWorkSource = -1;
+
 static const char* getReturnString(uint32_t cmd)
 {
     size_t idx = cmd & 0xff;
@@ -381,6 +385,30 @@ void IPCThreadState::setStrictModePolicy(int32_t policy)
 int32_t IPCThreadState::getStrictModePolicy() const
 {
     return mStrictModePolicy;
+}
+
+int64_t IPCThreadState::setCallingWorkSourceUid(uid_t uid)
+{
+    // Note: we currently only use half of the int64. We return an int64 for extensibility.
+    int64_t token = mWorkSource;
+    mWorkSource = uid;
+    return token;
+}
+
+uid_t IPCThreadState::getCallingWorkSourceUid() const
+{
+    return mWorkSource;
+}
+
+int64_t IPCThreadState::clearCallingWorkSource()
+{
+    return setCallingWorkSourceUid(kUnsetWorkSource);
+}
+
+void IPCThreadState::restoreCallingWorkSource(int64_t token)
+{
+    uid_t uid = (int)token;
+    setCallingWorkSourceUid(uid);
 }
 
 void IPCThreadState::setLastTransactionBinderFlags(int32_t flags)
@@ -736,6 +764,7 @@ status_t IPCThreadState::clearDeathNotification(int32_t handle, BpBinder* proxy)
 
 IPCThreadState::IPCThreadState()
     : mProcess(ProcessState::self()),
+      mWorkSource(kUnsetWorkSource),
       mStrictModePolicy(0),
       mLastTransactionBinderFlags(0)
 {

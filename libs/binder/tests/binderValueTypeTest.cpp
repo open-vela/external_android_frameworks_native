@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "android-base/file.h"
+#include "android-base/test_utils.h"
 #include <gtest/gtest.h>
 
 #include <binder/Parcel.h>

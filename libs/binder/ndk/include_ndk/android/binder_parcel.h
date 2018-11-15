@@ -55,9 +55,9 @@ void AParcel_delete(AParcel* parcel) __INTRODUCED_IN(29);
 
 /**
  * This is called to allocate a buffer for a C-style string (null-terminated). The returned buffer
- * should be at least length bytes. This includes space for a null terminator. For a string, length
- * will always be strictly less than or equal to the maximum size that can be held in a size_t and
- * will always be greater than 0. However, if a 'null' string is being read, length will be -1.
+ * should be at least length bytes. This includes space for a null terminator. length will always be
+ * strictly less than or equal to the maximum size that can be held in a size_t and will always be
+ * greater than 0.
  *
  * See also AParcel_readString.
  *
@@ -65,35 +65,31 @@ void AParcel_delete(AParcel* parcel) __INTRODUCED_IN(29);
  *
  * \param stringData some external representation of a string
  * \param length the length of the buffer needed to fill (including the null-terminator)
- * \param buffer a buffer of size 'length' or null if allocation failed.
  *
- * \return true if the allocation succeeded, false otherwise. If length is -1, a true return here
- * means that a 'null' value (or equivalent) was successfully stored.
+ * \return a buffer of size 'length' or null if allocation failed.
  */
-typedef bool (*AParcel_stringAllocator)(void* stringData, int32_t length, char** buffer);
+typedef char* (*AParcel_stringAllocator)(void* stringData, size_t length);
 
 /**
- * This is called to allocate an array of size 'length'. If length is -1, then a 'null' array (or
- * equivalent) should be created.
+ * This is called to allocate an array of size 'length'.
  *
  * See also AParcel_readStringArray
  *
  * \param arrayData some external representation of an array
  * \param length the length to allocate this array to
  *
- * \return true if allocation succeeded. If length is -1, a true return here means that a 'null'
- * value (or equivalent) was successfully stored.
+ * \return true if allocation succeeded
  */
-typedef bool (*AParcel_stringArrayAllocator)(void* arrayData, int32_t length);
+typedef bool (*AParcel_stringArrayAllocator)(void* arrayData, size_t length);
 
 /**
  * This is called to allocate a string inside of an array that was allocated by an
  * AParcel_stringArrayAllocator.
  *
  * The index returned will always be within the range [0, length of arrayData). The returned buffer
- * should be at least length bytes. This includes space for a null-terminator. For a string, length
- * will always be strictly less than or equal to the maximum size that can be held in a size_t and
- * will always be greater than 0. However, if a 'null' string is being read, length will be -1.
+ * should be at least length bytes. This includes space for a null-terminator. length will always be
+ * strictly less than or equal to the maximum size that can be held in a size_t and will always be
+ * greater than 0.
  *
  * See also AParcel_readStringArray
  *
@@ -101,13 +97,10 @@ typedef bool (*AParcel_stringArrayAllocator)(void* arrayData, int32_t length);
  * \param index the index at which a string should be allocated.
  * \param length the length of the string to be allocated at this index. See also
  * AParcel_stringAllocator. This includes the length required for a null-terminator.
- * \param buffer a buffer of size 'length' or null if allocation failed.
  *
- * \return true if the allocation succeeded, false otherwise. If length is -1, a true return here
- * means that a 'null' value (or equivalent) was successfully stored.
+ * \return a buffer of size 'length' or null if allocation failed.
  */
-typedef bool (*AParcel_stringArrayElementAllocator)(void* arrayData, size_t index, int32_t length,
-                                                    char** buffer);
+typedef char* (*AParcel_stringArrayElementAllocator)(void* arrayData, size_t index, size_t length);
 
 /**
  * This returns the length and buffer of an array at a specific index in an arrayData object.
@@ -117,11 +110,10 @@ typedef bool (*AParcel_stringArrayElementAllocator)(void* arrayData, size_t inde
  * \param arrayData some external representation of an array.
  * \param index the index at which a string should be allocated.
  * \param outLength an out parameter for the length of the string at the specified index. This
- * should not include the length for a null-terminator if there is one. If the object at this index
- * is 'null', then this should be set to -1.
+ * should not include the length for a null-terminator if there is one.
  *
  * \param a buffer of size outLength or more representing the string at the provided index. This is
- * not required to be null-terminated. If the object at index is null, then this should be null.
+ * not required to be null-terminated.
  */
 typedef const char* (*AParcel_stringArrayElementGetter)(const void* arrayData, size_t index,
                                                         size_t* outLength);
@@ -305,15 +297,29 @@ typedef int8_t* (*AParcel_byteArrayAllocator)(void* arrayData, size_t length);
 binder_status_t AParcel_writeStrongBinder(AParcel* parcel, AIBinder* binder) __INTRODUCED_IN(29);
 
 /**
- * Reads an AIBinder from the next location in a non-null parcel. One strong ref-count of ownership
- * is passed to the caller of this function.
+ * Reads an AIBinder from the next location in a non-null parcel. This will fail if the binder is
+ * non-null. One strong ref-count of ownership is passed to the caller of this function.
  *
  * \param parcel the parcel to read from.
- * \param binder the out parameter for what is read from the parcel. This may be null.
+ * \param binder the out parameter for what is read from the parcel. This will not be null on
+ * success.
  *
  * \return STATUS_OK on successful write.
  */
 binder_status_t AParcel_readStrongBinder(const AParcel* parcel, AIBinder** binder)
+        __INTRODUCED_IN(29);
+
+/**
+ * Reads an AIBinder from the next location in a non-null parcel. This may read a null. One strong
+ * ref-count of ownership is passed to the caller of this function.
+ *
+ * \param parcel the parcel to read from.
+ * \param binder the out parameter for what is read from the parcel. This may be null even on
+ * success.
+ *
+ * \return STATUS_OK on successful write.
+ */
+binder_status_t AParcel_readNullableStrongBinder(const AParcel* parcel, AIBinder** binder)
         __INTRODUCED_IN(29);
 
 /**
@@ -375,15 +381,13 @@ binder_status_t AParcel_readStatusHeader(const AParcel* parcel, AStatus** status
 /**
  * Writes utf-8 string value to the next location in a non-null parcel.
  *
- * If length is -1, and string is nullptr, this will write a 'null' string to the parcel.
- *
  * \param parcel the parcel to write to.
  * \param string the null-terminated string to write to the parcel, at least of size 'length'.
  * \param length the length of the string to be written.
  *
  * \return STATUS_OK on successful write.
  */
-binder_status_t AParcel_writeString(AParcel* parcel, const char* string, int32_t length)
+binder_status_t AParcel_writeString(AParcel* parcel, const char* string, size_t length)
         __INTRODUCED_IN(29);
 
 /**
@@ -391,8 +395,7 @@ binder_status_t AParcel_writeString(AParcel* parcel, const char* string, int32_t
  *
  * Data is passed to the string allocator once the string size is known. This size includes the
  * space for the null-terminator of this string. This allocator returns a buffer which is used as
- * the output buffer from this read. If there is a 'null' string on the binder buffer, the allocator
- * will be called with length -1.
+ * the output buffer from this read.
  *
  * \param parcel the parcel to read from.
  * \param stringData some external representation of a string.
@@ -408,8 +411,7 @@ binder_status_t AParcel_readString(const AParcel* parcel, void* stringData,
  *
  * length is the length of the array. AParcel_stringArrayElementGetter will be called for all
  * indices in range [0, length) with the arrayData provided here. The string length and buffer
- * returned from this function will be used to fill out the data from the parcel. If length is -1,
- * this will write a 'null' string array to the binder buffer.
+ * returned from this function will be used to fill out the data from the parcel.
  *
  * \param parcel the parcel to write to.
  * \param arrayData some external representation of an array.
@@ -419,7 +421,7 @@ binder_status_t AParcel_readString(const AParcel* parcel, void* stringData,
  *
  * \return STATUS_OK on successful write.
  */
-binder_status_t AParcel_writeStringArray(AParcel* parcel, const void* arrayData, int32_t length,
+binder_status_t AParcel_writeStringArray(AParcel* parcel, const void* arrayData, size_t length,
                                          AParcel_stringArrayElementGetter getter)
         __INTRODUCED_IN(29);
 
@@ -430,8 +432,7 @@ binder_status_t AParcel_writeStringArray(AParcel* parcel, const void* arrayData,
  * length is the length of the array to be read from the parcel. Then, for each index i in [0,
  * length), AParcel_stringArrayElementAllocator will be called with the length of the string to be
  * read from the parcel. The resultant buffer from each of these calls will be filled according to
- * the contents of the string that is read. If the string array being read is 'null', this will
- * instead just pass -1 to AParcel_stringArrayAllocator.
+ * the contents of the string that is read.
  *
  * \param parcel the parcel to read from.
  * \param arrayData some external representation of an array.

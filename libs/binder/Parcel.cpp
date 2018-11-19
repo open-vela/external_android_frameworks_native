@@ -74,7 +74,7 @@ static size_t pad_size(size_t s) {
 }
 
 // Note: must be kept in sync with android/os/StrictMode.java's PENALTY_GATHER
-#define STRICT_MODE_PENALTY_GATHER (0x40 << 16)
+#define STRICT_MODE_PENALTY_GATHER (1 << 31)
 
 // XXX This can be made public if we want to provide
 // support for typed data.
@@ -601,6 +601,7 @@ status_t Parcel::writeInterfaceToken(const String16& interface)
 {
     writeInt32(IPCThreadState::self()->getStrictModePolicy() |
                STRICT_MODE_PENALTY_GATHER);
+    writeInt32(IPCThreadState::self()->getCallingWorkSourceUid());
     // currently the interface identification token is just its name as a string
     return writeString16(interface);
 }
@@ -613,6 +614,7 @@ bool Parcel::checkInterface(IBinder* binder) const
 bool Parcel::enforceInterface(const String16& interface,
                               IPCThreadState* threadState) const
 {
+    // StrictModePolicy.
     int32_t strictPolicy = readInt32();
     if (threadState == nullptr) {
         threadState = IPCThreadState::self();
@@ -627,6 +629,10 @@ bool Parcel::enforceInterface(const String16& interface,
     } else {
       threadState->setStrictModePolicy(strictPolicy);
     }
+    // WorkSource.
+    int32_t workSource = readInt32();
+    threadState->setCallingWorkSourceUid(workSource);
+    // Interface descriptor.
     const String16 str(readString16());
     if (str == interface) {
         return true;
@@ -2329,6 +2335,15 @@ status_t Parcel::readBlob(size_t len, ReadableBlob* outBlob) const
     int fd = readFileDescriptor();
     if (fd == int(BAD_TYPE)) return BAD_VALUE;
 
+    if (!ashmem_valid(fd)) {
+        ALOGE("invalid fd");
+        return BAD_VALUE;
+    }
+    int size = ashmem_get_size_region(fd);
+    if (size < 0 || size_t(size) < len) {
+        ALOGE("request size %zu does not match fd size %d", len, size);
+        return BAD_VALUE;
+    }
     void* ptr = ::mmap(nullptr, len, isMutable ? PROT_READ | PROT_WRITE : PROT_READ,
             MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) return NO_MEMORY;

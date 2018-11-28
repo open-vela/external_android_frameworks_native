@@ -109,7 +109,7 @@ public:
         data.writeStrongBinder(clientToken);
         remote()->transact(GET_TOKEN_TRANSACTION, data, &reply);
         // fail on exception
-        if (reply.readExceptionCode() != 0) return nullptr;
+        if (reply.readExceptionCode() != 0) return NULL;
         return reply.readStrongBinder();
     }
 
@@ -129,7 +129,6 @@ IMPLEMENT_META_INTERFACE(AppOpsService, "com.android.internal.app.IAppOpsService
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnAppOpsService::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {

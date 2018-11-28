@@ -17,7 +17,6 @@
 #define LOG_TAG "IPCThreadState"
 
 #include <binder/IPCThreadState.h>
-#include <binderthreadstate/IPCThreadStateBase.h>
 
 #include <binder/Binder.h>
 #include <binder/BpBinder.h>
@@ -108,8 +107,6 @@ static const char *kCommandStrings[] = {
     "BC_CLEAR_DEATH_NOTIFICATION",
     "BC_DEAD_BINDER_DONE"
 };
-
-static const int64_t kWorkSourcePropagatedBitIndex = 32;
 
 static const char* getReturnString(uint32_t cmd)
 {
@@ -292,7 +289,7 @@ restart:
 
     if (gShutdown) {
         ALOGW("Calling IPCThreadState::self() during shutdown is dangerous, expect a crash.\n");
-        return nullptr;
+        return NULL;
     }
 
     pthread_mutex_lock(&gTLSMutex);
@@ -302,7 +299,7 @@ restart:
             pthread_mutex_unlock(&gTLSMutex);
             ALOGW("IPCThreadState::self() unable to create TLS key, expect a crash: %s\n",
                     strerror(key_create_value));
-            return nullptr;
+            return NULL;
         }
         gHaveTLS = true;
     }
@@ -317,7 +314,7 @@ IPCThreadState* IPCThreadState::selfOrNull()
         IPCThreadState* st = (IPCThreadState*)pthread_getspecific(k);
         return st;
     }
-    return nullptr;
+    return NULL;
 }
 
 void IPCThreadState::shutdown()
@@ -329,7 +326,7 @@ void IPCThreadState::shutdown()
         IPCThreadState* st = (IPCThreadState*)pthread_getspecific(gTLS);
         if (st) {
             delete st;
-            pthread_setspecific(gTLS, nullptr);
+            pthread_setspecific(gTLS, NULL);
         }
         pthread_key_delete(gTLS);
         gHaveTLS = false;
@@ -383,48 +380,6 @@ void IPCThreadState::setStrictModePolicy(int32_t policy)
 int32_t IPCThreadState::getStrictModePolicy() const
 {
     return mStrictModePolicy;
-}
-
-int64_t IPCThreadState::setCallingWorkSourceUid(uid_t uid)
-{
-    int64_t token = setCallingWorkSourceUidWithoutPropagation(uid);
-    mPropagateWorkSource = true;
-    return token;
-}
-
-int64_t IPCThreadState::setCallingWorkSourceUidWithoutPropagation(uid_t uid)
-{
-    const int64_t propagatedBit = ((int64_t)mPropagateWorkSource) << kWorkSourcePropagatedBitIndex;
-    int64_t token = propagatedBit | mWorkSource;
-    mWorkSource = uid;
-    return token;
-}
-
-void IPCThreadState::clearPropagateWorkSource()
-{
-    mPropagateWorkSource = false;
-}
-
-bool IPCThreadState::shouldPropagateWorkSource() const
-{
-    return mPropagateWorkSource;
-}
-
-uid_t IPCThreadState::getCallingWorkSourceUid() const
-{
-    return mWorkSource;
-}
-
-int64_t IPCThreadState::clearCallingWorkSource()
-{
-    return setCallingWorkSourceUid(kUnsetWorkSource);
-}
-
-void IPCThreadState::restoreCallingWorkSource(int64_t token)
-{
-    uid_t uid = (int)token;
-    setCallingWorkSourceUidWithoutPropagation(uid);
-    mPropagateWorkSource = ((token >> kWorkSourcePropagatedBitIndex) & 1) == 1;
 }
 
 void IPCThreadState::setLastTransactionBinderFlags(int32_t flags)
@@ -653,7 +608,7 @@ status_t IPCThreadState::transact(int32_t handle,
 
     LOG_ONEWAY(">>>> SEND from pid %d uid %d %s", getpid(), getuid(),
         (flags & TF_ONE_WAY) == 0 ? "READ REPLY" : "ONE WAY");
-    err = writeTransactionData(BC_TRANSACTION, flags, handle, code, data, nullptr);
+    err = writeTransactionData(BC_TRANSACTION, flags, handle, code, data, NULL);
 
     if (err != NO_ERROR) {
         if (reply) reply->setError(err);
@@ -690,7 +645,7 @@ status_t IPCThreadState::transact(int32_t handle,
             else alog << "(none requested)" << endl;
         }
     } else {
-        err = waitForResponse(nullptr, nullptr);
+        err = waitForResponse(NULL, NULL);
     }
 
     return err;
@@ -780,8 +735,6 @@ status_t IPCThreadState::clearDeathNotification(int32_t handle, BpBinder* proxy)
 
 IPCThreadState::IPCThreadState()
     : mProcess(ProcessState::self()),
-      mWorkSource(kUnsetWorkSource),
-      mPropagateWorkSource(false),
       mStrictModePolicy(0),
       mLastTransactionBinderFlags(0)
 {
@@ -789,7 +742,6 @@ IPCThreadState::IPCThreadState()
     clearCaller();
     mIn.setDataCapacity(256);
     mOut.setDataCapacity(256);
-    mIPCThreadStateBase = IPCThreadStateBase::self();
 }
 
 IPCThreadState::~IPCThreadState()
@@ -803,7 +755,7 @@ status_t IPCThreadState::sendReply(const Parcel& reply, uint32_t flags)
     err = writeTransactionData(BC_REPLY, flags, -1, 0, reply, &statusBuffer);
     if (err < NO_ERROR) return err;
 
-    return waitForResponse(nullptr, nullptr);
+    return waitForResponse(NULL, NULL);
 }
 
 status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
@@ -863,14 +815,14 @@ status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
                             freeBuffer, this);
                     } else {
                         err = *reinterpret_cast<const status_t*>(tr.data.ptr.buffer);
-                        freeBuffer(nullptr,
+                        freeBuffer(NULL,
                             reinterpret_cast<const uint8_t*>(tr.data.ptr.buffer),
                             tr.data_size,
                             reinterpret_cast<const binder_size_t*>(tr.data.ptr.offsets),
                             tr.offsets_size/sizeof(binder_size_t), this);
                     }
                 } else {
-                    freeBuffer(nullptr,
+                    freeBuffer(NULL,
                         reinterpret_cast<const uint8_t*>(tr.data.ptr.buffer),
                         tr.data_size,
                         reinterpret_cast<const binder_size_t*>(tr.data.ptr.offsets),
@@ -1130,9 +1082,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                 "Not enough command data for brTRANSACTION");
             if (result != NO_ERROR) break;
 
-            //Record the fact that we're in a binder call.
-            mIPCThreadStateBase->pushCurrentState(
-                IPCThreadStateBase::CallState::BINDER);
             Parcel buffer;
             buffer.ipcSetDataReference(
                 reinterpret_cast<const uint8_t*>(tr.data.ptr.buffer),
@@ -1144,13 +1093,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             const uid_t origUid = mCallingUid;
             const int32_t origStrictModePolicy = mStrictModePolicy;
             const int32_t origTransactionBinderFlags = mLastTransactionBinderFlags;
-            const int32_t origWorkSource = mWorkSource;
-            const bool origPropagateWorkSet = mPropagateWorkSource;
-            // Calling work source will be set by Parcel#enforceInterface. Parcel#enforceInterface
-            // is only guaranteed to be called for AIDL-generated stubs so we reset the work source
-            // here to never propagate it.
-            clearCallingWorkSource();
-            clearPropagateWorkSource();
 
             mCallingPid = tr.sender_pid;
             mCallingUid = tr.sender_euid;
@@ -1187,7 +1129,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                 error = the_context_object->transact(tr.code, buffer, &reply, tr.flags);
             }
 
-            mIPCThreadStateBase->popCurrentState();
             //ALOGI("<<<< TRANSACT from pid %d restore pid %d uid %d\n",
             //     mCallingPid, origPid, origUid);
 
@@ -1203,8 +1144,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             mCallingUid = origUid;
             mStrictModePolicy = origStrictModePolicy;
             mLastTransactionBinderFlags = origTransactionBinderFlags;
-            mWorkSource = origWorkSource;
-            mPropagateWorkSource = origPropagateWorkSet;
 
             IF_LOG_TRANSACTIONS() {
                 TextOutput::Bundle _b(alog);
@@ -1253,10 +1192,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
     return result;
 }
 
-bool IPCThreadState::isServingCall() const {
-    return mIPCThreadStateBase->getCurrentBinderCallState() == IPCThreadStateBase::CallState::BINDER;
-}
-
 void IPCThreadState::threadDestructor(void *st)
 {
         IPCThreadState* const self = static_cast<IPCThreadState*>(st);
@@ -1282,7 +1217,7 @@ void IPCThreadState::freeBuffer(Parcel* parcel, const uint8_t* data,
         alog << "Writing BC_FREE_BUFFER for " << data << endl;
     }
     ALOG_ASSERT(data != NULL, "Called with NULL data");
-    if (parcel != nullptr) parcel->closeFileDescriptors();
+    if (parcel != NULL) parcel->closeFileDescriptors();
     IPCThreadState* state = self();
     state->mOut.writeInt32(BC_FREE_BUFFER);
     state->mOut.writePointer((uintptr_t)data);

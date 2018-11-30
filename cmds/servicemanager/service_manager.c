@@ -274,6 +274,7 @@ int svcmgr_handler(struct binder_state *bs,
     // Note that we ignore the strict_policy and don't propagate it
     // further (since we do no outbound RPCs anyway).
     strict_policy = bio_get_uint32(msg);
+    bio_get_uint32(msg);  // Ignore worksource header.
     s = bio_get_string16(msg, &len);
     if (s == NULL) {
         return -1;
@@ -403,7 +404,11 @@ int main(int argc, char** argv)
 
     cb.func_audit = audit_callback;
     selinux_set_callback(SELINUX_CB_AUDIT, cb);
+#ifdef VENDORSERVICEMANAGER
+    cb.func_log = selinux_vendor_log_callback;
+#else
     cb.func_log = selinux_log_callback;
+#endif
     selinux_set_callback(SELINUX_CB_LOG, cb);
 
 #ifdef VENDORSERVICEMANAGER

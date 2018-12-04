@@ -30,7 +30,7 @@ using namespace android;
 
 void writeString16(Parcel& parcel, const char* string)
 {
-    if (string != nullptr)
+    if (string != NULL)
     {
         parcel.writeString16(String16(string));
     }
@@ -43,7 +43,7 @@ void writeString16(Parcel& parcel, const char* string)
 // get the name of the generic interface we hold a reference to
 static String16 get_interface_name(sp<IBinder> service)
 {
-    if (service != nullptr) {
+    if (service != NULL) {
         Parcel data, reply;
         status_t err = service->transact(IBinder::INTERFACE_TRANSACTION, data, &reply);
         if (err == NO_ERROR) {
@@ -68,6 +68,13 @@ static String8 good_old_string(const String16& src)
 
 int main(int argc, char* const argv[])
 {
+    sp<IServiceManager> sm = defaultServiceManager();
+    fflush(stdout);
+    if (sm == NULL) {
+        aerr << "service: Unable to get default service manager!" << endl;
+        return 20;
+    }
+    
     bool wantsUsage = false;
     int result = 0;
     
@@ -88,15 +95,6 @@ int main(int argc, char* const argv[])
             break;
         }
     }
-#ifdef VENDORSERVICES
-    ProcessState::initWithDriver("/dev/vndbinder");
-#endif
-    sp<IServiceManager> sm = defaultServiceManager();
-    fflush(stdout);
-    if (sm == nullptr) {
-        aerr << "service: Unable to get default service manager!" << endl;
-        return 20;
-    }
     
     if (optind >= argc) {
         wantsUsage = true;
@@ -106,7 +104,7 @@ int main(int argc, char* const argv[])
             if (optind < argc) {
                 sp<IBinder> service = sm->checkService(String16(argv[optind]));
                 aout << "Service " << argv[optind] <<
-                    (service == nullptr ? ": not found" : ": found") << endl;
+                    (service == NULL ? ": not found" : ": found") << endl;
             } else {
                 aerr << "service: No service specified for check" << endl;
                 wantsUsage = true;
@@ -131,7 +129,7 @@ int main(int argc, char* const argv[])
                 sp<IBinder> service = sm->checkService(String16(argv[optind++]));
                 String16 ifName = get_interface_name(service);
                 int32_t code = atoi(argv[optind++]);
-                if (service != nullptr && ifName.size() > 0) {
+                if (service != NULL && ifName.size() > 0) {
                     Parcel data, reply;
 
                     // the interface name is first
@@ -186,28 +184,28 @@ int main(int argc, char* const argv[])
                             data.writeDouble(atof(argv[optind++]));
                         } else if (strcmp(argv[optind], "null") == 0) {
                             optind++;
-                            data.writeStrongBinder(nullptr);
+                            data.writeStrongBinder(NULL);
                         } else if (strcmp(argv[optind], "intent") == 0) {
                         	
-                        	char* action = nullptr;
-                        	char* dataArg = nullptr;
-                        	char* type = nullptr;
+                        	char* action = NULL;
+                        	char* dataArg = NULL;
+                        	char* type = NULL;
                         	int launchFlags = 0;
-                        	char* component = nullptr;
+                        	char* component = NULL;
                         	int categoryCount = 0;
                         	char* categories[16];
                         	
-                        	char* context1 = nullptr;
+                        	char* context1 = NULL;
                         	
                             optind++;
                             
                         	while (optind < argc)
                         	{
                         		char* key = strtok_r(argv[optind], "=", &context1);
-                        		char* value = strtok_r(nullptr, "=", &context1);
+                        		char* value = strtok_r(NULL, "=", &context1);
                                 
                                 // we have reached the end of the XXX=XXX args.
-                                if (key == nullptr) break;
+                                if (key == NULL) break;
                         		
                         		if (strcmp(key, "action") == 0)
                         		{
@@ -231,14 +229,14 @@ int main(int argc, char* const argv[])
                         		}
                         		else if (strcmp(key, "categories") == 0)
                         		{
-                        			char* context2 = nullptr;
+                        			char* context2 = NULL;
                         			int categoryCount = 0;
                         			categories[categoryCount] = strtok_r(value, ",", &context2);
                         			
-                        			while (categories[categoryCount] != nullptr)
+                        			while (categories[categoryCount] != NULL)
                         			{
                         				categoryCount++;
-                        				categories[categoryCount] = strtok_r(nullptr, ",", &context2);
+                        				categories[categoryCount] = strtok_r(NULL, ",", &context2);
                         			}
                         		}
                                 

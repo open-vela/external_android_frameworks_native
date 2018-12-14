@@ -23,8 +23,6 @@ cc_library {
         "include_apex",
     ],
 
-    cflags: ["-Wall", "-Wextra", "-Werror"],
-
     srcs: [
         "ibinder.cpp",
         "ibinder_jni.cpp",

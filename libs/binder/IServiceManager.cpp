@@ -36,9 +36,6 @@ namespace android {
 
 sp<IServiceManager> defaultServiceManager()
 {
-    static Mutex gDefaultServiceManagerLock;
-    static sp<IServiceManager> gDefaultServiceManager;
-
     if (gDefaultServiceManager != nullptr) return gDefaultServiceManager;
 
     {
@@ -77,13 +74,10 @@ bool checkCallingPermission(const String16& permission, int32_t* outPid, int32_t
 
 bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
 {
-    static Mutex gPermissionControllerLock;
-    static sp<IPermissionController> gPermissionController;
-
     sp<IPermissionController> pc;
-    gPermissionControllerLock.lock();
+    gDefaultServiceManagerLock.lock();
     pc = gPermissionController;
-    gPermissionControllerLock.unlock();
+    gDefaultServiceManagerLock.unlock();
 
     int64_t startTime = 0;
 
@@ -107,11 +101,11 @@ bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
             }
 
             // Object is dead!
-            gPermissionControllerLock.lock();
+            gDefaultServiceManagerLock.lock();
             if (gPermissionController == pc) {
                 gPermissionController = nullptr;
             }
-            gPermissionControllerLock.unlock();
+            gDefaultServiceManagerLock.unlock();
         }
 
         // Need to retrieve the permission controller.
@@ -127,9 +121,9 @@ bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
         } else {
             pc = interface_cast<IPermissionController>(binder);
             // Install the new permission controller, and try again.
-            gPermissionControllerLock.lock();
+            gDefaultServiceManagerLock.lock();
             gPermissionController = pc;
-            gPermissionControllerLock.unlock();
+            gDefaultServiceManagerLock.unlock();
         }
     }
 }
@@ -148,8 +142,6 @@ public:
 
     virtual sp<IBinder> getService(const String16& name) const
     {
-        static bool gSystemBootCompleted = false;
-
         sp<IBinder> svc = checkService(name);
         if (svc != nullptr) return svc;
 

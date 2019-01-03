@@ -49,7 +49,6 @@ IMPLEMENT_META_INTERFACE(AppOpsCallback, "com.android.internal.app.IAppOpsCallba
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnAppOpsCallback::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {

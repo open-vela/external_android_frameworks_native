@@ -34,22 +34,19 @@ public:
     virtual status_t    pingBinder();
     virtual status_t    dump(int fd, const Vector<String16>& args);
 
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    transact(   uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
                                     uint32_t flags = 0);
 
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    linkToDeath(const sp<DeathRecipient>& recipient,
-                                    void* cookie = nullptr,
+                                    void* cookie = NULL,
                                     uint32_t flags = 0);
 
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    unlinkToDeath(  const wp<DeathRecipient>& recipient,
-                                        void* cookie = nullptr,
+                                        void* cookie = NULL,
                                         uint32_t flags = 0,
-                                        wp<DeathRecipient>* outRecipient = nullptr);
+                                        wp<DeathRecipient>* outRecipient = NULL);
 
     virtual void        attachObject(   const void* objectID,
                                         void* object,
@@ -63,7 +60,6 @@ public:
 protected:
     virtual             ~BBinder();
 
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,

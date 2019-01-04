@@ -36,9 +36,12 @@ class ProcessState : public virtual RefBase
 public:
     static  sp<ProcessState>    self();
     static  sp<ProcessState>    selfOrNull();
+
     /* initWithDriver() can be used to configure libbinder to use
      * a different binder driver dev node. It must be called *before*
-     * any call to ProcessState::self(). /dev/binder remains the default.
+     * any call to ProcessState::self(). The default is /dev/vndbinder
+     * for processes built with the VNDK and /dev/binder for those
+     * which are not.
      */
     static  sp<ProcessState>    initWithDriver(const char *driver);
 
@@ -77,7 +80,7 @@ public:
 private:
     friend class IPCThreadState;
     
-                                ProcessState(const char* driver);
+            explicit            ProcessState(const char* driver);
                                 ~ProcessState();
 
                                 ProcessState(const ProcessState& o);

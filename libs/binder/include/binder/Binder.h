@@ -60,10 +60,6 @@ public:
 
     virtual BBinder*    localBinder();
 
-    bool                isRequestingSid();
-    // This must be called before the object is sent to another process. Not thread safe.
-    void                setRequestingSid(bool requestSid);
-
 protected:
     virtual             ~BBinder();
 
@@ -78,8 +74,6 @@ private:
             BBinder&    operator=(const BBinder& o);
 
     class Extras;
-
-    Extras*             getOrCreateExtras();
 
     std::atomic<Extras*> mExtras;
             void*       mReserved0;

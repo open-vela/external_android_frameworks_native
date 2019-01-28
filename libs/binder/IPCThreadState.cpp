@@ -88,8 +88,7 @@ static const char *kReturnStrings[] = {
     "BR_FINISHED",
     "BR_DEAD_BINDER",
     "BR_CLEAR_DEATH_NOTIFICATION_DONE",
-    "BR_FAILED_REPLY",
-    "BR_TRANSACTION_SEC_CTX",
+    "BR_FAILED_REPLY"
 };
 
 static const char *kCommandStrings[] = {
@@ -111,8 +110,6 @@ static const char *kCommandStrings[] = {
     "BC_CLEAR_DEATH_NOTIFICATION",
     "BC_DEAD_BINDER_DONE"
 };
-
-static const int64_t kWorkSourcePropagatedBitIndex = 32;
 
 static const char* getReturnString(uint32_t cmd)
 {
@@ -366,11 +363,6 @@ pid_t IPCThreadState::getCallingPid() const
     return mCallingPid;
 }
 
-const char* IPCThreadState::getCallingSid() const
-{
-    return mCallingSid;
-}
-
 uid_t IPCThreadState::getCallingUid() const
 {
     return mCallingUid;
@@ -378,7 +370,6 @@ uid_t IPCThreadState::getCallingUid() const
 
 int64_t IPCThreadState::clearCallingIdentity()
 {
-    // ignore mCallingSid for legacy reasons
     int64_t token = ((int64_t)mCallingUid<<32) | mCallingPid;
     clearCaller();
     return token;
@@ -394,48 +385,6 @@ int32_t IPCThreadState::getStrictModePolicy() const
     return mStrictModePolicy;
 }
 
-int64_t IPCThreadState::setCallingWorkSourceUid(uid_t uid)
-{
-    int64_t token = setCallingWorkSourceUidWithoutPropagation(uid);
-    mPropagateWorkSource = true;
-    return token;
-}
-
-int64_t IPCThreadState::setCallingWorkSourceUidWithoutPropagation(uid_t uid)
-{
-    const int64_t propagatedBit = ((int64_t)mPropagateWorkSource) << kWorkSourcePropagatedBitIndex;
-    int64_t token = propagatedBit | mWorkSource;
-    mWorkSource = uid;
-    return token;
-}
-
-void IPCThreadState::clearPropagateWorkSource()
-{
-    mPropagateWorkSource = false;
-}
-
-bool IPCThreadState::shouldPropagateWorkSource() const
-{
-    return mPropagateWorkSource;
-}
-
-uid_t IPCThreadState::getCallingWorkSourceUid() const
-{
-    return mWorkSource;
-}
-
-int64_t IPCThreadState::clearCallingWorkSource()
-{
-    return setCallingWorkSourceUid(kUnsetWorkSource);
-}
-
-void IPCThreadState::restoreCallingWorkSource(int64_t token)
-{
-    uid_t uid = (int)token;
-    setCallingWorkSourceUidWithoutPropagation(uid);
-    mPropagateWorkSource = ((token >> kWorkSourcePropagatedBitIndex) & 1) == 1;
-}
-
 void IPCThreadState::setLastTransactionBinderFlags(int32_t flags)
 {
     mLastTransactionBinderFlags = flags;
@@ -449,14 +398,12 @@ int32_t IPCThreadState::getLastTransactionBinderFlags() const
 void IPCThreadState::restoreCallingIdentity(int64_t token)
 {
     mCallingUid = (int)(token>>32);
-    mCallingSid = nullptr;  // not enough data to restore
     mCallingPid = (int)token;
 }
 
 void IPCThreadState::clearCaller()
 {
     mCallingPid = getpid();
-    mCallingSid = nullptr;  // expensive to lookup
     mCallingUid = getuid();
 }
 
@@ -801,8 +748,6 @@ status_t IPCThreadState::clearDeathNotification(int32_t handle, BpBinder* proxy)
 
 IPCThreadState::IPCThreadState()
     : mProcess(ProcessState::self()),
-      mWorkSource(kUnsetWorkSource),
-      mPropagateWorkSource(false),
       mStrictModePolicy(0),
       mLastTransactionBinderFlags(0),
       mCallRestriction(mProcess->mCallRestriction)
@@ -1144,19 +1089,10 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
         }
         break;
 
-    case BR_TRANSACTION_SEC_CTX:
     case BR_TRANSACTION:
         {
-            binder_transaction_data_secctx tr_secctx;
-            binder_transaction_data& tr = tr_secctx.transaction_data;
-
-            if (cmd == (int) BR_TRANSACTION_SEC_CTX) {
-                result = mIn.read(&tr_secctx, sizeof(tr_secctx));
-            } else {
-                result = mIn.read(&tr, sizeof(tr));
-                tr_secctx.secctx = 0;
-            }
-
+            binder_transaction_data tr;
+            result = mIn.read(&tr, sizeof(tr));
             ALOG_ASSERT(result == NO_ERROR,
                 "Not enough command data for brTRANSACTION");
             if (result != NO_ERROR) break;
@@ -1172,25 +1108,15 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                 tr.offsets_size/sizeof(binder_size_t), freeBuffer, this);
 
             const pid_t origPid = mCallingPid;
-            const char* origSid = mCallingSid;
             const uid_t origUid = mCallingUid;
             const int32_t origStrictModePolicy = mStrictModePolicy;
             const int32_t origTransactionBinderFlags = mLastTransactionBinderFlags;
-            const int32_t origWorkSource = mWorkSource;
-            const bool origPropagateWorkSet = mPropagateWorkSource;
-            // Calling work source will be set by Parcel#enforceInterface. Parcel#enforceInterface
-            // is only guaranteed to be called for AIDL-generated stubs so we reset the work source
-            // here to never propagate it.
-            clearCallingWorkSource();
-            clearPropagateWorkSource();
 
             mCallingPid = tr.sender_pid;
-            mCallingSid = reinterpret_cast<const char*>(tr_secctx.secctx);
             mCallingUid = tr.sender_euid;
             mLastTransactionBinderFlags = tr.flags;
 
-            // ALOGI(">>>> TRANSACT from pid %d sid %s uid %d\n", mCallingPid,
-            //    (mCallingSid ? mCallingSid : "<N/A>"), mCallingUid);
+            //ALOGI(">>>> TRANSACT from pid %d uid %d\n", mCallingPid, mCallingUid);
 
             Parcel reply;
             status_t error;
@@ -1222,8 +1148,8 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             }
 
             mIPCThreadStateBase->popCurrentState();
-            //ALOGI("<<<< TRANSACT from pid %d restore pid %d sid %s uid %d\n",
-            //     mCallingPid, origPid, (origSid ? origSid : "<N/A>"), origUid);
+            //ALOGI("<<<< TRANSACT from pid %d restore pid %d uid %d\n",
+            //     mCallingPid, origPid, origUid);
 
             if ((tr.flags & TF_ONE_WAY) == 0) {
                 LOG_ONEWAY("Sending reply to %d!", mCallingPid);
@@ -1234,12 +1160,9 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             }
 
             mCallingPid = origPid;
-            mCallingSid = origSid;
             mCallingUid = origUid;
             mStrictModePolicy = origStrictModePolicy;
             mLastTransactionBinderFlags = origTransactionBinderFlags;
-            mWorkSource = origWorkSource;
-            mPropagateWorkSource = origPropagateWorkSet;
 
             IF_LOG_TRANSACTIONS() {
                 TextOutput::Bundle _b(alog);

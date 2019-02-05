@@ -86,10 +86,6 @@ status_t IBinder::shellCommand(const sp<IBinder>& target, int in, int out, int e
 class BBinder::Extras
 {
 public:
-    // unlocked objects
-    bool mRequestingSid = false;
-
-    // for below objects
     Mutex mLock;
     BpBinder::ObjectManager mObjects;
 };
@@ -167,8 +163,19 @@ void BBinder::attachObject(
     const void* objectID, void* object, void* cleanupCookie,
     object_cleanup_func func)
 {
-    Extras* e = getOrCreateExtras();
-    if (!e) return; // out of memory
+    Extras* e = mExtras.load(std::memory_order_acquire);
+
+    if (!e) {
+        e = new Extras;
+        Extras* expected = nullptr;
+        if (!mExtras.compare_exchange_strong(expected, e,
+                                             std::memory_order_release,
+                                             std::memory_order_acquire)) {
+            delete e;
+            e = expected;  // Filled in by CAS
+        }
+        if (e == nullptr) return; // out of memory
+    }
 
     AutoMutex _l(e->mLock);
     e->mObjects.attach(objectID, object, cleanupCookie, func);
@@ -195,30 +202,6 @@ void BBinder::detachObject(const void* objectID)
 BBinder* BBinder::localBinder()
 {
     return this;
-}
-
-bool BBinder::isRequestingSid()
-{
-    Extras* e = mExtras.load(std::memory_order_acquire);
-
-    return e && e->mRequestingSid;
-}
-
-void BBinder::setRequestingSid(bool requestingSid)
-{
-    Extras* e = mExtras.load(std::memory_order_acquire);
-
-    if (!e) {
-        // default is false. Most things don't need sids, so avoiding allocations when possible.
-        if (!requestingSid) {
-            return;
-        }
-
-        e = getOrCreateExtras();
-        if (!e) return; // out of memory
-    }
-
-    e->mRequestingSid = true;
 }
 
 BBinder::~BBinder()
@@ -282,25 +265,6 @@ status_t BBinder::onTransact(
         default:
             return UNKNOWN_TRANSACTION;
     }
-}
-
-BBinder::Extras* BBinder::getOrCreateExtras()
-{
-    Extras* e = mExtras.load(std::memory_order_acquire);
-
-    if (!e) {
-        e = new Extras;
-        Extras* expected = nullptr;
-        if (!mExtras.compare_exchange_strong(expected, e,
-                                             std::memory_order_release,
-                                             std::memory_order_acquire)) {
-            delete e;
-            e = expected;  // Filled in by CAS
-        }
-        if (e == nullptr) return nullptr; // out of memory
-    }
-
-    return e;
 }
 
 // ---------------------------------------------------------------------------

@@ -30,7 +30,6 @@ public:
     ServiceManager(std::unique_ptr<Access>&& access);
     ~ServiceManager();
 
-    // getService will try to start any services it cannot find
     binder::Status getService(const std::string& name, sp<IBinder>* outBinder) override;
     binder::Status checkService(const std::string& name, sp<IBinder>* outBinder) override;
     binder::Status addService(const std::string& name, const sp<IBinder>& binder,
@@ -42,9 +41,6 @@ public:
                                               const sp<IServiceCallback>& callback) override;
 
     void binderDied(const wp<IBinder>& who) override;
-
-protected:
-    virtual void tryStartService(const std::string& name);
 
 private:
     struct Service {
@@ -61,7 +57,6 @@ private:
     void removeCallback(const wp<IBinder>& who,
                         CallbackMap::iterator* it,
                         bool* found);
-    sp<IBinder> tryGetService(const std::string& name, bool startIfNotFound);
 
     CallbackMap mNameToCallback;
     ServiceMap mNameToService;

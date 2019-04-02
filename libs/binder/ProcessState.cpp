@@ -181,8 +181,20 @@ bool ProcessState::becomeContextManager(context_check_func checkFunc, void* user
         mBinderContextCheckFunc = checkFunc;
         mBinderContextUserData = userData;
 
-        int dummy = 0;
-        status_t result = ioctl(mDriverFD, BINDER_SET_CONTEXT_MGR, &dummy);
+        flat_binder_object obj {
+            .flags = FLAT_BINDER_FLAG_TXN_SECURITY_CTX,
+        };
+
+        status_t result = ioctl(mDriverFD, BINDER_SET_CONTEXT_MGR_EXT, &obj);
+
+        // fallback to original method
+        if (result != 0) {
+            android_errorWriteLog(0x534e4554, "121035042");
+
+            int dummy = 0;
+            result = ioctl(mDriverFD, BINDER_SET_CONTEXT_MGR, &dummy);
+        }
+
         if (result == 0) {
             mManagesContexts = true;
         } else if (result == -1) {
@@ -202,6 +214,15 @@ bool ProcessState::becomeContextManager(context_check_func checkFunc, void* user
 // already be invalid.
 ssize_t ProcessState::getKernelReferences(size_t buf_count, uintptr_t* buf)
 {
+    // TODO: remove these when they are defined by bionic's binder.h
+    struct binder_node_debug_info {
+        binder_uintptr_t ptr;
+        binder_uintptr_t cookie;
+        __u32 has_strong_ref;
+        __u32 has_weak_ref;
+    };
+#define BINDER_GET_NODE_DEBUG_INFO _IOWR('b', 11, struct binder_node_debug_info)
+
     binder_node_debug_info info = {};
 
     uintptr_t* end = buf ? buf + buf_count : nullptr;

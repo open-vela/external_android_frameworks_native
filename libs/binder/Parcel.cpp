@@ -74,7 +74,7 @@ static size_t pad_size(size_t s) {
 }
 
 // Note: must be kept in sync with android/os/StrictMode.java's PENALTY_GATHER
-#define STRICT_MODE_PENALTY_GATHER (0x40 << 16)
+#define STRICT_MODE_PENALTY_GATHER (1 << 31)
 
 namespace android {
 
@@ -215,7 +215,7 @@ status_t flatten_binder(const sp<ProcessState>& /*proc*/,
     }
 
     if (binder != nullptr) {
-        IBinder *local = binder->localBinder();
+        BBinder *local = binder->localBinder();
         if (!local) {
             BpBinder *proxy = binder->remoteBinder();
             if (proxy == nullptr) {
@@ -227,6 +227,9 @@ status_t flatten_binder(const sp<ProcessState>& /*proc*/,
             obj.handle = handle;
             obj.cookie = 0;
         } else {
+            if (local->isRequestingSid()) {
+                obj.flags |= FLAT_BINDER_FLAG_TXN_SECURITY_CTX;
+            }
             obj.hdr.type = BINDER_TYPE_BINDER;
             obj.binder = reinterpret_cast<uintptr_t>(local->getWeakRefs());
             obj.cookie = reinterpret_cast<uintptr_t>(local);
@@ -591,13 +594,51 @@ bool Parcel::hasFileDescriptors() const
     return mHasFds;
 }
 
+void Parcel::updateWorkSourceRequestHeaderPosition() const {
+    // Only update the request headers once. We only want to point
+    // to the first headers read/written.
+    if (!mRequestHeaderPresent) {
+        mWorkSourceRequestHeaderPosition = dataPosition();
+        mRequestHeaderPresent = true;
+    }
+}
+
 // Write RPC headers.  (previously just the interface token)
 status_t Parcel::writeInterfaceToken(const String16& interface)
 {
-    writeInt32(IPCThreadState::self()->getStrictModePolicy() |
-               STRICT_MODE_PENALTY_GATHER);
+    const IPCThreadState* threadState = IPCThreadState::self();
+    writeInt32(threadState->getStrictModePolicy() | STRICT_MODE_PENALTY_GATHER);
+    updateWorkSourceRequestHeaderPosition();
+    writeInt32(threadState->shouldPropagateWorkSource() ?
+            threadState->getCallingWorkSourceUid() : IPCThreadState::kUnsetWorkSource);
     // currently the interface identification token is just its name as a string
     return writeString16(interface);
+}
+
+bool Parcel::replaceCallingWorkSourceUid(uid_t uid)
+{
+    if (!mRequestHeaderPresent) {
+        return false;
+    }
+
+    const size_t initialPosition = dataPosition();
+    setDataPosition(mWorkSourceRequestHeaderPosition);
+    status_t err = writeInt32(uid);
+    setDataPosition(initialPosition);
+    return err == NO_ERROR;
+}
+
+uid_t Parcel::readCallingWorkSourceUid()
+{
+    if (!mRequestHeaderPresent) {
+        return IPCThreadState::kUnsetWorkSource;
+    }
+
+    const size_t initialPosition = dataPosition();
+    setDataPosition(mWorkSourceRequestHeaderPosition);
+    uid_t uid = readInt32();
+    setDataPosition(initialPosition);
+    return uid;
 }
 
 bool Parcel::checkInterface(IBinder* binder) const
@@ -608,6 +649,7 @@ bool Parcel::checkInterface(IBinder* binder) const
 bool Parcel::enforceInterface(const String16& interface,
                               IPCThreadState* threadState) const
 {
+    // StrictModePolicy.
     int32_t strictPolicy = readInt32();
     if (threadState == nullptr) {
         threadState = IPCThreadState::self();
@@ -622,6 +664,11 @@ bool Parcel::enforceInterface(const String16& interface,
     } else {
       threadState->setStrictModePolicy(strictPolicy);
     }
+    // WorkSource.
+    updateWorkSourceRequestHeaderPosition();
+    int32_t workSource = readInt32();
+    threadState->setCallingWorkSourceUidWithoutPropagation(workSource);
+    // Interface descriptor.
     const String16 str(readString16());
     if (str == interface) {
         return true;
@@ -864,6 +911,16 @@ status_t Parcel::writeInt64Vector(const std::vector<int64_t>& val)
 status_t Parcel::writeInt64Vector(const std::unique_ptr<std::vector<int64_t>>& val)
 {
     return writeNullableTypedVector(val, &Parcel::writeInt64);
+}
+
+status_t Parcel::writeUint64Vector(const std::vector<uint64_t>& val)
+{
+    return writeTypedVector(val, &Parcel::writeUint64);
+}
+
+status_t Parcel::writeUint64Vector(const std::unique_ptr<std::vector<uint64_t>>& val)
+{
+    return writeNullableTypedVector(val, &Parcel::writeUint64);
 }
 
 status_t Parcel::writeFloatVector(const std::vector<float>& val)
@@ -1727,6 +1784,14 @@ status_t Parcel::readInt64Vector(std::vector<int64_t>* val) const {
     return readTypedVector(val, &Parcel::readInt64);
 }
 
+status_t Parcel::readUint64Vector(std::unique_ptr<std::vector<uint64_t>>* val) const {
+    return readNullableTypedVector(val, &Parcel::readUint64);
+}
+
+status_t Parcel::readUint64Vector(std::vector<uint64_t>* val) const {
+    return readTypedVector(val, &Parcel::readUint64);
+}
+
 status_t Parcel::readFloatVector(std::unique_ptr<std::vector<float>>* val) const {
     return readNullableTypedVector(val, &Parcel::readFloat);
 }
@@ -2324,6 +2389,15 @@ status_t Parcel::readBlob(size_t len, ReadableBlob* outBlob) const
     int fd = readFileDescriptor();
     if (fd == int(BAD_TYPE)) return BAD_VALUE;
 
+    if (!ashmem_valid(fd)) {
+        ALOGE("invalid fd");
+        return BAD_VALUE;
+    }
+    int size = ashmem_get_size_region(fd);
+    if (size < 0 || size_t(size) < len) {
+        ALOGE("request size %zu does not match fd size %d", len, size);
+        return BAD_VALUE;
+    }
     void* ptr = ::mmap(nullptr, len, isMutable ? PROT_READ | PROT_WRITE : PROT_READ,
             MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) return NO_MEMORY;
@@ -2847,6 +2921,8 @@ void Parcel::initState()
     mAllowFds = true;
     mOwner = nullptr;
     mOpenAshmemSize = 0;
+    mWorkSourceRequestHeaderPosition = 0;
+    mRequestHeaderPresent = false;
 
     // racing multiple init leads only to multiple identical write
     if (gMaxFds == 0) {

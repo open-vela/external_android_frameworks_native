@@ -138,7 +138,7 @@ private:
             String8             mRootDir;
             bool                mThreadPoolStarted;
     volatile int32_t            mThreadPoolSeq;
-            const size_t        mMmapSize;
+            size_t              mMmapSize;
 
             CallRestriction     mCallRestriction;
 };

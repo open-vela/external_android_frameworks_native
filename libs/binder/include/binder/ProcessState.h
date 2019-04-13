@@ -124,8 +124,6 @@ private:
             int64_t             mStarvationStartTimeMs;
 
     mutable Mutex               mLock;  // protects everything below.
-            // TODO: mManagesContexts is often accessed without the lock.
-            //       Explain why that's safe.
 
             Vector<handle_entry>mHandleToObject;
 

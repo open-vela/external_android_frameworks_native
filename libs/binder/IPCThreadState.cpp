@@ -33,6 +33,7 @@
 #include <private/binder/binder_module.h>
 #include <private/binder/Static.h>
 
+#include <atomic>
 #include <errno.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -111,8 +112,6 @@ static const char *kCommandStrings[] = {
     "BC_CLEAR_DEATH_NOTIFICATION",
     "BC_DEAD_BINDER_DONE"
 };
-
-static const int64_t kWorkSourcePropagatedBitIndex = 32;
 
 static const char* getReturnString(uint32_t cmd)
 {
@@ -278,14 +277,14 @@ static const void* printCommand(TextOutput& out, const void* _cmd)
 }
 
 static pthread_mutex_t gTLSMutex = PTHREAD_MUTEX_INITIALIZER;
-static bool gHaveTLS = false;
+static std::atomic<bool> gHaveTLS(false);
 static pthread_key_t gTLS = 0;
-static bool gShutdown = false;
-static bool gDisableBackgroundScheduling = false;
+static std::atomic<bool> gShutdown = false;
+static std::atomic<bool> gDisableBackgroundScheduling = false;
 
 IPCThreadState* IPCThreadState::self()
 {
-    if (gHaveTLS) {
+    if (gHaveTLS.load(std::memory_order_acquire)) {
 restart:
         const pthread_key_t k = gTLS;
         IPCThreadState* st = (IPCThreadState*)pthread_getspecific(k);
@@ -293,13 +292,14 @@ restart:
         return new IPCThreadState;
     }
 
-    if (gShutdown) {
+    // Racey, heuristic test for simultaneous shutdown.
+    if (gShutdown.load(std::memory_order_relaxed)) {
         ALOGW("Calling IPCThreadState::self() during shutdown is dangerous, expect a crash.\n");
         return nullptr;
     }
 
     pthread_mutex_lock(&gTLSMutex);
-    if (!gHaveTLS) {
+    if (!gHaveTLS.load(std::memory_order_relaxed)) {
         int key_create_value = pthread_key_create(&gTLS, threadDestructor);
         if (key_create_value != 0) {
             pthread_mutex_unlock(&gTLSMutex);
@@ -307,7 +307,7 @@ restart:
                     strerror(key_create_value));
             return nullptr;
         }
-        gHaveTLS = true;
+        gHaveTLS.store(true, std::memory_order_release);
     }
     pthread_mutex_unlock(&gTLSMutex);
     goto restart;
@@ -315,7 +315,7 @@ restart:
 
 IPCThreadState* IPCThreadState::selfOrNull()
 {
-    if (gHaveTLS) {
+    if (gHaveTLS.load(std::memory_order_acquire)) {
         const pthread_key_t k = gTLS;
         IPCThreadState* st = (IPCThreadState*)pthread_getspecific(k);
         return st;
@@ -325,9 +325,9 @@ IPCThreadState* IPCThreadState::selfOrNull()
 
 void IPCThreadState::shutdown()
 {
-    gShutdown = true;
+    gShutdown.store(true, std::memory_order_relaxed);
 
-    if (gHaveTLS) {
+    if (gHaveTLS.load(std::memory_order_acquire)) {
         // XXX Need to wait for all thread pool threads to exit!
         IPCThreadState* st = (IPCThreadState*)pthread_getspecific(gTLS);
         if (st) {
@@ -335,18 +335,18 @@ void IPCThreadState::shutdown()
             pthread_setspecific(gTLS, nullptr);
         }
         pthread_key_delete(gTLS);
-        gHaveTLS = false;
+        gHaveTLS.store(false, std::memory_order_release);
     }
 }
 
 void IPCThreadState::disableBackgroundScheduling(bool disable)
 {
-    gDisableBackgroundScheduling = disable;
+    gDisableBackgroundScheduling.store(disable, std::memory_order_relaxed);
 }
 
 bool IPCThreadState::backgroundSchedulingDisabled()
 {
-    return gDisableBackgroundScheduling;
+    return gDisableBackgroundScheduling.load(std::memory_order_relaxed);
 }
 
 sp<ProcessState> IPCThreadState::process()
@@ -392,48 +392,6 @@ void IPCThreadState::setStrictModePolicy(int32_t policy)
 int32_t IPCThreadState::getStrictModePolicy() const
 {
     return mStrictModePolicy;
-}
-
-int64_t IPCThreadState::setCallingWorkSourceUid(uid_t uid)
-{
-    int64_t token = setCallingWorkSourceUidWithoutPropagation(uid);
-    mPropagateWorkSource = true;
-    return token;
-}
-
-int64_t IPCThreadState::setCallingWorkSourceUidWithoutPropagation(uid_t uid)
-{
-    const int64_t propagatedBit = ((int64_t)mPropagateWorkSource) << kWorkSourcePropagatedBitIndex;
-    int64_t token = propagatedBit | mWorkSource;
-    mWorkSource = uid;
-    return token;
-}
-
-void IPCThreadState::clearPropagateWorkSource()
-{
-    mPropagateWorkSource = false;
-}
-
-bool IPCThreadState::shouldPropagateWorkSource() const
-{
-    return mPropagateWorkSource;
-}
-
-uid_t IPCThreadState::getCallingWorkSourceUid() const
-{
-    return mWorkSource;
-}
-
-int64_t IPCThreadState::clearCallingWorkSource()
-{
-    return setCallingWorkSourceUid(kUnsetWorkSource);
-}
-
-void IPCThreadState::restoreCallingWorkSource(int64_t token)
-{
-    uid_t uid = (int)token;
-    setCallingWorkSourceUidWithoutPropagation(uid);
-    mPropagateWorkSource = ((token >> kWorkSourcePropagatedBitIndex) & 1) == 1;
 }
 
 void IPCThreadState::setLastTransactionBinderFlags(int32_t flags)
@@ -801,8 +759,6 @@ status_t IPCThreadState::clearDeathNotification(int32_t handle, BpBinder* proxy)
 
 IPCThreadState::IPCThreadState()
     : mProcess(ProcessState::self()),
-      mWorkSource(kUnsetWorkSource),
-      mPropagateWorkSource(false),
       mStrictModePolicy(0),
       mLastTransactionBinderFlags(0),
       mCallRestriction(mProcess->mCallRestriction)
@@ -1176,13 +1132,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             const uid_t origUid = mCallingUid;
             const int32_t origStrictModePolicy = mStrictModePolicy;
             const int32_t origTransactionBinderFlags = mLastTransactionBinderFlags;
-            const int32_t origWorkSource = mWorkSource;
-            const bool origPropagateWorkSet = mPropagateWorkSource;
-            // Calling work source will be set by Parcel#enforceInterface. Parcel#enforceInterface
-            // is only guaranteed to be called for AIDL-generated stubs so we reset the work source
-            // here to never propagate it.
-            clearCallingWorkSource();
-            clearPropagateWorkSource();
 
             mCallingPid = tr.sender_pid;
             mCallingSid = reinterpret_cast<const char*>(tr_secctx.secctx);
@@ -1238,8 +1187,6 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             mCallingUid = origUid;
             mStrictModePolicy = origStrictModePolicy;
             mLastTransactionBinderFlags = origTransactionBinderFlags;
-            mWorkSource = origWorkSource;
-            mPropagateWorkSource = origPropagateWorkSet;
 
             IF_LOG_TRANSACTIONS() {
                 TextOutput::Bundle _b(alog);

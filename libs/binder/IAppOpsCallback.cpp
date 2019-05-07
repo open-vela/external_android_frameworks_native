@@ -49,7 +49,6 @@ IMPLEMENT_META_INTERFACE(AppOpsCallback, "com.android.internal.app.IAppOpsCallba
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnAppOpsCallback::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
@@ -57,8 +56,7 @@ status_t BnAppOpsCallback::onTransact(
         case OP_CHANGED_TRANSACTION: {
             CHECK_INTERFACE(IAppOpsCallback, data, reply);
             int32_t op = data.readInt32();
-            String16 packageName;
-            (void)data.readString16(&packageName);
+            String16 packageName = data.readString16();
             opChanged(op, packageName);
             reply->writeNoException();
             return NO_ERROR;

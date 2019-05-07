@@ -20,6 +20,8 @@ cc_defaults {
     static_libs: [
         "libserviceutils",
     ],
+
+    clang: true,
 }
 
 //
@@ -33,6 +35,7 @@ cc_library_static {
 
     export_include_dirs: ["."],
 }
+
 
 //
 // Executable
@@ -48,15 +51,4 @@ cc_binary {
     ],
 }
 
-cc_binary {
-    name: "dumpsys_vendor",
-    stem: "dumpsys",
-
-    vendor: true,
-
-    defaults: ["dumpsys_defaults"],
-
-    srcs: [
-        "main.cpp",
-    ],
-}
+subdirs = ["tests"]

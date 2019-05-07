@@ -61,7 +61,6 @@ public:
     /**
      * Register a service.
      */
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t addService(const String16& name, const sp<IBinder>& service,
                                 bool allowIsolated = false,
                                 int dumpsysFlags = DUMP_FLAG_PRIORITY_DEFAULT) = 0;
@@ -69,7 +68,6 @@ public:
     /**
      * Return list of all existing services.
      */
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual Vector<String16> listServices(int dumpsysFlags = DUMP_FLAG_PRIORITY_ALL) = 0;
 
     enum {
@@ -86,9 +84,9 @@ template<typename INTERFACE>
 status_t getService(const String16& name, sp<INTERFACE>* outService)
 {
     const sp<IServiceManager> sm = defaultServiceManager();
-    if (sm != nullptr) {
+    if (sm != NULL) {
         *outService = interface_cast<INTERFACE>(sm->getService(name));
-        if ((*outService) != nullptr) return NO_ERROR;
+        if ((*outService) != NULL) return NO_ERROR;
     }
     return NAME_NOT_FOUND;
 }

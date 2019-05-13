@@ -54,12 +54,6 @@ interface IPackageManagerNative {
 
     long getVersionCodeForPackage(in String packageName);
 
-    /**
-     * Return if each app, identified by its package name allows its audio to be recorded.
-     * Unknown packages are mapped to false.
-     */
-    boolean[] isAudioPlaybackCaptureAllowed(in @utf8InCpp String[] packageNames);
-
     /*  ApplicationInfo.isSystemApp() == true */
     const int LOCATION_SYSTEM = 0x1;
     /*  ApplicationInfo.isVendor() == true */
@@ -74,11 +68,4 @@ interface IPackageManagerNative {
      * LOCATION_PRODUCT: getApplicationInfo(packageName).isProduct()
      */
     int getLocationFlags(in @utf8InCpp String packageName);
-
-    /**
-     * Returns the target SDK version for the given package.
-     * Unknown packages will cause the call to fail. The caller must check the
-     * returned Status before using the result of this function.
-     */
-    int getTargetSdkVersionForPackage(in String packageName);
 }

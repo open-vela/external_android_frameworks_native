@@ -4,8 +4,8 @@
 #ifndef _BINDER_H_
 #define _BINDER_H_
 
-#include <linux/android/binder.h>
 #include <sys/ioctl.h>
+#include <linux/binder.h>
 
 struct binder_state;
 
@@ -42,11 +42,11 @@ enum {
 };
 
 typedef int (*binder_handler)(struct binder_state *bs,
-                              struct binder_transaction_data_secctx *txn,
+                              struct binder_transaction_data *txn,
                               struct binder_io *msg,
                               struct binder_io *reply);
 
-struct binder_state *binder_open(const char* driver, size_t mapsize);
+struct binder_state *binder_open(size_t mapsize);
 void binder_close(struct binder_state *bs);
 
 /* initiate a blocking binder call

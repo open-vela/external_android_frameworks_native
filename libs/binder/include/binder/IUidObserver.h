@@ -34,13 +34,11 @@ public:
     virtual void onUidGone(uid_t uid, bool disabled) = 0;
     virtual void onUidActive(uid_t uid) = 0;
     virtual void onUidIdle(uid_t uid, bool disabled) = 0;
-    virtual void onUidStateChanged(uid_t uid, int32_t procState, int64_t procStateSeq) = 0;
 
     enum {
         ON_UID_GONE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
         ON_UID_ACTIVE_TRANSACTION,
-        ON_UID_IDLE_TRANSACTION,
-        ON_UID_STATE_CHANGED_TRANSACTION
+        ON_UID_IDLE_TRANSACTION
     };
 };
 
@@ -49,7 +47,6 @@ public:
 class BnUidObserver : public BnInterface<IUidObserver>
 {
 public:
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t  onTransact(uint32_t code,
                                  const Parcel& data,
                                  Parcel* reply,

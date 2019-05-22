@@ -2,10 +2,12 @@ LIBBINDER_NDK { # introduced=29
   global:
     AIBinder_associateClass;
     AIBinder_Class_define;
+    AIBinder_Class_setOnDump;
     AIBinder_DeathRecipient_delete;
     AIBinder_DeathRecipient_new;
     AIBinder_debugGetRefCount;
     AIBinder_decStrong;
+    AIBinder_dump;
     AIBinder_fromJavaBinder;
     AIBinder_getCallingPid;
     AIBinder_getCallingUid;
@@ -91,6 +93,7 @@ LIBBINDER_NDK { # introduced=29
     ABinderProcess_setThreadPoolMaxThreadCount; # apex
     ABinderProcess_startThreadPool; # apex
     AServiceManager_addService; # apex
+    AServiceManager_checkService; # apex
     AServiceManager_getService; # apex
   local:
     *;

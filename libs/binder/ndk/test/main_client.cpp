@@ -35,6 +35,19 @@ constexpr char kExistingNonNdkService[] = "SurfaceFlinger";
 //     EXPECT_EQ(nullptr, foo.get());
 // }
 
+TEST(NdkBinder, CheckServiceThatDoesntExist) {
+    AIBinder* binder = AServiceManager_checkService("asdfghkl;");
+    ASSERT_EQ(nullptr, binder);
+}
+
+TEST(NdkBinder, CheckServiceThatDoesExist) {
+    AIBinder* binder = AServiceManager_checkService(kExistingNonNdkService);
+    EXPECT_NE(nullptr, binder);
+    EXPECT_EQ(STATUS_OK, AIBinder_ping(binder));
+
+    AIBinder_decStrong(binder);
+}
+
 TEST(NdkBinder, DoubleNumber) {
     sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
     ASSERT_NE(foo, nullptr);
@@ -73,12 +86,15 @@ TEST(NdkBinder, DeathRecipient) {
     // the binder driver should return this if the service dies during the transaction
     EXPECT_EQ(STATUS_DEAD_OBJECT, foo->die());
 
+    foo = nullptr;
+    AIBinder_decStrong(binder);
+    binder = nullptr;
+
     std::unique_lock<std::mutex> lock(deathMutex);
     EXPECT_TRUE(deathCv.wait_for(lock, 1s, [&] { return deathRecieved; }));
     EXPECT_TRUE(deathRecieved);
 
     AIBinder_DeathRecipient_delete(recipient);
-    AIBinder_decStrong(binder);
 }
 
 TEST(NdkBinder, RetrieveNonNdkService) {

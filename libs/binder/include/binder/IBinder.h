@@ -47,7 +47,7 @@ class IShellCallback;
  * (method calls, property get and set) is down through a low-level
  * protocol implemented on top of the transact() API.
  */
-class IBinder : public virtual RefBase
+class [[clang::lto_visibility_public]] IBinder : public virtual RefBase
 {
 public:
     enum {
@@ -143,6 +143,9 @@ public:
      * dies.  The @a cookie is optional.  If non-NULL, you can
      * supply a NULL @a recipient, and the recipient previously
      * added with that cookie will be unlinked.
+     *
+     * If the binder is dead, this will return DEAD_OBJECT. Deleting
+     * the object will also unlink all death recipients.
      */
     // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        unlinkToDeath(  const wp<DeathRecipient>& recipient,

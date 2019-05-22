@@ -67,6 +67,7 @@ public:
 
     virtual BpBinder*   remoteBinder();
 
+            status_t    setConstantData(const void* data, size_t size);
             void        sendObituary();
 
     static uint32_t     getBinderProxyCount(uint32_t uid);

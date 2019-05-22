@@ -40,7 +40,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define DEFAULT_BINDER_VM_SIZE ((1 * 1024 * 1024) - sysconf(_SC_PAGE_SIZE) * 2)
+#define BINDER_VM_SIZE ((1 * 1024 * 1024) - sysconf(_SC_PAGE_SIZE) * 2)
 #define DEFAULT_MAX_BINDER_THREADS 15
 
 #ifdef __ANDROID_VNDK__
@@ -77,13 +77,7 @@ sp<ProcessState> ProcessState::self()
     if (gProcess != nullptr) {
         return gProcess;
     }
-    gProcess = new ProcessState(kDefaultDriver, DEFAULT_BINDER_VM_SIZE);
-    return gProcess;
-}
-
-sp<ProcessState> ProcessState::selfOrNull()
-{
-    Mutex::Autolock _l(gProcessMutex);
+    gProcess = new ProcessState(kDefaultDriver);
     return gProcess;
 }
 
@@ -104,19 +98,13 @@ sp<ProcessState> ProcessState::initWithDriver(const char* driver)
         driver = "/dev/binder";
     }
 
-    gProcess = new ProcessState(driver, DEFAULT_BINDER_VM_SIZE);
+    gProcess = new ProcessState(driver);
     return gProcess;
 }
 
-sp<ProcessState> ProcessState::initWithMmapSize(size_t mmap_size) {
+sp<ProcessState> ProcessState::selfOrNull()
+{
     Mutex::Autolock _l(gProcessMutex);
-    if (gProcess != nullptr) {
-        LOG_ALWAYS_FATAL_IF(mmap_size != gProcess->getMmapSize(),
-                "ProcessState already initialized with a different mmap size.");
-        return gProcess;
-    }
-
-    gProcess = new ProcessState(kDefaultDriver, mmap_size);
     return gProcess;
 }
 
@@ -193,20 +181,8 @@ bool ProcessState::becomeContextManager(context_check_func checkFunc, void* user
         mBinderContextCheckFunc = checkFunc;
         mBinderContextUserData = userData;
 
-        flat_binder_object obj {
-            .flags = FLAT_BINDER_FLAG_TXN_SECURITY_CTX,
-        };
-
-        status_t result = ioctl(mDriverFD, BINDER_SET_CONTEXT_MGR_EXT, &obj);
-
-        // fallback to original method
-        if (result != 0) {
-            android_errorWriteLog(0x534e4554, "121035042");
-
-            int dummy = 0;
-            result = ioctl(mDriverFD, BINDER_SET_CONTEXT_MGR, &dummy);
-        }
-
+        int dummy = 0;
+        status_t result = ioctl(mDriverFD, BINDER_SET_CONTEXT_MGR, &dummy);
         if (result == 0) {
             mManagesContexts = true;
         } else if (result == -1) {
@@ -226,6 +202,15 @@ bool ProcessState::becomeContextManager(context_check_func checkFunc, void* user
 // already be invalid.
 ssize_t ProcessState::getKernelReferences(size_t buf_count, uintptr_t* buf)
 {
+    // TODO: remove these when they are defined by bionic's binder.h
+    struct binder_node_debug_info {
+        binder_uintptr_t ptr;
+        binder_uintptr_t cookie;
+        __u32 has_strong_ref;
+        __u32 has_weak_ref;
+    };
+#define BINDER_GET_NODE_DEBUG_INFO _IOWR('b', 11, struct binder_node_debug_info)
+
     binder_node_debug_info info = {};
 
     uintptr_t* end = buf ? buf + buf_count : nullptr;
@@ -247,10 +232,6 @@ ssize_t ProcessState::getKernelReferences(size_t buf_count, uintptr_t* buf)
     } while (info.ptr != 0);
 
     return count;
-}
-
-size_t ProcessState::getMmapSize() {
-    return mMmapSize;
 }
 
 void ProcessState::setCallRestriction(CallRestriction restriction) {
@@ -437,7 +418,7 @@ static int open_driver(const char *driver)
     return fd;
 }
 
-ProcessState::ProcessState(const char *driver, size_t mmap_size)
+ProcessState::ProcessState(const char *driver)
     : mDriverName(String8(driver))
     , mDriverFD(open_driver(driver))
     , mVMStart(MAP_FAILED)
@@ -451,12 +432,11 @@ ProcessState::ProcessState(const char *driver, size_t mmap_size)
     , mBinderContextUserData(nullptr)
     , mThreadPoolStarted(false)
     , mThreadPoolSeq(1)
-    , mMmapSize(mmap_size)
     , mCallRestriction(CallRestriction::NONE)
 {
     if (mDriverFD >= 0) {
         // mmap the binder, providing a chunk of virtual address space to receive transactions.
-        mVMStart = mmap(nullptr, mMmapSize, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, 0);
+        mVMStart = mmap(nullptr, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, 0);
         if (mVMStart == MAP_FAILED) {
             // *sigh*
             ALOGE("Using %s failed: unable to mmap transaction memory.\n", mDriverName.c_str());
@@ -473,7 +453,7 @@ ProcessState::~ProcessState()
 {
     if (mDriverFD >= 0) {
         if (mVMStart != MAP_FAILED) {
-            munmap(mVMStart, mMmapSize);
+            munmap(mVMStart, BINDER_VM_SIZE);
         }
         close(mDriverFD);
     }

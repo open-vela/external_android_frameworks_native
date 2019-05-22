@@ -25,11 +25,8 @@ using ::android::javaObjectForIBinder;
 using ::android::sp;
 
 AIBinder* AIBinder_fromJavaBinder(JNIEnv* env, jobject binder) {
-    if (binder == nullptr) {
-        return nullptr;
-    }
-
     sp<IBinder> ibinder = ibinderForJavaObject(env, binder);
+
     sp<AIBinder> cbinder = ABpBinder::lookupOrCreateFromBinder(ibinder);
     AIBinder_incStrong(cbinder.get());
 

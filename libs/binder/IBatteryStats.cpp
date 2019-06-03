@@ -29,7 +29,7 @@ namespace android {
 class BpBatteryStats : public BpInterface<IBatteryStats>
 {
 public:
-    explicit BpBatteryStats(const sp<IBinder>& impl)
+    BpBatteryStats(const sp<IBinder>& impl)
         : BpInterface<IBatteryStats>(impl)
     {
     }
@@ -136,7 +136,6 @@ IMPLEMENT_META_INTERFACE(BatteryStats, "com.android.internal.app.IBatteryStats")
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnBatteryStats::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {

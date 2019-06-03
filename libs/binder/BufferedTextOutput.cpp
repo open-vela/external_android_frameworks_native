@@ -17,15 +17,14 @@
 #include <binder/BufferedTextOutput.h>
 #include <binder/Debug.h>
 
-#include <cutils/atomic.h>
-#include <cutils/threads.h>
+#include <utils/Atomic.h>
 #include <utils/Log.h>
 #include <utils/RefBase.h>
 #include <utils/Vector.h>
+#include <cutils/threads.h>
 
 #include <private/binder/Static.h>
 
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -35,9 +34,9 @@ namespace android {
 
 struct BufferedTextOutput::BufferState : public RefBase
 {
-    explicit BufferState(int32_t _seq)
+    BufferState(int32_t _seq)
         : seq(_seq)
-        , buffer(nullptr)
+        , buffer(NULL)
         , bufferPos(0)
         , bufferSize(0)
         , atFront(true)
@@ -88,7 +87,7 @@ struct BufferedTextOutput::ThreadState
     Vector<sp<BufferedTextOutput::BufferState> > states;
 };
 
-static pthread_mutex_t gMutex = PTHREAD_MUTEX_INITIALIZER;
+static mutex_t          gMutex;
 
 static thread_store_t   tls;
 
@@ -114,7 +113,7 @@ static int32_t allocBufferIndex()
 {
     int32_t res = -1;
     
-    pthread_mutex_lock(&gMutex);
+    mutex_lock(&gMutex);
     
     if (gFreeBufferIndex >= 0) {
         res = gFreeBufferIndex;
@@ -126,17 +125,17 @@ static int32_t allocBufferIndex()
         gTextBuffers.add(-1);
     }
 
-    pthread_mutex_unlock(&gMutex);
+    mutex_unlock(&gMutex);
     
     return res;
 }
 
 static void freeBufferIndex(int32_t idx)
 {
-    pthread_mutex_lock(&gMutex);
+    mutex_lock(&gMutex);
     gTextBuffers.editItemAt(idx) = gFreeBufferIndex;
     gFreeBufferIndex = idx;
-    pthread_mutex_unlock(&gMutex);
+    mutex_unlock(&gMutex);
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +188,7 @@ status_t BufferedTextOutput::print(const char* txt, size_t len)
                 // them out without going through the buffer.
                 
                 // Slurp up all of the lines.
-                const char* lastLine = txt;
+                const char* lastLine = txt+1;
                 while (txt < end) {
                     if (*txt++ == '\n') lastLine = txt;
                 }
@@ -267,13 +266,13 @@ BufferedTextOutput::BufferState* BufferedTextOutput::getBuffer() const
     if ((mFlags&MULTITHREADED) != 0) {
         ThreadState* ts = getThreadState();
         if (ts) {
-            while (ts->states.size() <= (size_t)mIndex) ts->states.add(nullptr);
+            while (ts->states.size() <= (size_t)mIndex) ts->states.add(NULL);
             BufferState* bs = ts->states[mIndex].get();
-            if (bs != nullptr && bs->seq == mSeq) return bs;
+            if (bs != NULL && bs->seq == mSeq) return bs;
             
             ts->states.editItemAt(mIndex) = new BufferState(mIndex);
             bs = ts->states[mIndex].get();
-            if (bs != nullptr) return bs;
+            if (bs != NULL) return bs;
         }
     }
     

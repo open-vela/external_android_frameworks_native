@@ -48,7 +48,7 @@ protected:
 class FdTextOutput : public BufferedTextOutput
 {
 public:
-    explicit FdTextOutput(int fd) : BufferedTextOutput(MULTITHREADED), mFD(fd) { }
+    FdTextOutput(int fd) : BufferedTextOutput(MULTITHREADED), mFD(fd) { }
     virtual ~FdTextOutput() { };
 
 protected:
@@ -72,7 +72,28 @@ TextOutput& aerr(gStderrTextOutput);
 
 // ------------ ProcessState.cpp
 
-Mutex& gProcessMutex = *new Mutex;
+Mutex gProcessMutex;
 sp<ProcessState> gProcess;
+
+class LibBinderIPCtStatics
+{
+public:
+    LibBinderIPCtStatics()
+    {
+    }
+    
+    ~LibBinderIPCtStatics()
+    {
+        IPCThreadState::shutdown();
+    }
+};
+
+static LibBinderIPCtStatics gIPCStatics;
+
+// ------------ IServiceManager.cpp
+
+Mutex gDefaultServiceManagerLock;
+sp<IServiceManager> gDefaultServiceManager;
+sp<IPermissionController> gPermissionController;
 
 }   // namespace android

@@ -31,7 +31,7 @@ namespace android {
 class BpAppOpsService : public BpInterface<IAppOpsService>
 {
 public:
-    explicit BpAppOpsService(const sp<IBinder>& impl)
+    BpAppOpsService(const sp<IBinder>& impl)
         : BpInterface<IAppOpsService>(impl)
     {
     }

@@ -31,7 +31,7 @@ namespace android {
 class BpAppOpsCallback : public BpInterface<IAppOpsCallback>
 {
 public:
-    explicit BpAppOpsCallback(const sp<IBinder>& impl)
+    BpAppOpsCallback(const sp<IBinder>& impl)
         : BpInterface<IAppOpsCallback>(impl)
     {
     }

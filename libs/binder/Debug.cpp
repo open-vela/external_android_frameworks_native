@@ -15,7 +15,6 @@
  */
 
 #include <binder/Debug.h>
-#include <binder/ProcessState.h>
 
 #include <utils/misc.h>
 
@@ -293,15 +292,6 @@ void printHexData(int32_t indent, const void *buf, size_t length,
         if (indent > 0) func(cookie, stringForIndent(indent-1));
         func(cookie, "};");
     }
-}
-
-ssize_t getBinderKernelReferences(size_t count, uintptr_t* buf) {
-    sp<ProcessState> proc = ProcessState::selfOrNull();
-    if (proc.get() == NULL) {
-        return 0;
-    }
-
-    return proc->getKernelReferences(count, buf);
 }
 
 }; // namespace android

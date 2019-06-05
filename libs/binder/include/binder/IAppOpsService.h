@@ -18,6 +18,8 @@
 #ifndef ANDROID_IAPP_OPS_SERVICE_H
 #define ANDROID_IAPP_OPS_SERVICE_H
 
+#ifndef __ANDROID_VNDK__
+
 #include <binder/IAppOpsCallback.h>
 #include <binder/IInterface.h>
 
@@ -33,7 +35,7 @@ public:
     virtual int32_t checkOperation(int32_t code, int32_t uid, const String16& packageName) = 0;
     virtual int32_t noteOperation(int32_t code, int32_t uid, const String16& packageName) = 0;
     virtual int32_t startOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-            const String16& packageName) = 0;
+            const String16& packageName, bool startIfModeDefault) = 0;
     virtual void finishOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
             const String16& packageName) = 0;
     virtual void startWatchingMode(int32_t op, const String16& packageName,
@@ -41,6 +43,8 @@ public:
     virtual void stopWatchingMode(const sp<IAppOpsCallback>& callback) = 0;
     virtual sp<IBinder> getToken(const sp<IBinder>& clientToken) = 0;
     virtual int32_t permissionToOpCode(const String16& permission) = 0;
+    virtual int32_t checkAudioOperation(int32_t code, int32_t usage,int32_t uid,
+            const String16& packageName) = 0;
 
     enum {
         CHECK_OPERATION_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
@@ -51,6 +55,7 @@ public:
         STOP_WATCHING_MODE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+5,
         GET_TOKEN_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+6,
         PERMISSION_TO_OP_CODE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+7,
+        CHECK_AUDIO_OPERATION_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+8,
     };
 
     enum {
@@ -65,6 +70,7 @@ public:
 class BnAppOpsService : public BnInterface<IAppOpsService>
 {
 public:
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
@@ -74,5 +80,9 @@ public:
 // ----------------------------------------------------------------------
 
 }; // namespace android
+
+#else // __ANDROID_VNDK__
+#error "This header is not visible to vendors"
+#endif // __ANDROID_VNDK__
 
 #endif // ANDROID_IAPP_OPS_SERVICE_H

@@ -22,7 +22,6 @@
 
 #include <binder/Parcel.h>
 #include <utils/String8.h>
-#include <string>
 
 namespace android {
 namespace binder {
@@ -97,8 +96,6 @@ public:
                                            const char* message);
 
     static Status fromStatusT(status_t status);
-
-    static std::string exceptionToString(status_t exceptionCode);
 
     Status() = default;
     ~Status() = default;

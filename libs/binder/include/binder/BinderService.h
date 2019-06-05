@@ -34,17 +34,15 @@ template<typename SERVICE>
 class BinderService
 {
 public:
-    static status_t publish(bool allowIsolated = false,
-                            int dumpFlags = IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT) {
+    static status_t publish(bool allowIsolated = false) {
         sp<IServiceManager> sm(defaultServiceManager());
-        return sm->addService(String16(SERVICE::getServiceName()), new SERVICE(), allowIsolated,
-                              dumpFlags);
+        return sm->addService(
+                String16(SERVICE::getServiceName()),
+                new SERVICE(), allowIsolated);
     }
 
-    static void publishAndJoinThreadPool(
-            bool allowIsolated = false,
-            int dumpFlags = IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT) {
-        publish(allowIsolated, dumpFlags);
+    static void publishAndJoinThreadPool(bool allowIsolated = false) {
+        publish(allowIsolated);
         joinThreadPool();
     }
 

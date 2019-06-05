@@ -11,4 +11,8 @@ service servicemanager /system/bin/servicemanager
     onrestart restart inputflinger
     onrestart restart drm
     onrestart restart cameraserver
+    onrestart restart keystore
+    onrestart restart gatekeeperd
+    onrestart restart thermalservice
     writepid /dev/cpuset/system-background/tasks
+    shutdown critical

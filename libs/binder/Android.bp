@@ -15,15 +15,31 @@
 cc_library_headers {
     name: "libbinder_headers",
     export_include_dirs: ["include"],
+    vendor_available: true,
+    header_libs: [
+        "libbase_headers",
+        "libcutils_headers",
+        "libutils_headers",
+    ],
+    export_header_lib_headers: [
+        "libbase_headers",
+        "libcutils_headers",
+        "libutils_headers",
+    ],
 }
 
-cc_library {
+cc_library_shared {
     name: "libbinder",
 
     // for vndbinder
     vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+    double_loadable: true,
 
     srcs: [
+        "ActivityManager.cpp",
         "AppOpsManager.cpp",
         "Binder.cpp",
         "BpBinder.cpp",
@@ -42,11 +58,14 @@ cc_library {
         "IResultReceiver.cpp",
         "IServiceManager.cpp",
         "IShellCallback.cpp",
+        "IUidObserver.cpp",
         "MemoryBase.cpp",
         "MemoryDealer.cpp",
         "MemoryHeapBase.cpp",
         "Parcel.cpp",
+        "ParcelFileDescriptor.cpp",
         "PermissionCache.cpp",
+        "PermissionController.cpp",
         "PersistableBundle.cpp",
         "ProcessInfoService.cpp",
         "ProcessState.cpp",
@@ -55,12 +74,40 @@ cc_library {
         "TextOutput.cpp",
         "IpPrefix.cpp",
         "Value.cpp",
+        ":libbinder_aidl",
     ],
+
+    target: {
+        vendor: {
+            exclude_srcs: [
+                "ActivityManager.cpp",
+                "AppOpsManager.cpp",
+                "IActivityManager.cpp",
+                "IAppOpsCallback.cpp",
+                "IAppOpsService.cpp",
+                "IBatteryStats.cpp",
+                "IMediaResourceMonitor.cpp",
+                "IPermissionController.cpp",
+                "IProcessInfoService.cpp",
+                "IUidObserver.cpp",
+                "PermissionCache.cpp",
+                "PermissionController.cpp",
+                "ProcessInfoService.cpp",
+                "IpPrefix.cpp",
+                ":libbinder_aidl",
+            ],
+        },
+    },
+
+    aidl: {
+        export_aidl_headers: true,
+    },
 
     cflags: [
         "-Wall",
         "-Wextra",
         "-Werror",
+        "-Wzero-as-null-pointer-constant",
     ],
     product_variables: {
         binder32bit: {
@@ -73,20 +120,29 @@ cc_library {
         "liblog",
         "libcutils",
         "libutils",
-    ],
-    export_shared_lib_headers: [
-        "libbase",
-        "libutils",
+        "libbinderthreadstate",
     ],
 
-    export_include_dirs: [
-        "include",
+    header_libs: [
+        "libbinder_headers",
+    ],
+
+    export_header_lib_headers: [
+        "libbinder_headers",
     ],
 
     clang: true,
     sanitize: {
         misc_undefined: ["integer"],
     },
+}
+
+// AIDL interface between libbinder and framework.jar
+filegroup {
+    name: "libbinder_aidl",
+    srcs: [
+        "aidl/android/content/pm/IPackageManagerNative.aidl",
+    ],
 }
 
 subdirs = ["tests"]

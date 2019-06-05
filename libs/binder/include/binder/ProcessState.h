@@ -35,13 +35,9 @@ class ProcessState : public virtual RefBase
 {
 public:
     static  sp<ProcessState>    self();
-    static  sp<ProcessState>    selfOrNull();
-
     /* initWithDriver() can be used to configure libbinder to use
      * a different binder driver dev node. It must be called *before*
-     * any call to ProcessState::self(). The default is /dev/vndbinder
-     * for processes built with the VNDK and /dev/binder for those
-     * which are not.
+     * any call to ProcessState::self(). /dev/binder remains the default.
      */
     static  sp<ProcessState>    initWithDriver(const char *driver);
 
@@ -75,24 +71,10 @@ public:
 
             String8             getDriverName();
 
-            ssize_t             getKernelReferences(size_t count, uintptr_t* buf);
-
-            enum class CallRestriction {
-                // all calls okay
-                NONE,
-                // log when calls are blocking
-                ERROR_IF_NOT_ONEWAY,
-                // abort process on blocking calls
-                FATAL_IF_NOT_ONEWAY,
-            };
-            // Sets calling restrictions for all transactions in this process. This must be called
-            // before any threads are spawned.
-            void setCallRestriction(CallRestriction restriction);
-
 private:
     friend class IPCThreadState;
     
-            explicit            ProcessState(const char* driver);
+                                ProcessState(const char* driver);
                                 ~ProcessState();
 
                                 ProcessState(const ProcessState& o);
@@ -135,8 +117,6 @@ private:
             String8             mRootDir;
             bool                mThreadPoolStarted;
     volatile int32_t            mThreadPoolSeq;
-
-            CallRestriction     mCallRestriction;
 };
     
 }; // namespace android

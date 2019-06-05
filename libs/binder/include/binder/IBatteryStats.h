@@ -17,6 +17,8 @@
 #ifndef ANDROID_IBATTERYSTATS_H
 #define ANDROID_IBATTERYSTATS_H
 
+#ifndef __ANDROID_VNDK__
+
 #include <binder/IInterface.h>
 
 namespace android {
@@ -66,6 +68,7 @@ public:
 class BnBatteryStats : public BnInterface<IBatteryStats>
 {
 public:
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
@@ -75,5 +78,9 @@ public:
 // ----------------------------------------------------------------------
 
 }; // namespace android
+
+#else // __ANDROID_VNDK__
+#error "This header is not visible to vendors"
+#endif // __ANDROID_VNDK__
 
 #endif // ANDROID_IBATTERYSTATS_H

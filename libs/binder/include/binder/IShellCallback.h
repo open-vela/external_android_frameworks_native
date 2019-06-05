@@ -29,7 +29,8 @@ class IShellCallback : public IInterface
 public:
     DECLARE_META_INTERFACE(ShellCallback);
 
-    virtual int openOutputFile(const String16& path, const String16& seLinuxContext) = 0;
+    virtual int openFile(const String16& path, const String16& seLinuxContext,
+            const String16& mode) = 0;
 
     enum {
         OP_OPEN_OUTPUT_FILE = IBinder::FIRST_CALL_TRANSACTION
@@ -41,6 +42,7 @@ public:
 class BnShellCallback : public BnInterface<IShellCallback>
 {
 public:
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,

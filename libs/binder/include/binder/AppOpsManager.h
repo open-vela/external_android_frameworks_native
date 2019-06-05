@@ -17,6 +17,8 @@
 #ifndef ANDROID_APP_OPS_MANAGER_H
 #define ANDROID_APP_OPS_MANAGER_H
 
+#ifndef __ANDROID_VNDK__
+
 #include <binder/IAppOpsService.h>
 
 #include <utils/threads.h>
@@ -93,13 +95,30 @@ public:
         OP_USE_FINGERPRINT = 55,
         OP_BODY_SENSORS = 56,
         OP_AUDIO_ACCESSIBILITY_VOLUME = 64,
+        OP_READ_PHONE_NUMBERS = 65,
+        OP_REQUEST_INSTALL_PACKAGES = 66,
+        OP_PICTURE_IN_PICTURE = 67,
+        OP_INSTANT_APP_START_FOREGROUND = 68,
+        OP_ANSWER_PHONE_CALLS = 69,
+        OP_RUN_ANY_IN_BACKGROUND = 70,
+        OP_CHANGE_WIFI_STATE = 71,
+        OP_REQUEST_DELETE_PACKAGES = 72,
+        OP_BIND_ACCESSIBILITY_SERVICE = 73,
+        OP_ACCEPT_HANDOVER = 74,
+        OP_MANAGE_IPSEC_TUNNELS = 75,
+        OP_START_FOREGROUND = 76,
+        OP_BLUETOOTH_SCAN = 77,
+        OP_USE_BIOMETRIC = 78,
     };
 
     AppOpsManager();
 
     int32_t checkOp(int32_t op, int32_t uid, const String16& callingPackage);
+    int32_t checkAudioOpNoThrow(int32_t op, int32_t usage, int32_t uid,
+            const String16& callingPackage);
     int32_t noteOp(int32_t op, int32_t uid, const String16& callingPackage);
-    int32_t startOp(int32_t op, int32_t uid, const String16& callingPackage);
+    int32_t startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
+            bool startIfModeDefault);
     void finishOp(int32_t op, int32_t uid, const String16& callingPackage);
     void startWatchingMode(int32_t op, const String16& packageName,
             const sp<IAppOpsCallback>& callback);
@@ -116,4 +135,8 @@ private:
 
 }; // namespace android
 // ---------------------------------------------------------------------------
+#else // __ANDROID_VNDK__
+#error "This header is not visible to vendors"
+#endif // __ANDROID_VNDK__
+
 #endif // ANDROID_APP_OPS_MANAGER_H

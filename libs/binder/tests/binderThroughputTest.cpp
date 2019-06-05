@@ -215,7 +215,7 @@ void worker_fx(int num,
         int target = cs_pair ? num % server_count : rand() % workers.size();
         int sz = payload_size;
 
-        while (sz >= sizeof(uint32_t)) {
+        while (sz > sizeof(uint32_t)) {
             data.writeInt32(0);
             sz -= sizeof(uint32_t);
         }
@@ -380,8 +380,7 @@ int main(int argc, char *argv[])
             // Caller specified the max latency in microseconds.
             // No need to run training round in this case.
             if (atoi(argv[i+1]) > 0) {
-                max_time_bucket = strtoull(argv[i+1], (char **)nullptr, 10) * 1000;
-                time_per_bucket = max_time_bucket / num_buckets;
+                max_time_bucket = strtoull(argv[i+1], (char **)NULL, 10) * 1000;
                 i++;
             } else {
                 cout << "Max latency -m must be positive." << endl;

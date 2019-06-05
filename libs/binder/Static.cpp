@@ -72,7 +72,28 @@ TextOutput& aerr(gStderrTextOutput);
 
 // ------------ ProcessState.cpp
 
-Mutex& gProcessMutex = *new Mutex;
+Mutex gProcessMutex;
 sp<ProcessState> gProcess;
+
+class LibBinderIPCtStatics
+{
+public:
+    LibBinderIPCtStatics()
+    {
+    }
+    
+    ~LibBinderIPCtStatics()
+    {
+        IPCThreadState::shutdown();
+    }
+};
+
+static LibBinderIPCtStatics gIPCStatics;
+
+// ------------ IServiceManager.cpp
+
+Mutex gDefaultServiceManagerLock;
+sp<IServiceManager> gDefaultServiceManager;
+sp<IPermissionController> gPermissionController;
 
 }   // namespace android

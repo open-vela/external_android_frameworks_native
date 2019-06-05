@@ -409,15 +409,6 @@ void IPCThreadState::flushCommands()
     if (mProcess->mDriverFD <= 0)
         return;
     talkWithDriver(false);
-    // The flush could have caused post-write refcount decrements to have
-    // been executed, which in turn could result in BC_RELEASE/BC_DECREFS
-    // being queued in mOut. So flush again, if we need to.
-    if (mOut.dataSize() > 0) {
-        talkWithDriver(false);
-    }
-    if (mOut.dataSize() > 0) {
-        ALOGW("mOut.dataSize() > 0 after flushCommands()");
-    }
 }
 
 void IPCThreadState::blockUntilThreadAvailable()
@@ -479,50 +470,24 @@ status_t IPCThreadState::getAndExecuteCommand()
 void IPCThreadState::processPendingDerefs()
 {
     if (mIn.dataPosition() >= mIn.dataSize()) {
-        /*
-         * The decWeak()/decStrong() calls may cause a destructor to run,
-         * which in turn could have initiated an outgoing transaction,
-         * which in turn could cause us to add to the pending refs
-         * vectors; so instead of simply iterating, loop until they're empty.
-         *
-         * We do this in an outer loop, because calling decStrong()
-         * may result in something being added to mPendingWeakDerefs,
-         * which could be delayed until the next incoming command
-         * from the driver if we don't process it now.
-         */
-        while (mPendingWeakDerefs.size() > 0 || mPendingStrongDerefs.size() > 0) {
-            while (mPendingWeakDerefs.size() > 0) {
-                RefBase::weakref_type* refs = mPendingWeakDerefs[0];
-                mPendingWeakDerefs.removeAt(0);
+        size_t numPending = mPendingWeakDerefs.size();
+        if (numPending > 0) {
+            for (size_t i = 0; i < numPending; i++) {
+                RefBase::weakref_type* refs = mPendingWeakDerefs[i];
                 refs->decWeak(mProcess.get());
             }
+            mPendingWeakDerefs.clear();
+        }
 
-            if (mPendingStrongDerefs.size() > 0) {
-                // We don't use while() here because we don't want to re-order
-                // strong and weak decs at all; if this decStrong() causes both a
-                // decWeak() and a decStrong() to be queued, we want to process
-                // the decWeak() first.
-                BBinder* obj = mPendingStrongDerefs[0];
-                mPendingStrongDerefs.removeAt(0);
+        numPending = mPendingStrongDerefs.size();
+        if (numPending > 0) {
+            for (size_t i = 0; i < numPending; i++) {
+                BBinder* obj = mPendingStrongDerefs[i];
                 obj->decStrong(mProcess.get());
             }
+            mPendingStrongDerefs.clear();
         }
     }
-}
-
-void IPCThreadState::processPostWriteDerefs()
-{
-    for (size_t i = 0; i < mPostWriteWeakDerefs.size(); i++) {
-        RefBase::weakref_type* refs = mPostWriteWeakDerefs[i];
-        refs->decWeak(mProcess.get());
-    }
-    mPostWriteWeakDerefs.clear();
-
-    for (size_t i = 0; i < mPostWriteStrongDerefs.size(); i++) {
-        RefBase* obj = mPostWriteStrongDerefs[i];
-        obj->decStrong(mProcess.get());
-    }
-    mPostWriteStrongDerefs.clear();
 }
 
 void IPCThreadState::joinThreadPool(bool isMain)
@@ -595,7 +560,7 @@ status_t IPCThreadState::transact(int32_t handle,
                                   uint32_t code, const Parcel& data,
                                   Parcel* reply, uint32_t flags)
 {
-    status_t err;
+    status_t err = data.errorCheck();
 
     flags |= TF_ACCEPT_FDS;
 
@@ -606,9 +571,11 @@ status_t IPCThreadState::transact(int32_t handle,
             << indent << data << dedent << endl;
     }
 
-    LOG_ONEWAY(">>>> SEND from pid %d uid %d %s", getpid(), getuid(),
-        (flags & TF_ONE_WAY) == 0 ? "READ REPLY" : "ONE WAY");
-    err = writeTransactionData(BC_TRANSACTION, flags, handle, code, data, NULL);
+    if (err == NO_ERROR) {
+        LOG_ONEWAY(">>>> SEND from pid %d uid %d %s", getpid(), getuid(),
+            (flags & TF_ONE_WAY) == 0 ? "READ REPLY" : "ONE WAY");
+        err = writeTransactionData(BC_TRANSACTION, flags, handle, code, data, NULL);
+    }
 
     if (err != NO_ERROR) {
         if (reply) reply->setError(err);
@@ -651,14 +618,11 @@ status_t IPCThreadState::transact(int32_t handle,
     return err;
 }
 
-void IPCThreadState::incStrongHandle(int32_t handle, BpBinder *proxy)
+void IPCThreadState::incStrongHandle(int32_t handle)
 {
     LOG_REMOTEREFS("IPCThreadState::incStrongHandle(%d)\n", handle);
     mOut.writeInt32(BC_ACQUIRE);
     mOut.writeInt32(handle);
-    // Create a temp reference until the driver has handled this command.
-    proxy->incStrong(mProcess.get());
-    mPostWriteStrongDerefs.push(proxy);
 }
 
 void IPCThreadState::decStrongHandle(int32_t handle)
@@ -668,14 +632,11 @@ void IPCThreadState::decStrongHandle(int32_t handle)
     mOut.writeInt32(handle);
 }
 
-void IPCThreadState::incWeakHandle(int32_t handle, BpBinder *proxy)
+void IPCThreadState::incWeakHandle(int32_t handle)
 {
     LOG_REMOTEREFS("IPCThreadState::incWeakHandle(%d)\n", handle);
     mOut.writeInt32(BC_INCREFS);
     mOut.writeInt32(handle);
-    // Create a temp reference until the driver has handled this command.
-    proxy->getWeakRefs()->incWeak(mProcess.get());
-    mPostWriteWeakDerefs.push(proxy->getWeakRefs());
 }
 
 void IPCThreadState::decWeakHandle(int32_t handle)
@@ -714,7 +675,7 @@ void IPCThreadState::expungeHandle(int32_t handle, IBinder* binder)
 #if LOG_REFCOUNTS
     ALOGV("IPCThreadState::expungeHandle(%ld)\n", handle);
 #endif
-    self()->mProcess->expungeHandle(handle, binder); // NOLINT
+    self()->mProcess->expungeHandle(handle, binder);
 }
 
 status_t IPCThreadState::requestDeathNotification(int32_t handle, BpBinder* proxy)
@@ -927,10 +888,8 @@ status_t IPCThreadState::talkWithDriver(bool doReceive)
         if (bwr.write_consumed > 0) {
             if (bwr.write_consumed < mOut.dataSize())
                 mOut.remove(0, bwr.write_consumed);
-            else {
+            else
                 mOut.setDataSize(0);
-                processPostWriteDerefs();
-            }
         }
         if (bwr.read_consumed > 0) {
             mIn.setDataSize(bwr.read_consumed);

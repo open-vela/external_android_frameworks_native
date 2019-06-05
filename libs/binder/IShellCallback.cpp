@@ -39,13 +39,11 @@ public:
     {
     }
 
-    virtual int openFile(const String16& path, const String16& seLinuxContext,
-            const String16& mode) {
+    virtual int openOutputFile(const String16& path, const String16& seLinuxContext) {
         Parcel data, reply;
         data.writeInterfaceToken(IShellCallback::getInterfaceDescriptor());
         data.writeString16(path);
         data.writeString16(seLinuxContext);
-        data.writeString16(mode);
         remote()->transact(OP_OPEN_OUTPUT_FILE, data, &reply, 0);
         reply.readExceptionCode();
         int fd = reply.readParcelFileDescriptor();
@@ -58,7 +56,6 @@ IMPLEMENT_META_INTERFACE(ShellCallback, "com.android.internal.os.IShellCallback"
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnShellCallback::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
@@ -67,9 +64,8 @@ status_t BnShellCallback::onTransact(
             CHECK_INTERFACE(IShellCallback, data, reply);
             String16 path(data.readString16());
             String16 seLinuxContext(data.readString16());
-            String16 mode(data.readString16());
-            int fd = openFile(path, seLinuxContext, mode);
-            if (reply != nullptr) {
+            int fd = openOutputFile(path, seLinuxContext);
+            if (reply != NULL) {
                 reply->writeNoException();
                 if (fd >= 0) {
                     reply->writeInt32(1);

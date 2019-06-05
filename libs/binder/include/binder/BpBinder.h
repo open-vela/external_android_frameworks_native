@@ -19,20 +19,15 @@
 
 #include <binder/IBinder.h>
 #include <utils/KeyedVector.h>
-#include <utils/Mutex.h>
 #include <utils/threads.h>
-
-#include <unordered_map>
 
 // ---------------------------------------------------------------------------
 namespace android {
 
-using binder_proxy_limit_callback = void(*)(int);
-
 class BpBinder : public IBinder
 {
 public:
-    static BpBinder*    create(int32_t handle);
+                        BpBinder(int32_t handle);
 
     inline  int32_t     handle() const { return mHandle; }
 
@@ -66,14 +61,6 @@ public:
             status_t    setConstantData(const void* data, size_t size);
             void        sendObituary();
 
-    static uint32_t     getBinderProxyCount(uint32_t uid);
-    static void         getCountByUid(Vector<uint32_t>& uids, Vector<uint32_t>& counts);
-    static void         enableCountByUid();
-    static void         disableCountByUid();
-    static void         setCountByUidEnabled(bool enable);
-    static void         setLimitCallback(binder_proxy_limit_callback cb);
-    static void         setBinderProxyCountWatermarks(int high, int low);
-
     class ObjectManager
     {
     public:
@@ -104,7 +91,6 @@ public:
     };
 
 protected:
-                        BpBinder(int32_t handle,int32_t trackedUid);
     virtual             ~BpBinder();
     virtual void        onFirstRef();
     virtual void        onLastStrongRef(const void* id);
@@ -129,16 +115,6 @@ private:
             ObjectManager       mObjects;
             Parcel*             mConstantData;
     mutable String16            mDescriptorCache;
-            int32_t             mTrackedUid;
-
-    static Mutex                                sTrackingLock;
-    static std::unordered_map<int32_t,uint32_t> sTrackingMap;
-    static int                                  sNumTrackedUids;
-    static std::atomic_bool                     sCountByUidEnabled;
-    static binder_proxy_limit_callback          sLimitCallback;
-    static uint32_t                             sBinderProxyCountHighWatermark;
-    static uint32_t                             sBinderProxyCountLowWatermark;
-    static bool                                 sBinderProxyThrottleCreate;
 };
 
 }; // namespace android

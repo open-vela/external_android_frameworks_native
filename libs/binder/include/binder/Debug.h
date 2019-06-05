@@ -18,13 +18,14 @@
 #define ANDROID_BINDER_DEBUG_H
 
 #include <stdint.h>
-#include <sys/cdefs.h>
 #include <sys/types.h>
 
 namespace android {
 // ---------------------------------------------------------------------------
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 const char* stringForIndent(int32_t indentLevel);
 
@@ -38,10 +39,9 @@ void printHexData(int32_t indent, const void *buf, size_t length,
     size_t alignment=0, bool cArrayStyle=false,
     debugPrintFunc func = 0, void* cookie = 0);
 
-
-ssize_t getBinderKernelReferences(size_t count, uintptr_t* buf);
-
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
 
 // ---------------------------------------------------------------------------
 }; // namespace android

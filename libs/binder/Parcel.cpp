@@ -93,7 +93,7 @@ enum {
     BLOB_ASHMEM_MUTABLE = 2,
 };
 
-static void acquire_object(const sp<ProcessState>& proc,
+void acquire_object(const sp<ProcessState>& proc,
     const flat_binder_object& obj, const void* who, size_t* outAshmemSize)
 {
     switch (obj.hdr.type) {
@@ -133,6 +133,12 @@ static void acquire_object(const sp<ProcessState>& proc,
     }
 
     ALOGD("Invalid object type 0x%08x", obj.hdr.type);
+}
+
+void acquire_object(const sp<ProcessState>& proc,
+    const flat_binder_object& obj, const void* who)
+{
+    acquire_object(proc, obj, who, nullptr);
 }
 
 static void release_object(const sp<ProcessState>& proc,
@@ -183,13 +189,19 @@ static void release_object(const sp<ProcessState>& proc,
     ALOGE("Invalid object type 0x%08x", obj.hdr.type);
 }
 
+void release_object(const sp<ProcessState>& proc,
+    const flat_binder_object& obj, const void* who)
+{
+    release_object(proc, obj, who, nullptr);
+}
+
 inline static status_t finish_flatten_binder(
     const sp<IBinder>& /*binder*/, const flat_binder_object& flat, Parcel* out)
 {
     return out->writeObject(flat, false);
 }
 
-static status_t flatten_binder(const sp<ProcessState>& /*proc*/,
+status_t flatten_binder(const sp<ProcessState>& /*proc*/,
     const sp<IBinder>& binder, Parcel* out)
 {
     flat_binder_object obj;
@@ -231,7 +243,7 @@ static status_t flatten_binder(const sp<ProcessState>& /*proc*/,
     return finish_flatten_binder(binder, obj, out);
 }
 
-static status_t flatten_binder(const sp<ProcessState>& /*proc*/,
+status_t flatten_binder(const sp<ProcessState>& /*proc*/,
     const wp<IBinder>& binder, Parcel* out)
 {
     flat_binder_object obj;
@@ -287,7 +299,7 @@ inline static status_t finish_unflatten_binder(
     return NO_ERROR;
 }
 
-static status_t unflatten_binder(const sp<ProcessState>& proc,
+status_t unflatten_binder(const sp<ProcessState>& proc,
     const Parcel& in, sp<IBinder>* out)
 {
     const flat_binder_object* flat = in.readObject(false);
@@ -306,7 +318,7 @@ static status_t unflatten_binder(const sp<ProcessState>& proc,
     return BAD_TYPE;
 }
 
-static status_t unflatten_binder(const sp<ProcessState>& proc,
+status_t unflatten_binder(const sp<ProcessState>& proc,
     const Parcel& in, wp<IBinder>* out)
 {
     const flat_binder_object* flat = in.readObject(false);
@@ -616,7 +628,7 @@ bool Parcel::replaceCallingWorkSourceUid(uid_t uid)
     return err == NO_ERROR;
 }
 
-uid_t Parcel::readCallingWorkSourceUid() const
+uid_t Parcel::readCallingWorkSourceUid()
 {
     if (!mRequestHeaderPresent) {
         return IPCThreadState::kUnsetWorkSource;

@@ -16,19 +16,20 @@
 
 #define LOG_TAG "MemoryHeapBase"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <stdint.h>
 #include <stdlib.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#include <stdint.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/ioctl.h>
 
-#include <binder/MemoryHeapBase.h>
+#include <cutils/log.h>
 #include <cutils/ashmem.h>
 #include <cutils/atomic.h>
-#include <log/log.h>
+
+#include <binder/MemoryHeapBase.h>
 
 namespace android {
 
@@ -82,7 +83,7 @@ MemoryHeapBase::MemoryHeapBase(int fd, size_t size, uint32_t flags, uint32_t off
 {
     const size_t pagesize = getpagesize();
     size = ((size + pagesize-1) & ~(pagesize-1));
-    mapfd(fcntl(fd, F_DUPFD_CLOEXEC, 0), size, offset);
+    mapfd(dup(fd), size, offset);
 }
 
 status_t MemoryHeapBase::init(int fd, void *base, int size, int flags, const char* device)

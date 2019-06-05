@@ -24,11 +24,17 @@ Status Status::ok() {
 }
 
 Status Status::fromExceptionCode(int32_t exceptionCode) {
+    if (exceptionCode == EX_TRANSACTION_FAILED) {
+        return Status(exceptionCode, FAILED_TRANSACTION);
+    }
     return Status(exceptionCode, OK);
 }
 
 Status Status::fromExceptionCode(int32_t exceptionCode,
                                  const String8& message) {
+    if (exceptionCode == EX_TRANSACTION_FAILED) {
+        return Status(exceptionCode, FAILED_TRANSACTION, message);
+    }
     return Status(exceptionCode, OK, message);
 }
 
@@ -55,6 +61,26 @@ Status Status::fromStatusT(status_t status) {
     Status ret;
     ret.setFromStatusT(status);
     return ret;
+}
+
+std::string Status::exceptionToString(int32_t exceptionCode) {
+    switch (exceptionCode) {
+        #define EXCEPTION_TO_CASE(EXCEPTION) case EXCEPTION: return #EXCEPTION;
+        EXCEPTION_TO_CASE(EX_NONE)
+        EXCEPTION_TO_CASE(EX_SECURITY)
+        EXCEPTION_TO_CASE(EX_BAD_PARCELABLE)
+        EXCEPTION_TO_CASE(EX_ILLEGAL_ARGUMENT)
+        EXCEPTION_TO_CASE(EX_NULL_POINTER)
+        EXCEPTION_TO_CASE(EX_ILLEGAL_STATE)
+        EXCEPTION_TO_CASE(EX_NETWORK_MAIN_THREAD)
+        EXCEPTION_TO_CASE(EX_UNSUPPORTED_OPERATION)
+        EXCEPTION_TO_CASE(EX_SERVICE_SPECIFIC)
+        EXCEPTION_TO_CASE(EX_PARCELABLE)
+        EXCEPTION_TO_CASE(EX_HAS_REPLY_HEADER)
+        EXCEPTION_TO_CASE(EX_TRANSACTION_FAILED)
+        #undef EXCEPTION_TO_CASE
+        default: return std::to_string(exceptionCode);
+    }
 }
 
 Status::Status(int32_t exceptionCode, int32_t errorCode)
@@ -112,6 +138,22 @@ status_t Status::readFromParcel(const Parcel& parcel) {
     }
     mMessage = String8(message);
 
+    // Skip over the remote stack trace data
+    int32_t remote_stack_trace_header_size;
+    status = parcel.readInt32(&remote_stack_trace_header_size);
+    if (status != OK) {
+        setFromStatusT(status);
+        return status;
+    }
+    if (remote_stack_trace_header_size < 0 ||
+        static_cast<size_t>(remote_stack_trace_header_size) > parcel.dataAvail()) {
+
+        android_errorWriteLog(0x534e4554, "132650049");
+        setFromStatusT(UNKNOWN_ERROR);
+        return UNKNOWN_ERROR;
+    }
+    parcel.setDataPosition(parcel.dataPosition() + remote_stack_trace_header_size);
+
     if (mException == EX_SERVICE_SPECIFIC) {
         status = parcel.readInt32(&mErrorCode);
     } else if (mException == EX_PARCELABLE) {
@@ -157,6 +199,7 @@ status_t Status::writeToParcel(Parcel* parcel) const {
         return status;
     }
     status = parcel->writeString16(String16(mMessage));
+    status = parcel->writeInt32(0); // Empty remote stack trace header
     if (mException == EX_SERVICE_SPECIFIC) {
         status = parcel->writeInt32(mErrorCode);
     } else if (mException == EX_PARCELABLE) {
@@ -168,7 +211,7 @@ status_t Status::writeToParcel(Parcel* parcel) const {
 
 void Status::setException(int32_t ex, const String8& message) {
     mException = ex;
-    mErrorCode = NO_ERROR;  // an exception, not a transaction failure.
+    mErrorCode = ex == EX_TRANSACTION_FAILED ? FAILED_TRANSACTION : NO_ERROR;
     mMessage.setTo(message);
 }
 
@@ -188,7 +231,7 @@ String8 Status::toString8() const {
     if (mException == EX_NONE) {
         ret.append("No error");
     } else {
-        ret.appendFormat("Status(%d): '", mException);
+        ret.appendFormat("Status(%d, %s): '", mException, exceptionToString(mException).c_str());
         if (mException == EX_SERVICE_SPECIFIC ||
             mException == EX_TRANSACTION_FAILED) {
             ret.appendFormat("%d: ", mErrorCode);

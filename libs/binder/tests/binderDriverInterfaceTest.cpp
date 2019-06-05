@@ -36,8 +36,8 @@ class BinderDriverInterfaceTestEnv : public ::testing::Environment {
 
             m_binderFd = open(BINDER_DEV_NAME, O_RDWR | O_NONBLOCK | O_CLOEXEC);
             ASSERT_GE(m_binderFd, 0);
-            m_buffer = mmap(NULL, 64*1024, PROT_READ, MAP_SHARED, m_binderFd, 0);
-            ASSERT_NE(m_buffer, (void *)NULL);
+            m_buffer = mmap(nullptr, 64*1024, PROT_READ, MAP_SHARED, m_binderFd, 0);
+            ASSERT_NE(m_buffer, (void *)nullptr);
             ret = ioctl(m_binderFd, BINDER_SET_MAX_THREADS, &max_threads);
             EXPECT_EQ(0, ret);
             EnterLooper();
@@ -77,6 +77,16 @@ class BinderDriverInterfaceTest : public ::testing::Test {
         virtual void TearDown() {
         }
     protected:
+        /* The ioctl must either return 0, or if it doesn't errno should be accepted_errno */
+        void binderTestIoctlSuccessOrError(int cmd, void *arg, int accepted_errno) {
+            int ret;
+
+            ret = ioctl(m_binderFd, cmd, arg);
+            if (ret != 0) {
+                EXPECT_EQ(errno, accepted_errno);
+            }
+        }
+
         void binderTestIoctlRetErr2(int cmd, void *arg, int expect_ret, int expect_errno, int accept_errno) {
             int ret;
 
@@ -139,24 +149,30 @@ TEST_F(BinderDriverInterfaceTest, Version) {
     ASSERT_EQ(BINDER_CURRENT_PROTOCOL_VERSION, version.protocol_version);
 }
 
+TEST_F(BinderDriverInterfaceTest, OpenNoMmap) {
+    int binderFd = open(BINDER_DEV_NAME, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    ASSERT_GE(binderFd, 0);
+    close(binderFd);
+}
+
 TEST_F(BinderDriverInterfaceTest, WriteReadNull) {
-    binderTestIoctlErr1(BINDER_WRITE_READ, NULL, EFAULT);
+    binderTestIoctlErr1(BINDER_WRITE_READ, nullptr, EFAULT);
 }
 
 TEST_F(BinderDriverInterfaceTest, SetIdleTimeoutNull) {
-    binderTestIoctlErr2(BINDER_SET_IDLE_TIMEOUT, NULL, EFAULT, EINVAL);
+    binderTestIoctlErr2(BINDER_SET_IDLE_TIMEOUT, nullptr, EFAULT, EINVAL);
 }
 
 TEST_F(BinderDriverInterfaceTest, SetMaxThreadsNull) {
-    binderTestIoctlErr2(BINDER_SET_MAX_THREADS, NULL, EFAULT, EINVAL); /* TODO: don't accept EINVAL */
+    binderTestIoctlErr2(BINDER_SET_MAX_THREADS, nullptr, EFAULT, EINVAL); /* TODO: don't accept EINVAL */
 }
 
 TEST_F(BinderDriverInterfaceTest, SetIdlePriorityNull) {
-    binderTestIoctlErr2(BINDER_SET_IDLE_PRIORITY, NULL, EFAULT, EINVAL);
+    binderTestIoctlErr2(BINDER_SET_IDLE_PRIORITY, nullptr, EFAULT, EINVAL);
 }
 
 TEST_F(BinderDriverInterfaceTest, VersionNull) {
-    binderTestIoctlErr2(BINDER_VERSION, NULL, EFAULT, EINVAL); /* TODO: don't accept EINVAL */
+    binderTestIoctlErr2(BINDER_VERSION, nullptr, EFAULT, EINVAL); /* TODO: don't accept EINVAL */
 }
 
 TEST_F(BinderDriverInterfaceTest, SetIdleTimeoutNoTest) {
@@ -250,7 +266,7 @@ TEST_F(BinderDriverInterfaceTest, Transaction) {
 
     {
         SCOPED_TRACE("1st WriteRead");
-        binderTestIoctl(BINDER_WRITE_READ, &bwr);
+        binderTestIoctlSuccessOrError(BINDER_WRITE_READ, &bwr, EAGAIN);
     }
     EXPECT_EQ(sizeof(bc1), bwr.write_consumed);
     if (bwr.read_consumed < offsetof(typeof(br), pad)) {

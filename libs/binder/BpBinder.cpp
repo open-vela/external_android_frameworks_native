@@ -186,7 +186,10 @@ status_t BpBinder::pingBinder()
 {
     Parcel send;
     Parcel reply;
-    return transact(PING_TRANSACTION, send, &reply);
+    status_t err = transact(PING_TRANSACTION, send, &reply);
+    if (err != NO_ERROR) return err;
+    if (reply.dataSize() < sizeof(status_t)) return NOT_ENOUGH_DATA;
+    return (status_t)reply.readInt32();
 }
 
 status_t BpBinder::dump(int fd, const Vector<String16>& args)

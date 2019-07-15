@@ -73,6 +73,7 @@ cc_library_shared {
         "Status.cpp",
         "TextOutput.cpp",
         "IpPrefix.cpp",
+        "Value.cpp",
         ":libbinder_aidl",
     ],
 

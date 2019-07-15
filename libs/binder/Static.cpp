@@ -17,7 +17,7 @@
 // All static variables go here, to control initialization and
 // destruction order in the library.
 
-#include "Static.h"
+#include <private/binder/Static.h>
 
 #include <binder/BufferedTextOutput.h>
 #include <binder/IPCThreadState.h>

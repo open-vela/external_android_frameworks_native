@@ -25,6 +25,8 @@
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 
+#include <private/binder/Static.h>
+
 namespace android {
 
 // ----------------------------------------------------------------------

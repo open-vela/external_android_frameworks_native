@@ -144,7 +144,7 @@ status_t BBinder::transact(
     status_t err = NO_ERROR;
     switch (code) {
         case PING_TRANSACTION:
-            reply->writeInt32(pingBinder());
+            err = pingBinder();
             break;
         default:
             err = onTransact(code, data, reply, flags);
@@ -234,7 +234,7 @@ void BBinder::setRequestingSid(bool requestingSid)
         if (!e) return; // out of memory
     }
 
-    e->mRequestingSid = requestingSid;
+    e->mRequestingSid = true;
 }
 
 BBinder::~BBinder()

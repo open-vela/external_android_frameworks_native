@@ -29,7 +29,7 @@
 #include <utils/String8.h>
 #include <utils/SystemClock.h>
 
-#include "Static.h"
+#include <private/binder/Static.h>
 
 #include <unistd.h>
 

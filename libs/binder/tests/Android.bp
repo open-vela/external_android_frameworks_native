@@ -71,6 +71,7 @@ cc_test {
         "libbinder",
         "libutils",
     ],
+    test_suites: ["device-tests"],
 }
 
 cc_test {
@@ -136,4 +137,5 @@ cc_test {
         "liblog",
         "libutils",
     ],
+    test_suites: ["device-tests"],
 }

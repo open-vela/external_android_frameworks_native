@@ -18,7 +18,6 @@
 
 #include <binder/IServiceManager.h>
 
-#include <android/os/IServiceManager.h>
 #include <utils/Log.h>
 #include <binder/IPCThreadState.h>
 #ifndef __ANDROID_VNDK__
@@ -29,14 +28,11 @@
 #include <utils/String8.h>
 #include <utils/SystemClock.h>
 
-#include <private/binder/Static.h>
+#include "Static.h"
 
 #include <unistd.h>
 
 namespace android {
-
-using AidlServiceManager = android::os::IServiceManager;
-using android::binder::Status;
 
 sp<IServiceManager> defaultServiceManager()
 {
@@ -146,12 +142,11 @@ class BpServiceManager : public BpInterface<IServiceManager>
 {
 public:
     explicit BpServiceManager(const sp<IBinder>& impl)
-        : BpInterface<IServiceManager>(impl),
-          mTheRealServiceManager(interface_cast<AidlServiceManager>(impl))
+        : BpInterface<IServiceManager>(impl)
     {
     }
 
-    sp<IBinder> getService(const String16& name) const override
+    virtual sp<IBinder> getService(const String16& name) const
     {
         static bool gSystemBootCompleted = false;
 
@@ -184,36 +179,43 @@ public:
         return nullptr;
     }
 
-    sp<IBinder> checkService(const String16& name) const override {
-        sp<IBinder> ret;
-        if (!mTheRealServiceManager->checkService(String8(name).c_str(), &ret).isOk()) {
-            return nullptr;
-        }
-        return ret;
+    virtual sp<IBinder> checkService( const String16& name) const
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+        data.writeString16(name);
+        remote()->transact(CHECK_SERVICE_TRANSACTION, data, &reply);
+        return reply.readStrongBinder();
     }
 
-    status_t addService(const String16& name, const sp<IBinder>& service,
-                        bool allowIsolated, int dumpsysPriority) override {
-        Status status = mTheRealServiceManager->addService(String8(name).c_str(), service, allowIsolated, dumpsysPriority);
-        return status.exceptionCode();
+    virtual status_t addService(const String16& name, const sp<IBinder>& service,
+                                bool allowIsolated, int dumpsysPriority) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+        data.writeString16(name);
+        data.writeStrongBinder(service);
+        data.writeInt32(allowIsolated ? 1 : 0);
+        data.writeInt32(dumpsysPriority);
+        status_t err = remote()->transact(ADD_SERVICE_TRANSACTION, data, &reply);
+        return err == NO_ERROR ? reply.readExceptionCode() : err;
     }
 
     virtual Vector<String16> listServices(int dumpsysPriority) {
-        std::vector<std::string> ret;
-        if (!mTheRealServiceManager->listServices(dumpsysPriority, &ret).isOk()) {
-            return {};
-        }
-
         Vector<String16> res;
-        res.setCapacity(ret.size());
-        for (const std::string& name : ret) {
-            res.push(String16(name.c_str()));
+        int n = 0;
+
+        for (;;) {
+            Parcel data, reply;
+            data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+            data.writeInt32(n++);
+            data.writeInt32(dumpsysPriority);
+            status_t err = remote()->transact(LIST_SERVICES_TRANSACTION, data, &reply);
+            if (err != NO_ERROR)
+                break;
+            res.add(reply.readString16());
         }
         return res;
     }
-
-private:
-    sp<AidlServiceManager> mTheRealServiceManager;
 };
 
 IMPLEMENT_META_INTERFACE(ServiceManager, "android.os.IServiceManager");

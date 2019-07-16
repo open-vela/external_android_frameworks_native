@@ -1,16 +1,13 @@
 {
   "presubmit": [
     {
-      "name": "binderSafeInterfaceTest"
-    },
-    {
       "name": "binderDriverInterfaceTest"
     },
     {
-      "name": "binderTextOutputTest"
+      "name": "binderValueTypeTest"
     },
     {
-      "name": "binderLibTest"
+      "name": "binderTextOutputTest"
     }
   ]
 }

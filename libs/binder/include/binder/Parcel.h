@@ -17,7 +17,6 @@
 #ifndef ANDROID_PARCEL_H
 #define ANDROID_PARCEL_H
 
-#include <map> // for legacy reasons
 #include <string>
 #include <vector>
 
@@ -33,6 +32,7 @@
 
 #include <binder/IInterface.h>
 #include <binder/Parcelable.h>
+#include <binder/Map.h>
 
 // ---------------------------------------------------------------------------
 namespace android {
@@ -140,6 +140,8 @@ public:
     status_t            writeInt32Vector(const std::vector<int32_t>& val);
     status_t            writeInt64Vector(const std::unique_ptr<std::vector<int64_t>>& val);
     status_t            writeInt64Vector(const std::vector<int64_t>& val);
+    status_t            writeUint64Vector(const std::unique_ptr<std::vector<uint64_t>>& val);
+    status_t            writeUint64Vector(const std::vector<uint64_t>& val);
     status_t            writeFloatVector(const std::unique_ptr<std::vector<float>>& val);
     status_t            writeFloatVector(const std::vector<float>& val);
     status_t            writeDoubleVector(const std::unique_ptr<std::vector<double>>& val);
@@ -170,6 +172,8 @@ public:
 
     status_t            writeParcelable(const Parcelable& parcelable);
 
+    status_t            writeValue(const binder::Value& value);
+
     template<typename T>
     status_t            write(const Flattenable<T>& val);
 
@@ -180,6 +184,9 @@ public:
     status_t            writeVectorSize(const std::vector<T>& val);
     template<typename T>
     status_t            writeVectorSize(const std::unique_ptr<std::vector<T>>& val);
+
+    status_t            writeMap(const binder::Map& map);
+    status_t            writeNullableMap(const std::unique_ptr<binder::Map>& map);
 
     // Place a native_handle into the parcel (the native_handle's file-
     // descriptors are dup'ed, so it is safe to delete the native_handle
@@ -290,6 +297,8 @@ public:
     template<typename T>
     status_t            readParcelable(std::unique_ptr<T>* parcelable) const;
 
+    status_t            readValue(binder::Value* value) const;
+
     template<typename T>
     status_t            readStrongBinder(sp<T>* val) const;
 
@@ -307,6 +316,8 @@ public:
     status_t            readInt32Vector(std::vector<int32_t>* val) const;
     status_t            readInt64Vector(std::unique_ptr<std::vector<int64_t>>* val) const;
     status_t            readInt64Vector(std::vector<int64_t>* val) const;
+    status_t            readUint64Vector(std::unique_ptr<std::vector<uint64_t>>* val) const;
+    status_t            readUint64Vector(std::vector<uint64_t>* val) const;
     status_t            readFloatVector(std::unique_ptr<std::vector<float>>* val) const;
     status_t            readFloatVector(std::vector<float>* val) const;
     status_t            readDoubleVector(std::unique_ptr<std::vector<double>>* val) const;
@@ -332,6 +343,9 @@ public:
     status_t            resizeOutVector(std::vector<T>* val) const;
     template<typename T>
     status_t            resizeOutVector(std::unique_ptr<std::vector<T>>* val) const;
+
+    status_t            readMap(binder::Map* map)const;
+    status_t            readNullableMap(std::unique_ptr<binder::Map>* map) const;
 
     // Like Parcel.java's readExceptionCode().  Reads the first int32
     // off of a Parcel's header, returning 0 or the negative error
@@ -382,6 +396,12 @@ public:
     static size_t       getGlobalAllocSize();
     static size_t       getGlobalAllocCount();
 
+    bool                replaceCallingWorkSourceUid(uid_t uid);
+    // Returns the work source provided by the caller. This can only be trusted for trusted calling
+    // uid.
+    uid_t               readCallingWorkSourceUid() const;
+    void                readRequestHeaders() const;
+
 private:
     typedef void        (*release_func)(Parcel* parcel,
                                         const uint8_t* data, size_t dataSize,
@@ -416,6 +436,7 @@ private:
     void                initState();
     void                scanForFds() const;
     status_t            validateReadData(size_t len) const;
+    void                updateWorkSourceRequestHeaderPosition() const;
                         
     template<class T>
     status_t            readAligned(T *pArg) const;
@@ -463,6 +484,9 @@ private:
     size_t              mObjectsCapacity;
     mutable size_t      mNextObjectHint;
     mutable bool        mObjectsSorted;
+
+    mutable bool        mRequestHeaderPresent;
+    mutable size_t      mWorkSourceRequestHeaderPosition;
 
     mutable bool        mFdsKnown;
     mutable bool        mHasFds;

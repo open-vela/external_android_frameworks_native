@@ -97,10 +97,6 @@ public:
 
     void                freeData();
 
-private:
-    const binder_size_t* objects() const;
-
-public:
     size_t              objectsCount() const;
     
     status_t            errorCheck() const;
@@ -389,7 +385,7 @@ public:
     bool                replaceCallingWorkSourceUid(uid_t uid);
     // Returns the work source provided by the caller. This can only be trusted for trusted calling
     // uid.
-    uid_t               readCallingWorkSourceUid() const;
+    uid_t               readCallingWorkSourceUid();
     void                readRequestHeaders() const;
 
 private:

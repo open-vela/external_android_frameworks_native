@@ -17,15 +17,12 @@
 #include <binder/Binder.h>
 
 #include <atomic>
+#include <utils/misc.h>
 #include <binder/BpBinder.h>
 #include <binder/IInterface.h>
-#include <binder/IPCThreadState.h>
 #include <binder/IResultReceiver.h>
 #include <binder/IShellCallback.h>
 #include <binder/Parcel.h>
-#include <cutils/android_filesystem_config.h>
-#include <cutils/compiler.h>
-#include <utils/misc.h>
 
 #include <stdio.h>
 
@@ -128,23 +125,10 @@ status_t BBinder::transact(
 {
     data.setDataPosition(0);
 
-    // Shell command transaction is conventionally implemented by
-    // overriding onTransact by copy/pasting the parceling code from
-    // this file. So, we must check permissions for it before we call
-    // onTransact. This check is here because shell APIs aren't
-    // guaranteed to be stable, and so they should only be used by
-    // developers.
-    if (CC_UNLIKELY(code == SHELL_COMMAND_TRANSACTION)) {
-        uid_t uid = IPCThreadState::self()->getCallingUid();
-        if (uid != AID_SHELL && uid != AID_ROOT) {
-            return PERMISSION_DENIED;
-        }
-    }
-
     status_t err = NO_ERROR;
     switch (code) {
         case PING_TRANSACTION:
-            err = pingBinder();
+            reply->writeInt32(pingBinder());
             break;
         default:
             err = onTransact(code, data, reply, flags);
@@ -234,7 +218,7 @@ void BBinder::setRequestingSid(bool requestingSid)
         if (!e) return; // out of memory
     }
 
-    e->mRequestingSid = true;
+    e->mRequestingSid = requestingSid;
 }
 
 BBinder::~BBinder()

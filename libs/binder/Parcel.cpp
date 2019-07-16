@@ -37,6 +37,7 @@
 #include <binder/ProcessState.h>
 #include <binder/Status.h>
 #include <binder/TextOutput.h>
+#include <binder/Value.h>
 
 #include <cutils/ashmem.h>
 #include <utils/Debug.h>
@@ -73,7 +74,7 @@ static size_t pad_size(size_t s) {
 }
 
 // Note: must be kept in sync with android/os/StrictMode.java's PENALTY_GATHER
-#define STRICT_MODE_PENALTY_GATHER (0x40 << 16)
+#define STRICT_MODE_PENALTY_GATHER (1 << 31)
 
 namespace android {
 
@@ -581,13 +582,51 @@ bool Parcel::hasFileDescriptors() const
     return mHasFds;
 }
 
+void Parcel::updateWorkSourceRequestHeaderPosition() const {
+    // Only update the request headers once. We only want to point
+    // to the first headers read/written.
+    if (!mRequestHeaderPresent) {
+        mWorkSourceRequestHeaderPosition = dataPosition();
+        mRequestHeaderPresent = true;
+    }
+}
+
 // Write RPC headers.  (previously just the interface token)
 status_t Parcel::writeInterfaceToken(const String16& interface)
 {
-    writeInt32(IPCThreadState::self()->getStrictModePolicy() |
-               STRICT_MODE_PENALTY_GATHER);
+    const IPCThreadState* threadState = IPCThreadState::self();
+    writeInt32(threadState->getStrictModePolicy() | STRICT_MODE_PENALTY_GATHER);
+    updateWorkSourceRequestHeaderPosition();
+    writeInt32(threadState->shouldPropagateWorkSource() ?
+            threadState->getCallingWorkSourceUid() : IPCThreadState::kUnsetWorkSource);
     // currently the interface identification token is just its name as a string
     return writeString16(interface);
+}
+
+bool Parcel::replaceCallingWorkSourceUid(uid_t uid)
+{
+    if (!mRequestHeaderPresent) {
+        return false;
+    }
+
+    const size_t initialPosition = dataPosition();
+    setDataPosition(mWorkSourceRequestHeaderPosition);
+    status_t err = writeInt32(uid);
+    setDataPosition(initialPosition);
+    return err == NO_ERROR;
+}
+
+uid_t Parcel::readCallingWorkSourceUid()
+{
+    if (!mRequestHeaderPresent) {
+        return IPCThreadState::kUnsetWorkSource;
+    }
+
+    const size_t initialPosition = dataPosition();
+    setDataPosition(mWorkSourceRequestHeaderPosition);
+    uid_t uid = readInt32();
+    setDataPosition(initialPosition);
+    return uid;
 }
 
 bool Parcel::checkInterface(IBinder* binder) const
@@ -598,6 +637,7 @@ bool Parcel::checkInterface(IBinder* binder) const
 bool Parcel::enforceInterface(const String16& interface,
                               IPCThreadState* threadState) const
 {
+    // StrictModePolicy.
     int32_t strictPolicy = readInt32();
     if (threadState == nullptr) {
         threadState = IPCThreadState::self();
@@ -612,6 +652,11 @@ bool Parcel::enforceInterface(const String16& interface,
     } else {
       threadState->setStrictModePolicy(strictPolicy);
     }
+    // WorkSource.
+    updateWorkSourceRequestHeaderPosition();
+    int32_t workSource = readInt32();
+    threadState->setCallingWorkSourceUidWithoutPropagation(workSource);
+    // Interface descriptor.
     const String16 str(readString16());
     if (str == interface) {
         return true;
@@ -854,6 +899,16 @@ status_t Parcel::writeInt64Vector(const std::vector<int64_t>& val)
 status_t Parcel::writeInt64Vector(const std::unique_ptr<std::vector<int64_t>>& val)
 {
     return writeNullableTypedVector(val, &Parcel::writeInt64);
+}
+
+status_t Parcel::writeUint64Vector(const std::vector<uint64_t>& val)
+{
+    return writeTypedVector(val, &Parcel::writeUint64);
+}
+
+status_t Parcel::writeUint64Vector(const std::unique_ptr<std::vector<uint64_t>>& val)
+{
+    return writeNullableTypedVector(val, &Parcel::writeUint64);
 }
 
 status_t Parcel::writeFloatVector(const std::vector<float>& val)
@@ -1108,6 +1163,10 @@ status_t Parcel::writeParcelable(const Parcelable& parcelable) {
     return parcelable.writeToParcel(this);
 }
 
+status_t Parcel::writeValue(const binder::Value& value) {
+    return value.writeToParcel(this);
+}
+
 status_t Parcel::writeNativeHandle(const native_handle* handle)
 {
     if (!handle || handle->version != sizeof(native_handle))
@@ -1343,6 +1402,125 @@ status_t Parcel::writeNoException()
 {
     binder::Status status;
     return status.writeToParcel(this);
+}
+
+status_t Parcel::writeMap(const ::android::binder::Map& map_in)
+{
+    using ::std::map;
+    using ::android::binder::Value;
+    using ::android::binder::Map;
+
+    Map::const_iterator iter;
+    status_t ret;
+
+    ret = writeInt32(map_in.size());
+
+    if (ret != NO_ERROR) {
+        return ret;
+    }
+
+    for (iter = map_in.begin(); iter != map_in.end(); ++iter) {
+        ret = writeValue(Value(iter->first));
+        if (ret != NO_ERROR) {
+            return ret;
+        }
+
+        ret = writeValue(iter->second);
+        if (ret != NO_ERROR) {
+            return ret;
+        }
+    }
+
+    return ret;
+}
+
+status_t Parcel::writeNullableMap(const std::unique_ptr<binder::Map>& map)
+{
+    if (map == nullptr) {
+        return writeInt32(-1);
+    }
+
+    return writeMap(*map.get());
+}
+
+status_t Parcel::readMap(::android::binder::Map* map_out)const
+{
+    using ::std::map;
+    using ::android::String16;
+    using ::android::String8;
+    using ::android::binder::Value;
+    using ::android::binder::Map;
+
+    status_t ret = NO_ERROR;
+    int32_t count;
+
+    ret = readInt32(&count);
+    if (ret != NO_ERROR) {
+        return ret;
+    }
+
+    if (count < 0) {
+        ALOGE("readMap: Unexpected count: %d", count);
+        return (count == -1)
+            ? UNEXPECTED_NULL
+            : BAD_VALUE;
+    }
+
+    map_out->clear();
+
+    while (count--) {
+        Map::key_type key;
+        Value value;
+
+        ret = readValue(&value);
+        if (ret != NO_ERROR) {
+            return ret;
+        }
+
+        if (!value.getString(&key)) {
+            ALOGE("readMap: Key type not a string (parcelType = %d)", value.parcelType());
+            return BAD_VALUE;
+        }
+
+        ret = readValue(&value);
+        if (ret != NO_ERROR) {
+            return ret;
+        }
+
+        (*map_out)[key] = value;
+    }
+
+    return ret;
+}
+
+status_t Parcel::readNullableMap(std::unique_ptr<binder::Map>* map) const
+{
+    const size_t start = dataPosition();
+    int32_t count;
+    status_t status = readInt32(&count);
+    map->reset();
+
+    if (status != OK || count == -1) {
+        return status;
+    }
+
+    setDataPosition(start);
+    map->reset(new binder::Map());
+
+    status = readMap(map->get());
+
+    if (status != OK) {
+        map->reset();
+    }
+
+    return status;
+}
+
+
+
+void Parcel::remove(size_t /*start*/, size_t /*amt*/)
+{
+    LOG_ALWAYS_FATAL("Parcel::remove() not yet implemented!");
 }
 
 status_t Parcel::validateReadData(size_t upperBound) const
@@ -1592,6 +1770,14 @@ status_t Parcel::readInt64Vector(std::unique_ptr<std::vector<int64_t>>* val) con
 
 status_t Parcel::readInt64Vector(std::vector<int64_t>* val) const {
     return readTypedVector(val, &Parcel::readInt64);
+}
+
+status_t Parcel::readUint64Vector(std::unique_ptr<std::vector<uint64_t>>* val) const {
+    return readNullableTypedVector(val, &Parcel::readUint64);
+}
+
+status_t Parcel::readUint64Vector(std::vector<uint64_t>* val) const {
+    return readTypedVector(val, &Parcel::readUint64);
 }
 
 status_t Parcel::readFloatVector(std::unique_ptr<std::vector<float>>* val) const {
@@ -1888,8 +2074,8 @@ status_t Parcel::readUtf8FromUtf16(std::unique_ptr<std::string>* str) const {
 
 const char* Parcel::readCString() const
 {
-    const size_t avail = mDataSize-mDataPos;
-    if (avail > 0) {
+    if (mDataPos < mDataSize) {
+        const size_t avail = mDataSize-mDataPos;
         const char* str = reinterpret_cast<const char*>(mData+mDataPos);
         // is the string's trailing NUL within the parcel's valid bounds?
         const char* eos = reinterpret_cast<const char*>(memchr(str, 0, avail));
@@ -2041,6 +2227,10 @@ status_t Parcel::readParcelable(Parcelable* parcelable) const {
     return parcelable->readFromParcel(this);
 }
 
+status_t Parcel::readValue(binder::Value* value) const {
+    return value->readFromParcel(this);
+}
+
 int32_t Parcel::readExceptionCode() const
 {
     binder::Status status;
@@ -2187,6 +2377,15 @@ status_t Parcel::readBlob(size_t len, ReadableBlob* outBlob) const
     int fd = readFileDescriptor();
     if (fd == int(BAD_TYPE)) return BAD_VALUE;
 
+    if (!ashmem_valid(fd)) {
+        ALOGE("invalid fd");
+        return BAD_VALUE;
+    }
+    int size = ashmem_get_size_region(fd);
+    if (size < 0 || size_t(size) < len) {
+        ALOGE("request size %zu does not match fd size %d", len, size);
+        return BAD_VALUE;
+    }
     void* ptr = ::mmap(nullptr, len, isMutable ? PROT_READ | PROT_WRITE : PROT_READ,
             MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) return NO_MEMORY;
@@ -2624,10 +2823,16 @@ status_t Parcel::continueWrite(size_t desired)
                 }
                 release_object(proc, *flat, this, &mOpenAshmemSize);
             }
-            binder_size_t* objects =
-                (binder_size_t*)realloc(mObjects, objectsSize*sizeof(binder_size_t));
-            if (objects) {
-                mObjects = objects;
+
+            if (objectsSize == 0) {
+                free(mObjects);
+                mObjects = nullptr;
+            } else {
+                binder_size_t* objects =
+                    (binder_size_t*)realloc(mObjects, objectsSize*sizeof(binder_size_t));
+                if (objects) {
+                    mObjects = objects;
+                }
             }
             mObjectsSize = objectsSize;
             mNextObjectHint = 0;
@@ -2710,6 +2915,8 @@ void Parcel::initState()
     mAllowFds = true;
     mOwner = nullptr;
     mOpenAshmemSize = 0;
+    mWorkSourceRequestHeaderPosition = 0;
+    mRequestHeaderPresent = false;
 
     // racing multiple init leads only to multiple identical write
     if (gMaxFds == 0) {

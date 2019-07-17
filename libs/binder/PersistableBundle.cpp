@@ -17,6 +17,7 @@
 #define LOG_TAG "PersistableBundle"
 
 #include <binder/PersistableBundle.h>
+#include <private/binder/ParcelValTypes.h>
 
 #include <limits>
 
@@ -24,8 +25,6 @@
 #include <binder/Parcel.h>
 #include <log/log.h>
 #include <utils/Errors.h>
-
-#include "ParcelValTypes.h"
 
 using android::BAD_TYPE;
 using android::BAD_VALUE;

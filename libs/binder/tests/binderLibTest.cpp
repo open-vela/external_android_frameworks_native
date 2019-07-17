@@ -971,6 +971,9 @@ TEST_F(BinderLibTest, WorkSourceRestored)
 
 TEST_F(BinderLibTest, PropagateFlagSet)
 {
+    status_t ret;
+    Parcel data, reply;
+
     IPCThreadState::self()->clearPropagateWorkSource();
     IPCThreadState::self()->setCallingWorkSourceUid(100);
     EXPECT_EQ(true, IPCThreadState::self()->shouldPropagateWorkSource());
@@ -978,6 +981,9 @@ TEST_F(BinderLibTest, PropagateFlagSet)
 
 TEST_F(BinderLibTest, PropagateFlagCleared)
 {
+    status_t ret;
+    Parcel data, reply;
+
     IPCThreadState::self()->setCallingWorkSourceUid(100);
     IPCThreadState::self()->clearPropagateWorkSource();
     EXPECT_EQ(false, IPCThreadState::self()->shouldPropagateWorkSource());
@@ -985,6 +991,9 @@ TEST_F(BinderLibTest, PropagateFlagCleared)
 
 TEST_F(BinderLibTest, PropagateFlagRestored)
 {
+    status_t ret;
+    Parcel data, reply;
+
     int token = IPCThreadState::self()->setCallingWorkSourceUid(100);
     IPCThreadState::self()->restoreCallingWorkSource(token);
 

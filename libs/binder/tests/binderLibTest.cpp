@@ -1083,6 +1083,7 @@ class BinderLibTestService : public BBinder
             case BINDER_LIB_TEST_ADD_POLL_SERVER:
             case BINDER_LIB_TEST_ADD_SERVER: {
                 int ret;
+                uint8_t buf[1] = { 0 };
                 int serverid;
 
                 if (m_id != 0) {
@@ -1345,6 +1346,7 @@ class BinderLibTestService : public BBinder
         bool m_serverStartRequested;
         sp<IBinder> m_serverStarted;
         sp<IBinder> m_strongRef;
+        bool m_callbackPending;
         sp<IBinder> m_callback;
 };
 
@@ -1406,7 +1408,7 @@ int run_server(int index, int readypipefd, bool usePoll)
               * We simulate a single-threaded process using the binder poll
               * interface; besides handling binder commands, it can also
               * issue outgoing transactions, by storing a callback in
-              * m_callback.
+              * m_callback and setting m_callbackPending.
               *
               * processPendingCall() will then issue that transaction.
               */
@@ -1433,6 +1435,8 @@ int run_server(int index, int readypipefd, bool usePoll)
 }
 
 int main(int argc, char **argv) {
+    int ret;
+
     if (argc == 4 && !strcmp(argv[1], "--servername")) {
         binderservername = argv[2];
     } else {

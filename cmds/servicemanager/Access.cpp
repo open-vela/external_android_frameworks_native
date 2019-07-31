@@ -61,21 +61,15 @@ static struct selabel_handle* getSehandle() {
     return gSehandle;
 }
 
-struct AuditCallbackData {
-    const Access::CallingContext* context;
-    const std::string* tname;
-};
-
 static int auditCallback(void *data, security_class_t /*cls*/, char *buf, size_t len) {
-    const AuditCallbackData* ad = reinterpret_cast<AuditCallbackData*>(data);
+    const Access::CallingContext* ad = reinterpret_cast<Access::CallingContext*>(data);
 
     if (!ad) {
         LOG(ERROR) << "No service manager audit data";
         return 0;
     }
 
-    snprintf(buf, len, "pid=%d uid=%d name=%s", ad->context->debugPid, ad->context->uid,
-        ad->tname->c_str());
+    snprintf(buf, len, "pid=%d uid=%d", ad->debugPid, ad->uid);
     return 0;
 }
 
@@ -119,20 +113,13 @@ bool Access::canAdd(const CallingContext& ctx, const std::string& name) {
 }
 
 bool Access::canList(const CallingContext& ctx) {
-    return actionAllowed(ctx, mThisProcessContext, "list", "service_manager");
+    return actionAllowed(ctx, mThisProcessContext, "list");
 }
 
-bool Access::actionAllowed(const CallingContext& sctx, const char* tctx, const char* perm,
-        const std::string& tname) {
+bool Access::actionAllowed(const CallingContext& sctx, const char* tctx, const char* perm) {
     const char* tclass = "service_manager";
 
-    AuditCallbackData data = {
-        .context = &sctx,
-        .tname = &tname,
-    };
-
-    return 0 == selinux_check_access(sctx.sid.c_str(), tctx, tclass, perm,
-        reinterpret_cast<void*>(&data));
+    return 0 == selinux_check_access(sctx.sid.c_str(), tctx, tclass, perm, reinterpret_cast<void*>(const_cast<CallingContext*>((&sctx))));
 }
 
 bool Access::actionAllowedFromLookup(const CallingContext& sctx, const std::string& name, const char *perm) {
@@ -142,7 +129,7 @@ bool Access::actionAllowedFromLookup(const CallingContext& sctx, const std::stri
         return false;
     }
 
-    bool allowed = actionAllowed(sctx, tctx, perm, name);
+    bool allowed = actionAllowed(sctx, tctx, perm);
     freecon(tctx);
     return allowed;
 }

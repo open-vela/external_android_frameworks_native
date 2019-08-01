@@ -544,7 +544,7 @@ bool Parcel::replaceCallingWorkSourceUid(uid_t uid)
     return err == NO_ERROR;
 }
 
-uid_t Parcel::readCallingWorkSourceUid() const
+uid_t Parcel::readCallingWorkSourceUid()
 {
     if (!mRequestHeaderPresent) {
         return IPCThreadState::kUnsetWorkSource;

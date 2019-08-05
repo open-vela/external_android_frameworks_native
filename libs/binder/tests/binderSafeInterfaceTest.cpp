@@ -229,7 +229,6 @@ public:
         IncrementUint32,
         IncrementInt64,
         IncrementUint64,
-        IncrementFloat,
         IncrementTwo,
         Last,
     };
@@ -260,7 +259,6 @@ public:
     virtual status_t increment(uint32_t a, uint32_t* aPlusOne) const = 0;
     virtual status_t increment(int64_t a, int64_t* aPlusOne) const = 0;
     virtual status_t increment(uint64_t a, uint64_t* aPlusOne) const = 0;
-    virtual status_t increment(float a, float* aPlusOne) const = 0;
 
     // This tests that input/output parameter interleaving works correctly
     virtual status_t increment(int32_t a, int32_t* aPlusOne, int32_t b,
@@ -354,11 +352,6 @@ public:
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         using Signature = status_t (ISafeInterfaceTest::*)(uint64_t, uint64_t*) const;
         return callRemote<Signature>(Tag::IncrementUint64, a, aPlusOne);
-    }
-    status_t increment(float a, float* aPlusOne) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        using Signature = status_t (ISafeInterfaceTest::*)(float, float*) const;
-        return callRemote<Signature>(Tag::IncrementFloat, a, aPlusOne);
     }
     status_t increment(int32_t a, int32_t* aPlusOne, int32_t b, int32_t* bPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
@@ -481,11 +474,6 @@ public:
         *aPlusOne = a + 1;
         return NO_ERROR;
     }
-    status_t increment(float a, float* aPlusOne) const override {
-        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        *aPlusOne = a + 1.0f;
-        return NO_ERROR;
-    }
     status_t increment(int32_t a, int32_t* aPlusOne, int32_t b, int32_t* bPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         *aPlusOne = a + 1;
@@ -565,10 +553,6 @@ public:
             }
             case ISafeInterfaceTest::Tag::IncrementUint64: {
                 using Signature = status_t (ISafeInterfaceTest::*)(uint64_t, uint64_t*) const;
-                return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
-            }
-            case ISafeInterfaceTest::Tag::IncrementFloat: {
-                using Signature = status_t (ISafeInterfaceTest::*)(float, float*) const;
                 return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
             }
             case ISafeInterfaceTest::Tag::IncrementTwo: {
@@ -819,14 +803,6 @@ TEST_F(SafeInterfaceTest, TestIncrementUint64) {
     status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
     ASSERT_EQ(NO_ERROR, result);
     ASSERT_EQ(a + 1, aPlusOne);
-}
-
-TEST_F(SafeInterfaceTest, TestIncrementFloat) {
-    const float a = 1.0f;
-    float aPlusOne = 0.0f;
-    status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
-    ASSERT_EQ(NO_ERROR, result);
-    ASSERT_EQ(a + 1.0f, aPlusOne);
 }
 
 TEST_F(SafeInterfaceTest, TestIncrementTwo) {

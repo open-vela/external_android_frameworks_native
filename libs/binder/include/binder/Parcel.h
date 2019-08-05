@@ -138,6 +138,8 @@ public:
     status_t            writeInt32Vector(const std::vector<int32_t>& val);
     status_t            writeInt64Vector(const std::unique_ptr<std::vector<int64_t>>& val);
     status_t            writeInt64Vector(const std::vector<int64_t>& val);
+    status_t            writeUint64Vector(const std::unique_ptr<std::vector<uint64_t>>& val);
+    status_t            writeUint64Vector(const std::vector<uint64_t>& val);
     status_t            writeFloatVector(const std::unique_ptr<std::vector<float>>& val);
     status_t            writeFloatVector(const std::vector<float>& val);
     status_t            writeDoubleVector(const std::unique_ptr<std::vector<double>>& val);
@@ -302,6 +304,8 @@ public:
     status_t            readInt32Vector(std::vector<int32_t>* val) const;
     status_t            readInt64Vector(std::unique_ptr<std::vector<int64_t>>* val) const;
     status_t            readInt64Vector(std::vector<int64_t>* val) const;
+    status_t            readUint64Vector(std::unique_ptr<std::vector<uint64_t>>* val) const;
+    status_t            readUint64Vector(std::vector<uint64_t>* val) const;
     status_t            readFloatVector(std::unique_ptr<std::vector<float>>* val) const;
     status_t            readFloatVector(std::vector<float>* val) const;
     status_t            readDoubleVector(std::unique_ptr<std::vector<double>>* val) const;
@@ -377,6 +381,12 @@ public:
     static size_t       getGlobalAllocSize();
     static size_t       getGlobalAllocCount();
 
+    bool                replaceCallingWorkSourceUid(uid_t uid);
+    // Returns the work source provided by the caller. This can only be trusted for trusted calling
+    // uid.
+    uid_t               readCallingWorkSourceUid();
+    void                readRequestHeaders() const;
+
 private:
     typedef void        (*release_func)(Parcel* parcel,
                                         const uint8_t* data, size_t dataSize,
@@ -411,6 +421,7 @@ private:
     void                initState();
     void                scanForFds() const;
     status_t            validateReadData(size_t len) const;
+    void                updateWorkSourceRequestHeaderPosition() const;
 
     status_t            finishFlattenBinder(const sp<IBinder>& binder,
                                             const flat_binder_object& flat);
@@ -465,6 +476,9 @@ private:
     mutable size_t      mNextObjectHint;
     mutable bool        mObjectsSorted;
     bool                mAllowFds;
+
+    mutable bool        mRequestHeaderPresent;
+    mutable size_t      mWorkSourceRequestHeaderPosition;
 
     mutable bool        mFdsKnown;
     mutable bool        mHasFds;

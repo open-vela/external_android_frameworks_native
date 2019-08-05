@@ -170,6 +170,8 @@ static void release_object(const sp<ProcessState>& proc,
 status_t Parcel::finishFlattenBinder(
     const sp<IBinder>& binder, const flat_binder_object& flat)
 {
+    internal::Stability::tryMarkCompilationUnit(binder.get());
+
     status_t status = writeObject(flat, false);
     if (status != OK) return status;
 
@@ -183,11 +185,11 @@ status_t Parcel::finishUnflattenBinder(
     status_t status = readInt32(&stability);
     if (status != OK) return status;
 
-    if (!internal::Stability::check(stability, mRequiredStability)) {
+    if (binder != nullptr && !internal::Stability::check(stability, mRequiredStability)) {
         return BAD_TYPE;
     }
 
-    status = internal::Stability::set(binder.get(), stability);
+    status = internal::Stability::set(binder.get(), stability, true /*log*/);
     if (status != OK) return status;
 
     *out = binder;
@@ -547,7 +549,7 @@ bool Parcel::replaceCallingWorkSourceUid(uid_t uid)
     return err == NO_ERROR;
 }
 
-uid_t Parcel::readCallingWorkSourceUid() const
+uid_t Parcel::readCallingWorkSourceUid()
 {
     if (!mRequestHeaderPresent) {
         return IPCThreadState::kUnsetWorkSource;

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <android/os/IServiceManager.h>
 #include <binder/Binder.h>
 #include <binder/IBinder.h>
 #include <binder/IPCThreadState.h>
@@ -29,6 +30,7 @@
 
 using namespace android;
 using android::binder::Status;
+using android::os::IServiceManager;
 
 const String16 kNoStabilityServer = String16("binder_stability_test_service_low");
 const String16 kCompilationUnitServer = String16("binder_stability_test_service_compl");

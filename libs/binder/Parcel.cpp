@@ -73,9 +73,12 @@ static size_t pad_size(size_t s) {
 }
 
 // Note: must be kept in sync with android/os/StrictMode.java's PENALTY_GATHER
-#define STRICT_MODE_PENALTY_GATHER (0x40 << 16)
+#define STRICT_MODE_PENALTY_GATHER (1 << 31)
 
 namespace android {
+
+// many things compile this into prebuilts on the stack
+static_assert(sizeof(Parcel) == 60 || sizeof(Parcel) == 120);
 
 static pthread_mutex_t gParcelGlobalAllocSizeLock = PTHREAD_MUTEX_INITIALIZER;
 static size_t gParcelGlobalAllocSize = 0;
@@ -165,30 +168,29 @@ static void release_object(const sp<ProcessState>& proc,
 }
 
 status_t Parcel::finishFlattenBinder(
-    const sp<IBinder>& /*binder*/, const flat_binder_object& flat)
+    const sp<IBinder>& binder, const flat_binder_object& flat)
 {
+    internal::Stability::tryMarkCompilationUnit(binder.get());
+
     status_t status = writeObject(flat, false);
     if (status != OK) return status;
 
-    // Cannot change wire protocol w/o SM update
-    // return writeInt32(internal::Stability::get(binder.get()));
-    return OK;
+    return writeInt32(internal::Stability::get(binder.get()));
 }
 
 status_t Parcel::finishUnflattenBinder(
     const sp<IBinder>& binder, sp<IBinder>* out) const
 {
-    // int32_t stability;
-    // Cannot change wire protocol w/o SM update
-    // status_t status = readInt32(&stability);
-    // if (status != OK) return status;
+    int32_t stability;
+    status_t status = readInt32(&stability);
+    if (status != OK) return status;
 
-    // if (!internal::Stability::check(stability, mRequiredStability)) {
-    //     return BAD_TYPE;
-    // }
+    if (binder != nullptr && !internal::Stability::check(stability, mRequiredStability)) {
+        return BAD_TYPE;
+    }
 
-    // status = internal::Stability::set(binder.get(), stability);
-    // if (status != OK) return status;
+    status = internal::Stability::set(binder.get(), stability, true /*log*/);
+    if (status != OK) return status;
 
     *out = binder;
     return OK;
@@ -506,13 +508,58 @@ bool Parcel::hasFileDescriptors() const
     return mHasFds;
 }
 
+void Parcel::updateWorkSourceRequestHeaderPosition() const {
+    // Only update the request headers once. We only want to point
+    // to the first headers read/written.
+    if (!mRequestHeaderPresent) {
+        mWorkSourceRequestHeaderPosition = dataPosition();
+        mRequestHeaderPresent = true;
+    }
+}
+
+#ifdef __ANDROID_VNDK__
+constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
+#else
+constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');
+#endif
+
 // Write RPC headers.  (previously just the interface token)
 status_t Parcel::writeInterfaceToken(const String16& interface)
 {
-    writeInt32(IPCThreadState::self()->getStrictModePolicy() |
-               STRICT_MODE_PENALTY_GATHER);
+    const IPCThreadState* threadState = IPCThreadState::self();
+    writeInt32(threadState->getStrictModePolicy() | STRICT_MODE_PENALTY_GATHER);
+    updateWorkSourceRequestHeaderPosition();
+    writeInt32(threadState->shouldPropagateWorkSource() ?
+            threadState->getCallingWorkSourceUid() : IPCThreadState::kUnsetWorkSource);
+    writeInt32(kHeader);
     // currently the interface identification token is just its name as a string
     return writeString16(interface);
+}
+
+bool Parcel::replaceCallingWorkSourceUid(uid_t uid)
+{
+    if (!mRequestHeaderPresent) {
+        return false;
+    }
+
+    const size_t initialPosition = dataPosition();
+    setDataPosition(mWorkSourceRequestHeaderPosition);
+    status_t err = writeInt32(uid);
+    setDataPosition(initialPosition);
+    return err == NO_ERROR;
+}
+
+uid_t Parcel::readCallingWorkSourceUid()
+{
+    if (!mRequestHeaderPresent) {
+        return IPCThreadState::kUnsetWorkSource;
+    }
+
+    const size_t initialPosition = dataPosition();
+    setDataPosition(mWorkSourceRequestHeaderPosition);
+    uid_t uid = readInt32();
+    setDataPosition(initialPosition);
+    return uid;
 }
 
 bool Parcel::checkInterface(IBinder* binder) const
@@ -523,6 +570,7 @@ bool Parcel::checkInterface(IBinder* binder) const
 bool Parcel::enforceInterface(const String16& interface,
                               IPCThreadState* threadState) const
 {
+    // StrictModePolicy.
     int32_t strictPolicy = readInt32();
     if (threadState == nullptr) {
         threadState = IPCThreadState::self();
@@ -537,6 +585,17 @@ bool Parcel::enforceInterface(const String16& interface,
     } else {
       threadState->setStrictModePolicy(strictPolicy);
     }
+    // WorkSource.
+    updateWorkSourceRequestHeaderPosition();
+    int32_t workSource = readInt32();
+    threadState->setCallingWorkSourceUidWithoutPropagation(workSource);
+    // vendor header
+    int32_t header = readInt32();
+    if (header != kHeader) {
+        ALOGE("Expecting header 0x%x but found 0x%x. Mixing copies of libbinder?", kHeader, header);
+        return false;
+    }
+    // Interface descriptor.
     const String16 str(readString16());
     if (str == interface) {
         return true;
@@ -774,6 +833,16 @@ status_t Parcel::writeInt64Vector(const std::vector<int64_t>& val)
 status_t Parcel::writeInt64Vector(const std::unique_ptr<std::vector<int64_t>>& val)
 {
     return writeNullableTypedVector(val, &Parcel::writeInt64);
+}
+
+status_t Parcel::writeUint64Vector(const std::vector<uint64_t>& val)
+{
+    return writeTypedVector(val, &Parcel::writeUint64);
+}
+
+status_t Parcel::writeUint64Vector(const std::unique_ptr<std::vector<uint64_t>>& val)
+{
+    return writeNullableTypedVector(val, &Parcel::writeUint64);
 }
 
 status_t Parcel::writeFloatVector(const std::vector<float>& val)
@@ -1509,6 +1578,14 @@ status_t Parcel::readInt64Vector(std::vector<int64_t>* val) const {
     return readTypedVector(val, &Parcel::readInt64);
 }
 
+status_t Parcel::readUint64Vector(std::unique_ptr<std::vector<uint64_t>>* val) const {
+    return readNullableTypedVector(val, &Parcel::readUint64);
+}
+
+status_t Parcel::readUint64Vector(std::vector<uint64_t>* val) const {
+    return readTypedVector(val, &Parcel::readUint64);
+}
+
 status_t Parcel::readFloatVector(std::unique_ptr<std::vector<float>>* val) const {
     return readNullableTypedVector(val, &Parcel::readFloat);
 }
@@ -1803,8 +1880,8 @@ status_t Parcel::readUtf8FromUtf16(std::unique_ptr<std::string>* str) const {
 
 const char* Parcel::readCString() const
 {
-    const size_t avail = mDataSize-mDataPos;
-    if (avail > 0) {
+    if (mDataPos < mDataSize) {
+        const size_t avail = mDataSize-mDataPos;
         const char* str = reinterpret_cast<const char*>(mData+mDataPos);
         // is the string's trailing NUL within the parcel's valid bounds?
         const char* eos = reinterpret_cast<const char*>(memchr(str, 0, avail));
@@ -2095,6 +2172,15 @@ status_t Parcel::readBlob(size_t len, ReadableBlob* outBlob) const
     int fd = readFileDescriptor();
     if (fd == int(BAD_TYPE)) return BAD_VALUE;
 
+    if (!ashmem_valid(fd)) {
+        ALOGE("invalid fd");
+        return BAD_VALUE;
+    }
+    int size = ashmem_get_size_region(fd);
+    if (size < 0 || size_t(size) < len) {
+        ALOGE("request size %zu does not match fd size %d", len, size);
+        return BAD_VALUE;
+    }
     void* ptr = ::mmap(nullptr, len, isMutable ? PROT_READ | PROT_WRITE : PROT_READ,
             MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) return NO_MEMORY;
@@ -2532,10 +2618,16 @@ status_t Parcel::continueWrite(size_t desired)
                 }
                 release_object(proc, *flat, this, &mOpenAshmemSize);
             }
-            binder_size_t* objects =
-                (binder_size_t*)realloc(mObjects, objectsSize*sizeof(binder_size_t));
-            if (objects) {
-                mObjects = objects;
+
+            if (objectsSize == 0) {
+                free(mObjects);
+                mObjects = nullptr;
+            } else {
+                binder_size_t* objects =
+                    (binder_size_t*)realloc(mObjects, objectsSize*sizeof(binder_size_t));
+                if (objects) {
+                    mObjects = objects;
+                }
             }
             mObjectsSize = objectsSize;
             mNextObjectHint = 0;
@@ -2619,6 +2711,8 @@ void Parcel::initState()
     mRequiredStability = internal::Stability::UNDECLARED;
     mOwner = nullptr;
     mOpenAshmemSize = 0;
+    mWorkSourceRequestHeaderPosition = 0;
+    mRequestHeaderPresent = false;
 
     // racing multiple init leads only to multiple identical write
     if (gMaxFds == 0) {

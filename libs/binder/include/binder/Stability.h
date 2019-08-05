@@ -45,8 +45,6 @@ private:
     // up the efficiency level of a binder object. So, we expose the underlying type.
     friend ::android::Parcel;
 
-    static void tryMarkCompilationUnit(IBinder* binder);
-
     enum Level : int16_t {
         UNDECLARED = 0,
 
@@ -55,15 +53,9 @@ private:
         VINTF = 0b111111,
     };
 
-#ifdef __ANDROID_VNDK__
-    static constexpr Level kLocalStability = Level::VENDOR;
-#else
-    static constexpr Level kLocalStability = Level::SYSTEM;
-#endif
-
     // applies stability to binder if stability level is known
     __attribute__((warn_unused_result))
-    static status_t set(IBinder* binder, int32_t stability, bool log);
+    static status_t set(IBinder* binder, int32_t stability);
 
     static Level get(IBinder* binder);
 

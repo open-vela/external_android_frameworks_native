@@ -144,7 +144,6 @@ cc_test {
     srcs: [
         "binderStabilityTest.cpp",
         "IBinderStabilityTest.aidl",
-        "IBinderStabilityTestSub.aidl",
     ],
 
     shared_libs: [

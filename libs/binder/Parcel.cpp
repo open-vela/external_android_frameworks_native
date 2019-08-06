@@ -35,7 +35,6 @@
 #include <binder/IPCThreadState.h>
 #include <binder/Parcel.h>
 #include <binder/ProcessState.h>
-#include <binder/Stability.h>
 #include <binder/Status.h>
 #include <binder/TextOutput.h>
 
@@ -171,10 +170,11 @@ static void release_object(const sp<ProcessState>& proc,
 status_t Parcel::finishFlattenBinder(
     const sp<IBinder>& binder, const flat_binder_object& flat)
 {
+    internal::Stability::tryMarkCompilationUnit(binder.get());
+
     status_t status = writeObject(flat, false);
     if (status != OK) return status;
 
-    internal::Stability::tryMarkCompilationUnit(binder.get());
     return writeInt32(internal::Stability::get(binder.get()));
 }
 
@@ -184,6 +184,10 @@ status_t Parcel::finishUnflattenBinder(
     int32_t stability;
     status_t status = readInt32(&stability);
     if (status != OK) return status;
+
+    if (binder != nullptr && !internal::Stability::check(stability, mRequiredStability)) {
+        return BAD_TYPE;
+    }
 
     status = internal::Stability::set(binder.get(), stability, true /*log*/);
     if (status != OK) return status;
@@ -350,6 +354,10 @@ status_t Parcel::setDataCapacity(size_t size)
 
     if (size > mDataCapacity) return continueWrite(size);
     return NO_ERROR;
+}
+
+void Parcel::setTransactingBinder(const sp<IBinder>& binder) const {
+    mRequiredStability = internal::Stability::get(binder.get());
 }
 
 status_t Parcel::setData(const uint8_t* buffer, size_t len)
@@ -2697,9 +2705,10 @@ void Parcel::initState()
     mObjectsCapacity = 0;
     mNextObjectHint = 0;
     mObjectsSorted = false;
+    mAllowFds = true;
     mHasFds = false;
     mFdsKnown = true;
-    mAllowFds = true;
+    mRequiredStability = internal::Stability::UNDECLARED;
     mOwner = nullptr;
     mOpenAshmemSize = 0;
     mWorkSourceRequestHeaderPosition = 0;

@@ -33,6 +33,7 @@
 
 #include <binder/IInterface.h>
 #include <binder/Parcelable.h>
+#include <binder/Stability.h>
 
 // ---------------------------------------------------------------------------
 namespace android {
@@ -67,6 +68,8 @@ public:
     status_t            setDataSize(size_t size);
     void                setDataPosition(size_t pos) const;
     status_t            setDataCapacity(size_t size);
+
+    void                setTransactingBinder(const sp<IBinder>& binder) const;
 
     status_t            setData(const uint8_t* buffer, size_t len);
 
@@ -472,13 +475,15 @@ private:
     size_t              mObjectsCapacity;
     mutable size_t      mNextObjectHint;
     mutable bool        mObjectsSorted;
+    bool                mAllowFds;
 
     mutable bool        mRequestHeaderPresent;
     mutable size_t      mWorkSourceRequestHeaderPosition;
 
     mutable bool        mFdsKnown;
     mutable bool        mHasFds;
-    bool                mAllowFds;
+
+    mutable internal::Stability::Level mRequiredStability;
 
     release_func        mOwner;
     void*               mOwnerCookie;

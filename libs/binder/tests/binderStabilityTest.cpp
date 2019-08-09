@@ -26,7 +26,9 @@
 
 #include <sys/prctl.h>
 
+#include "aidl/BnBinderStabilityTestSub.h"
 #include "aidl/BnBinderStabilityTest.h"
+#include "BnBinderStabilityTestSub.h"
 #include "BnBinderStabilityTest.h"
 
 using namespace android;
@@ -34,217 +36,167 @@ using namespace ndk;
 using android::binder::Status;
 using android::internal::Stability; // for testing only!
 
-const String16 kSystemStabilityServer = String16("binder_stability_test_service_system");
+const String16 kNoStabilityServer = String16("binder_stability_test_service_low");
+const String16 kCompilationUnitServer = String16("binder_stability_test_service_compl");
+const String16 kVintfServer = String16("binder_stability_test_service_vintf");
 
-// This is handwritten so that we can test different stability levels w/o having the AIDL
-// compiler assign them. Hand-writing binder interfaces is considered a bad practice
-// sanity reasons. YOU SHOULD DEFINE AN AIDL INTERFACE INSTEAD!
-class BadStableBinder : public BBinder {
+const String16 kCompilationUnitNdkServer = String16("binder_stability_test_service_compl");
+
+class BadStabilityTestSub : public BnBinderStabilityTestSub {
 public:
-    static constexpr uint32_t USER_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION;
-    static String16 kDescriptor;
-
-    bool gotUserTransaction = false;
-
-    static status_t doUserTransaction(const sp<IBinder>& binder) {
-        Parcel data, reply;
-        data.writeInterfaceToken(kDescriptor);
-        return binder->transact(USER_TRANSACTION, data, &reply, 0/*flags*/);
+    Status userDefinedTransaction() {
+        return Status::ok();
     }
 
-    status_t onTransact(uint32_t code,
-            const Parcel& data, Parcel* reply, uint32_t flags) override {
-        if (code == USER_TRANSACTION) {
-            // not interested in this kind of stability. Make sure
-            // we have a test failure
-            LOG_ALWAYS_FATAL_IF(!data.enforceInterface(kDescriptor));
-
-            gotUserTransaction = true;
-
-            ALOGE("binder stability: Got user transaction");
-            return OK;
-        }
-        return BBinder::onTransact(code, data, reply, flags);
-    }
-
-    static sp<BadStableBinder> undef() {
-        sp<BadStableBinder> iface = new BadStableBinder();
+    static sp<IBinderStabilityTestSub> system() {
+        sp<BnBinderStabilityTestSub> iface = new BadStabilityTestSub();
+        // NO! NO! NO! NO! DO NOT EVERY DO SOMETHING LIKE THIS?
+        // WHAT ARE YOU CRAZY? IT'S VERY DANGEROUS
+        Stability::markCompilationUnit(iface.get()); // <- BAD, NO! DO NOT COPY
         return iface;
     }
 
-    static sp<BadStableBinder> system() {
-        sp<BadStableBinder> iface = new BadStableBinder();
-        Stability::markCompilationUnit(iface.get()); // <- for test only
+    static sp<IBinderStabilityTestSub> vintf() {
+        sp<BnBinderStabilityTestSub> iface = new BadStabilityTestSub();
+        // NO! NO! NO! NO! DO NOT EVERY DO SOMETHING LIKE THIS?
+        // WHAT ARE YOU CRAZY? IT'S VERY DANGEROUS
+        Stability::markVintf(iface.get()); // <- BAD, NO! DO NOT COPY
         return iface;
     }
 
-    static sp<BadStableBinder> vintf() {
-        sp<BadStableBinder> iface = new BadStableBinder();
-        Stability::markVintf(iface.get()); // <- for test only
-        return iface;
-    }
-
-    static sp<BadStableBinder> vendor() {
-        sp<BadStableBinder> iface = new BadStableBinder();
-        Stability::markVndk(iface.get()); // <- for test only
+    static sp<IBinderStabilityTestSub> vendor() {
+        sp<BnBinderStabilityTestSub> iface = new BadStabilityTestSub();
+        // NO! NO! NO! NO! DO NOT EVERY DO SOMETHING LIKE THIS?
+        // WHAT ARE YOU CRAZY? IT'S VERY DANGEROUS
+        Stability::markVndk(iface.get()); // <- BAD, NO! DO NOT COPY
         return iface;
     }
 };
-String16 BadStableBinder::kDescriptor = String16("BadStableBinder.test");
 
 // NO! NO! NO! Do not even think of doing something like this!
 // This is for testing! If a class like this was actually used in production,
 // it would ruin everything!
-class MyBinderStabilityTest : public BnBinderStabilityTest {
+class BadStabilityTester : public BnBinderStabilityTest {
 public:
-    Status sendBinder(const sp<IBinder>& /*binder*/) override {
+    Status sendBinder(const sp<IBinderStabilityTestSub>& /*binder*/) override {
         return Status::ok();
     }
-    Status sendAndCallBinder(const sp<IBinder>& binder) override {
-        Stability::debugLogStability("sendAndCallBinder got binder", binder);
-        return Status::fromExceptionCode(BadStableBinder::doUserTransaction(binder));
+    Status sendAndCallBinder(const sp<IBinderStabilityTestSub>& binder) override {
+        Stability::debugLogStability("sendAndCallBinder got binder", IInterface::asBinder(binder));
+        return binder->userDefinedTransaction();
     }
-    Status returnNoStabilityBinder(sp<IBinder>* _aidl_return) override {
-        *_aidl_return = BadStableBinder::undef();
+    Status returnNoStabilityBinder(sp<IBinderStabilityTestSub>* _aidl_return) override {
+        *_aidl_return = new BadStabilityTestSub();
         return Status::ok();
     }
-    Status returnLocalStabilityBinder(sp<IBinder>* _aidl_return) override {
-        *_aidl_return = BadStableBinder::system();
+    Status returnLocalStabilityBinder(sp<IBinderStabilityTestSub>* _aidl_return) override {
+        *_aidl_return = BadStabilityTestSub::system();
         return Status::ok();
     }
-    Status returnVintfStabilityBinder(sp<IBinder>* _aidl_return) override {
-        *_aidl_return = BadStableBinder::vintf();
+    Status returnVintfStabilityBinder(sp<IBinderStabilityTestSub>* _aidl_return) override {
+        *_aidl_return = BadStabilityTestSub::vintf();
         return Status::ok();
     }
-    Status returnVendorStabilityBinder(sp<IBinder>* _aidl_return) override {
-        *_aidl_return = BadStableBinder::vendor();
+    Status returnVendorStabilityBinder(sp<IBinderStabilityTestSub>* _aidl_return) override {
+        *_aidl_return = BadStabilityTestSub::vendor();
         return Status::ok();
     }
 };
 
-TEST(BinderStability, CantCallVendorBinderInSystemContext) {
-    sp<IBinder> serverBinder = android::defaultServiceManager()->getService(kSystemStabilityServer);
-    auto server = interface_cast<IBinderStabilityTest>(serverBinder);
+void checkSystemStabilityBinder(const sp<IBinderStabilityTest>& complServer) {
+    EXPECT_TRUE(complServer->sendBinder(new BadStabilityTestSub()).isOk());
+    EXPECT_TRUE(complServer->sendBinder(BadStabilityTestSub::system()).isOk());
+    EXPECT_TRUE(complServer->sendBinder(BadStabilityTestSub::vintf()).isOk());
+    EXPECT_TRUE(complServer->sendBinder(BadStabilityTestSub::vendor()).isOk());
 
-    ASSERT_NE(nullptr, server.get());
-    ASSERT_NE(nullptr, IInterface::asBinder(server)->remoteBinder());
+    EXPECT_TRUE(complServer->sendAndCallBinder(new BadStabilityTestSub()).isOk());
+    EXPECT_TRUE(complServer->sendAndCallBinder(BadStabilityTestSub::system()).isOk());
+    EXPECT_TRUE(complServer->sendAndCallBinder(BadStabilityTestSub::vintf()).isOk());
 
-    EXPECT_TRUE(server->sendBinder(BadStableBinder::undef()).isOk());
-    EXPECT_TRUE(server->sendBinder(BadStableBinder::system()).isOk());
-    EXPECT_TRUE(server->sendBinder(BadStableBinder::vintf()).isOk());
-    EXPECT_TRUE(server->sendBinder(BadStableBinder::vendor()).isOk());
+    // !!! user-defined transaction may not be stable for remote server !!!
+    EXPECT_FALSE(complServer->sendAndCallBinder(BadStabilityTestSub::vendor()).isOk());
 
-    {
-        sp<BadStableBinder> binder = BadStableBinder::undef();
-        EXPECT_TRUE(server->sendAndCallBinder(binder).isOk());
-        EXPECT_TRUE(binder->gotUserTransaction);
-    }
-    {
-        sp<BadStableBinder> binder = BadStableBinder::system();
-        EXPECT_TRUE(server->sendAndCallBinder(binder).isOk());
-        EXPECT_TRUE(binder->gotUserTransaction);
-    }
-    {
-        sp<BadStableBinder> binder = BadStableBinder::vintf();
-        EXPECT_TRUE(server->sendAndCallBinder(binder).isOk());
-        EXPECT_TRUE(binder->gotUserTransaction);
-    }
-    {
-        // !!! user-defined transaction may not be stable for remote server !!!
-        // !!! so, it does not work !!!
-        sp<BadStableBinder> binder = BadStableBinder::vendor();
-        EXPECT_EQ(BAD_TYPE, server->sendAndCallBinder(binder).exceptionCode());
-        EXPECT_FALSE(binder->gotUserTransaction);
-    }
-
-    sp<IBinder> out;
-    EXPECT_TRUE(server->returnNoStabilityBinder(&out).isOk());
+    sp<IBinderStabilityTestSub> out;
+    EXPECT_TRUE(complServer->returnNoStabilityBinder(&out).isOk());
     ASSERT_NE(nullptr, out.get());
-    EXPECT_EQ(OK, out->pingBinder());
-    EXPECT_EQ(OK, BadStableBinder::doUserTransaction(out));
+    EXPECT_EQ(OK, IInterface::asBinder(out)->pingBinder());
+    EXPECT_TRUE(out->userDefinedTransaction().isOk());
 
-    EXPECT_TRUE(server->returnLocalStabilityBinder(&out).isOk());
+    EXPECT_TRUE(complServer->returnLocalStabilityBinder(&out).isOk());
     ASSERT_NE(nullptr, out.get());
-    EXPECT_EQ(OK, out->pingBinder());
-    EXPECT_EQ(OK, BadStableBinder::doUserTransaction(out));
+    EXPECT_EQ(OK, IInterface::asBinder(out)->pingBinder());
+    EXPECT_TRUE(out->userDefinedTransaction().isOk());
 
-    EXPECT_TRUE(server->returnVintfStabilityBinder(&out).isOk());
+    EXPECT_TRUE(complServer->returnVintfStabilityBinder(&out).isOk());
     ASSERT_NE(nullptr, out.get());
-    EXPECT_EQ(OK, out->pingBinder());
-    EXPECT_EQ(OK, BadStableBinder::doUserTransaction(out));
+    EXPECT_EQ(OK, IInterface::asBinder(out)->pingBinder());
+    EXPECT_TRUE(out->userDefinedTransaction().isOk());
 
-    EXPECT_TRUE(server->returnVendorStabilityBinder(&out).isOk());
+    EXPECT_TRUE(complServer->returnVendorStabilityBinder(&out).isOk());
     ASSERT_NE(nullptr, out.get());
 
     // !!! libbinder-defined transaction works !!!
-    EXPECT_EQ(OK, out->pingBinder());
+    EXPECT_EQ(OK, IInterface::asBinder(out)->pingBinder());
 
     // !!! user-defined transaction may not be stable !!!
-    // !!! so, it does not work !!!
-    EXPECT_EQ(BAD_TYPE, BadStableBinder::doUserTransaction(out));
+    EXPECT_FALSE(out->userDefinedTransaction().isOk());
 }
 
-// This is handwritten so that we can test different stability levels w/o having the AIDL
-// compiler assign them. Hand-writing binder interfaces is considered a bad practice
-// sanity reasons. YOU SHOULD DEFINE AN AIDL INTERFACE INSTEAD!
+TEST(BinderStability, RemoteNoStabilityServer) {
+    sp<IBinder> remoteBinder = android::defaultServiceManager()->getService(kNoStabilityServer);
+    auto remoteServer = interface_cast<IBinderStabilityTest>(remoteBinder);
 
-struct NdkBinderStable_DataClass {
-    bool gotUserTransaction = false;
-};
-void* NdkBadStableBinder_Class_onCreate(void* args) {
-    LOG_ALWAYS_FATAL_IF(args != nullptr, "Takes no args");
-    return static_cast<void*>(new NdkBinderStable_DataClass);
-}
-void NdkBadStableBinder_Class_onDestroy(void* userData) {
-    delete static_cast<NdkBinderStable_DataClass*>(userData);
-}
-NdkBinderStable_DataClass* NdkBadStableBinder_getUserData(AIBinder* binder) {
-    LOG_ALWAYS_FATAL_IF(binder == nullptr);
-    void* userData = AIBinder_getUserData(binder);
-    LOG_ALWAYS_FATAL_IF(userData == nullptr, "null data - binder is remote?");
+    ASSERT_NE(nullptr, remoteServer.get());
+    ASSERT_NE(nullptr, IInterface::asBinder(remoteServer)->remoteBinder());
 
-    return static_cast<NdkBinderStable_DataClass*>(userData);
+    checkSystemStabilityBinder(remoteServer);
 }
-binder_status_t NdkBadStableBinder_Class_onTransact(
-    AIBinder* binder, transaction_code_t code, const AParcel* /*in*/, AParcel* /*out*/) {
 
-    if (code == BadStableBinder::USER_TRANSACTION) {
-        ALOGE("ndk binder stability: Got user transaction");
-        NdkBadStableBinder_getUserData(binder)->gotUserTransaction = true;
-        return STATUS_OK;
+TEST(BinderStability, RemoteLowStabilityServer) {
+    sp<IBinder> remoteBinder = android::defaultServiceManager()->getService(kCompilationUnitServer);
+    auto remoteServer = interface_cast<IBinderStabilityTest>(remoteBinder);
+
+    ASSERT_NE(nullptr, remoteServer.get());
+    ASSERT_NE(nullptr, IInterface::asBinder(remoteServer)->remoteBinder());
+
+    checkSystemStabilityBinder(remoteServer);
+}
+
+TEST(BinderStability, RemoteVintfServer) {
+    sp<IBinder> remoteBinder = android::defaultServiceManager()->getService(kVintfServer);
+    auto remoteServer = interface_cast<IBinderStabilityTest>(remoteBinder);
+
+    ASSERT_NE(nullptr, remoteServer.get());
+    ASSERT_NE(nullptr, IInterface::asBinder(remoteServer)->remoteBinder());
+
+    checkSystemStabilityBinder(remoteServer);
+}
+
+class NdkBadStabilityTestSub : public aidl::BnBinderStabilityTestSub {
+    ScopedAStatus userDefinedTransaction() {
+        return ScopedAStatus::ok();
     }
-
-    return STATUS_UNKNOWN_TRANSACTION;
-}
-
-static AIBinder_Class* kNdkBadStableBinder =
-    AIBinder_Class_define(String8(BadStableBinder::kDescriptor).c_str(),
-                          NdkBadStableBinder_Class_onCreate,
-                          NdkBadStableBinder_Class_onDestroy,
-                          NdkBadStableBinder_Class_onTransact);
-
+};
 // for testing only to get around __ANDROID_VNDK__ guard.
 extern "C" void AIBinder_markVendorStability(AIBinder* binder); // <- BAD DO NOT COPY
 
-TEST(BinderStability, NdkCantCallVendorBinderInSystemContext) {
+TEST(BinderStability, NdkClientOfRemoteServer) {
     SpAIBinder binder = SpAIBinder(AServiceManager_getService(
-        String8(kSystemStabilityServer).c_str()));
+        String8(kCompilationUnitServer).c_str()));
 
     std::shared_ptr<aidl::IBinderStabilityTest> remoteServer =
         aidl::IBinderStabilityTest::fromBinder(binder);
 
     ASSERT_NE(nullptr, remoteServer.get());
 
-    SpAIBinder comp = SpAIBinder(AIBinder_new(kNdkBadStableBinder, nullptr /*args*/));
-    EXPECT_TRUE(remoteServer->sendBinder(comp).isOk());
-    EXPECT_TRUE(remoteServer->sendAndCallBinder(comp).isOk());
-    EXPECT_TRUE(NdkBadStableBinder_getUserData(comp.get())->gotUserTransaction);
+    std::shared_ptr<aidl::IBinderStabilityTestSub> vendor = SharedRefBase::make<NdkBadStabilityTestSub>();
 
-    SpAIBinder vendor = SpAIBinder(AIBinder_new(kNdkBadStableBinder, nullptr /*args*/));
-    AIBinder_markVendorStability(vendor.get());
+    // TODO: not ideal: binder must be held once it is marked
+    SpAIBinder vendorBinder = vendor->asBinder();
+    AIBinder_markVendorStability(vendorBinder.get());
+
     EXPECT_TRUE(remoteServer->sendBinder(vendor).isOk());
     EXPECT_FALSE(remoteServer->sendAndCallBinder(vendor).isOk());
-    EXPECT_FALSE(NdkBadStableBinder_getUserData(vendor.get())->gotUserTransaction);
 }
 
 class MarksStabilityInConstructor : public BBinder {
@@ -282,8 +234,16 @@ int main(int argc, char** argv) {
         // child process
         prctl(PR_SET_PDEATHSIG, SIGHUP);
 
-        sp<IBinder> server = new MyBinderStabilityTest;
-        android::defaultServiceManager()->addService(kSystemStabilityServer, server);
+        sp<IBinder> noStability = new BadStabilityTester;
+        android::defaultServiceManager()->addService(kNoStabilityServer, noStability);
+
+        sp<IBinder> compil = new BadStabilityTester;
+        Stability::markCompilationUnit(compil.get());
+        android::defaultServiceManager()->addService(kCompilationUnitServer, compil);
+
+        sp<IBinder> vintf = new BadStabilityTester;
+        Stability::markVintf(vintf.get());
+        android::defaultServiceManager()->addService(kVintfServer, vintf);
 
         IPCThreadState::self()->joinThreadPool(true);
         exit(1);  // should not reach

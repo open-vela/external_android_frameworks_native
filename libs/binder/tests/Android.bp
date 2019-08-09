@@ -142,6 +142,7 @@ aidl_interface {
     name: "binderStabilityTestIface",
     srcs: [
         "IBinderStabilityTest.aidl",
+        "IBinderStabilityTestSub.aidl",
     ],
 }
 

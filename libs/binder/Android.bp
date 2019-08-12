@@ -37,7 +37,6 @@ cc_library_shared {
         enabled: true,
     },
     double_loadable: true,
-    no_apex: true,
 
     srcs: [
         "ActivityManager.cpp",

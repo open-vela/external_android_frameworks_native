@@ -28,7 +28,7 @@ cc_library_headers {
     ],
 }
 
-cc_library {
+cc_library_shared {
     name: "libbinder",
 
     // for vndbinder
@@ -36,6 +36,7 @@ cc_library {
     vndk: {
         enabled: true,
     },
+    double_loadable: true,
 
     srcs: [
         "ActivityManager.cpp",
@@ -62,16 +63,17 @@ cc_library {
         "MemoryDealer.cpp",
         "MemoryHeapBase.cpp",
         "Parcel.cpp",
+        "ParcelFileDescriptor.cpp",
         "PermissionCache.cpp",
         "PermissionController.cpp",
         "PersistableBundle.cpp",
         "ProcessInfoService.cpp",
         "ProcessState.cpp",
         "Static.cpp",
+        "Stability.cpp",
         "Status.cpp",
         "TextOutput.cpp",
         "IpPrefix.cpp",
-        "Value.cpp",
         ":libbinder_aidl",
     ],
 
@@ -113,11 +115,10 @@ cc_library {
     },
 
     shared_libs: [
-        "libbase",
         "liblog",
         "libcutils",
         "libutils",
-        "libutilscallstack",
+        "libbinderthreadstate",
     ],
 
     header_libs: [
@@ -140,6 +141,7 @@ filegroup {
     srcs: [
         "aidl/android/content/pm/IPackageManagerNative.aidl",
     ],
+    path: "aidl",
 }
 
 subdirs = ["tests"]

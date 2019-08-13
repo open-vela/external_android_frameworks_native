@@ -17,8 +17,11 @@
 #ifndef ANDROID_PARCEL_H
 #define ANDROID_PARCEL_H
 
+#include <map> // for legacy reasons
 #include <string>
 #include <vector>
+
+#include <linux/android/binder.h>
 
 #include <android-base/unique_fd.h>
 #include <cutils/native_handle.h>
@@ -27,11 +30,9 @@
 #include <utils/String16.h>
 #include <utils/Vector.h>
 #include <utils/Flattenable.h>
-#include <linux/android/binder.h>
 
 #include <binder/IInterface.h>
 #include <binder/Parcelable.h>
-#include <binder/Map.h>
 
 // ---------------------------------------------------------------------------
 namespace android {
@@ -66,7 +67,7 @@ public:
     status_t            setDataSize(size_t size);
     void                setDataPosition(size_t pos) const;
     status_t            setDataCapacity(size_t size);
-    
+
     status_t            setData(const uint8_t* buffer, size_t len);
 
     status_t            appendFrom(const Parcel *parcel,
@@ -91,15 +92,11 @@ public:
     // IPCThreadState, which as an optimization may optionally be
     // passed in.
     bool                enforceInterface(const String16& interface,
-                                         IPCThreadState* threadState = NULL) const;
+                                         IPCThreadState* threadState = nullptr) const;
     bool                checkInterface(IBinder*) const;
 
     void                freeData();
 
-private:
-    const binder_size_t* objects() const;
-
-public:
     size_t              objectsCount() const;
     
     status_t            errorCheck() const;
@@ -120,7 +117,6 @@ public:
     status_t            writeString16(const std::unique_ptr<String16>& str);
     status_t            writeString16(const char16_t* str, size_t len);
     status_t            writeStrongBinder(const sp<IBinder>& val);
-    status_t            writeWeakBinder(const wp<IBinder>& val);
     status_t            writeInt32Array(size_t len, const int32_t *val);
     status_t            writeByteArray(size_t len, const uint8_t *val);
     status_t            writeBool(bool val);
@@ -169,8 +165,6 @@ public:
 
     status_t            writeParcelable(const Parcelable& parcelable);
 
-    status_t            writeValue(const binder::Value& value);
-
     template<typename T>
     status_t            write(const Flattenable<T>& val);
 
@@ -181,9 +175,6 @@ public:
     status_t            writeVectorSize(const std::vector<T>& val);
     template<typename T>
     status_t            writeVectorSize(const std::unique_ptr<std::vector<T>>& val);
-
-    status_t            writeMap(const binder::Map& map);
-    status_t            writeNullableMap(const std::unique_ptr<binder::Map>& map);
 
     // Place a native_handle into the parcel (the native_handle's file-
     // descriptors are dup'ed, so it is safe to delete the native_handle
@@ -204,6 +195,10 @@ public:
     // valid for the lifetime of the parcel.
     // The Parcel does not take ownership of the given fd unless you ask it to.
     status_t            writeParcelFileDescriptor(int fd, bool takeOwnership = false);
+
+    // Place a Java "parcel file descriptor" into the parcel.  A dup of the fd is made, which will
+    // be closed once the parcel is destroyed.
+    status_t            writeDupParcelFileDescriptor(int fd);
 
     // Place a file descriptor into the parcel.  This will not affect the
     // semantics of the smart file descriptor. A new descriptor will be
@@ -237,8 +232,6 @@ public:
     // Currently the native implementation doesn't do any of the StrictMode
     // stack gathering and serialization that the Java implementation does.
     status_t            writeNoException();
-
-    void                remove(size_t start, size_t amt);
     
     status_t            read(void* outData, size_t len) const;
     const void*         readInplace(size_t len) const;
@@ -277,7 +270,6 @@ public:
     sp<IBinder>         readStrongBinder() const;
     status_t            readStrongBinder(sp<IBinder>* val) const;
     status_t            readNullableStrongBinder(sp<IBinder>* val) const;
-    wp<IBinder>         readWeakBinder() const;
 
     template<typename T>
     status_t            readParcelableVector(
@@ -289,8 +281,6 @@ public:
 
     template<typename T>
     status_t            readParcelable(std::unique_ptr<T>* parcelable) const;
-
-    status_t            readValue(binder::Value* value) const;
 
     template<typename T>
     status_t            readStrongBinder(sp<T>* val) const;
@@ -335,9 +325,6 @@ public:
     template<typename T>
     status_t            resizeOutVector(std::unique_ptr<std::vector<T>>* val) const;
 
-    status_t            readMap(binder::Map* map)const;
-    status_t            readNullableMap(std::unique_ptr<binder::Map>* map) const;
-
     // Like Parcel.java's readExceptionCode().  Reads the first int32
     // off of a Parcel's header, returning 0 or the negative error
     // code on exceptions, but also deals with skipping over rich
@@ -363,6 +350,9 @@ public:
     // Retrieve a smart file descriptor from the parcel.
     status_t            readUniqueFileDescriptor(
                             base::unique_fd* val) const;
+
+    // Retrieve a Java "parcel file descriptor" from the parcel.
+    status_t            readUniqueParcelFileDescriptor(base::unique_fd* val) const;
 
 
     // Retrieve a vector of smart file descriptors from the parcel.
@@ -418,7 +408,13 @@ private:
     void                initState();
     void                scanForFds() const;
     status_t            validateReadData(size_t len) const;
-                        
+
+    status_t            finishFlattenBinder(const sp<IBinder>& binder,
+                                            const flat_binder_object& flat);
+    status_t            finishUnflattenBinder(const sp<IBinder>& binder, sp<IBinder>* out) const;
+    status_t            flattenBinder(const sp<IBinder>& binder);
+    status_t            unflattenBinder(sp<IBinder>* out) const;
+
     template<class T>
     status_t            readAligned(T *pArg) const;
 
@@ -547,7 +543,7 @@ public:
         friend class Parcel;
     public:
         inline const void* data() const { return mData; }
-        inline void* mutableData() { return isMutable() ? mData : NULL; }
+        inline void* mutableData() { return isMutable() ? mData : nullptr; }
     };
 
     class WritableBlob : public Blob {
@@ -587,7 +583,7 @@ status_t Parcel::write(const LightFlattenable<T>& val) {
     }
     if (size) {
         void* buffer = writeInplace(size);
-        if (buffer == NULL)
+        if (buffer == nullptr)
             return NO_MEMORY;
         return val.flatten(buffer, size);
     }
@@ -615,7 +611,7 @@ status_t Parcel::read(LightFlattenable<T>& val) const {
     }
     if (size) {
         void const* buffer = readInplace(size);
-        return buffer == NULL ? NO_MEMORY :
+        return buffer == nullptr ? NO_MEMORY :
                 val.unflatten(buffer, size);
     }
     return NO_ERROR;
@@ -909,23 +905,6 @@ inline TextOutput& operator<<(TextOutput& to, const Parcel& parcel)
     parcel.print(to);
     return to;
 }
-
-// ---------------------------------------------------------------------------
-
-// Generic acquire and release of objects.
-void acquire_object(const sp<ProcessState>& proc,
-                    const flat_binder_object& obj, const void* who);
-void release_object(const sp<ProcessState>& proc,
-                    const flat_binder_object& obj, const void* who);
-
-void flatten_binder(const sp<ProcessState>& proc,
-                    const sp<IBinder>& binder, flat_binder_object* out);
-void flatten_binder(const sp<ProcessState>& proc,
-                    const wp<IBinder>& binder, flat_binder_object* out);
-status_t unflatten_binder(const sp<ProcessState>& proc,
-                          const flat_binder_object& flat, sp<IBinder>* out);
-status_t unflatten_binder(const sp<ProcessState>& proc,
-                          const flat_binder_object& flat, wp<IBinder>* out);
 
 }; // namespace android
 

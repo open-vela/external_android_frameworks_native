@@ -25,8 +25,6 @@
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 
-#include <private/binder/Static.h>
-
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -58,6 +56,7 @@ IMPLEMENT_META_INTERFACE(ShellCallback, "com.android.internal.os.IShellCallback"
 
 // ----------------------------------------------------------------------
 
+// NOLINTNEXTLINE(google-default-arguments)
 status_t BnShellCallback::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
@@ -68,7 +67,7 @@ status_t BnShellCallback::onTransact(
             String16 seLinuxContext(data.readString16());
             String16 mode(data.readString16());
             int fd = openFile(path, seLinuxContext, mode);
-            if (reply != NULL) {
+            if (reply != nullptr) {
                 reply->writeNoException();
                 if (fd >= 0) {
                     reply->writeInt32(1);

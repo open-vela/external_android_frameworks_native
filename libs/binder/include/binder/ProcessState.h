@@ -36,28 +36,33 @@ class ProcessState : public virtual RefBase
 public:
     static  sp<ProcessState>    self();
     static  sp<ProcessState>    selfOrNull();
-
     /* initWithDriver() can be used to configure libbinder to use
      * a different binder driver dev node. It must be called *before*
-     * any call to ProcessState::self(). The default is /dev/vndbinder
-     * for processes built with the VNDK and /dev/binder for those
-     * which are not.
+     * any call to ProcessState::self(). /dev/binder remains the default.
      */
     static  sp<ProcessState>    initWithDriver(const char *driver);
 
+            void                setContextObject(const sp<IBinder>& object);
             sp<IBinder>         getContextObject(const sp<IBinder>& caller);
+        
+            void                setContextObject(const sp<IBinder>& object,
+                                                 const String16& name);
+            sp<IBinder>         getContextObject(const String16& name,
+                                                 const sp<IBinder>& caller);
 
             void                startThreadPool();
                         
     typedef bool (*context_check_func)(const String16& name,
                                        const sp<IBinder>& caller,
                                        void* userData);
-
+        
+            bool                isContextManager(void) const;
             bool                becomeContextManager(
                                     context_check_func checkFunc,
                                     void* userData);
 
             sp<IBinder>         getStrongProxyForHandle(int32_t handle);
+            wp<IBinder>         getWeakProxyForHandle(int32_t handle);
             void                expungeHandle(int32_t handle, IBinder* binder);
 
             void                spawnPooledThread(bool isMain);
@@ -69,22 +74,10 @@ public:
 
             ssize_t             getKernelReferences(size_t count, uintptr_t* buf);
 
-            enum class CallRestriction {
-                // all calls okay
-                NONE,
-                // log when calls are blocking
-                ERROR_IF_NOT_ONEWAY,
-                // abort process on blocking calls
-                FATAL_IF_NOT_ONEWAY,
-            };
-            // Sets calling restrictions for all transactions in this process. This must be called
-            // before any threads are spawned.
-            void setCallRestriction(CallRestriction restriction);
-
 private:
     friend class IPCThreadState;
     
-            explicit            ProcessState(const char* driver);
+                                ProcessState(const char* driver);
                                 ~ProcessState();
 
                                 ProcessState(const ProcessState& o);
@@ -116,14 +109,17 @@ private:
 
             Vector<handle_entry>mHandleToObject;
 
+            bool                mManagesContexts;
             context_check_func  mBinderContextCheckFunc;
             void*               mBinderContextUserData;
+
+            KeyedVector<String16, sp<IBinder> >
+                                mContexts;
+
 
             String8             mRootDir;
             bool                mThreadPoolStarted;
     volatile int32_t            mThreadPoolSeq;
-
-            CallRestriction     mCallRestriction;
 };
     
 }; // namespace android

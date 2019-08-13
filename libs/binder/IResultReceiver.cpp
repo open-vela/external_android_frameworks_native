@@ -22,6 +22,8 @@
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 
+#include <private/binder/Static.h>
+
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -38,7 +40,7 @@ public:
         Parcel data;
         data.writeInterfaceToken(IResultReceiver::getInterfaceDescriptor());
         data.writeInt32(resultCode);
-        remote()->transact(OP_SEND, data, nullptr, IBinder::FLAG_ONEWAY);
+        remote()->transact(OP_SEND, data, NULL, IBinder::FLAG_ONEWAY);
     }
 };
 
@@ -46,7 +48,6 @@ IMPLEMENT_META_INTERFACE(ResultReceiver, "com.android.internal.os.IResultReceive
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnResultReceiver::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
@@ -55,7 +56,7 @@ status_t BnResultReceiver::onTransact(
             CHECK_INTERFACE(IResultReceiver, data, reply);
             int32_t resultCode = data.readInt32();
             send(resultCode);
-            if (reply != nullptr) {
+            if (reply != NULL) {
                 reply->writeNoException();
             }
             return NO_ERROR;

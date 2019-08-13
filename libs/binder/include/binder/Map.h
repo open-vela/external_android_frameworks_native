@@ -14,36 +14,26 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_BINDER_DEBUG_H
-#define ANDROID_BINDER_DEBUG_H
+#ifndef ANDROID_MAP_H
+#define ANDROID_MAP_H
 
-#include <stdint.h>
-#include <sys/cdefs.h>
-#include <sys/types.h>
+#include <map>
+#include <string>
 
+// ---------------------------------------------------------------------------
 namespace android {
-// ---------------------------------------------------------------------------
+namespace binder {
 
-__BEGIN_DECLS
+class Value;
 
-const char* stringForIndent(int32_t indentLevel);
+/**
+ * Convenience typedef for ::std::map<::std::string,::android::binder::Value>
+ */
+typedef ::std::map<::std::string, Value> Map;
 
-typedef void (*debugPrintFunc)(void* cookie, const char* txt);
-
-void printTypeCode(uint32_t typeCode,
-    debugPrintFunc func = 0, void* cookie = 0);
-
-void printHexData(int32_t indent, const void *buf, size_t length,
-    size_t bytesPerLine=16, int32_t singleLineBytesCutoff=16,
-    size_t alignment=0, bool cArrayStyle=false,
-    debugPrintFunc func = 0, void* cookie = 0);
-
-
-ssize_t getBinderKernelReferences(size_t count, uintptr_t* buf);
-
-__END_DECLS
+} // namespace binder
+} // namespace android
 
 // ---------------------------------------------------------------------------
-}; // namespace android
 
-#endif // ANDROID_BINDER_DEBUG_H
+#endif // ANDROID_MAP_H

@@ -54,7 +54,6 @@ public:
     virtual const String16&     getInterfaceDescriptor() const;
 
 protected:
-    typedef INTERFACE           BaseInterface;
     virtual IBinder*            onAsBinder();
 };
 
@@ -67,25 +66,18 @@ public:
     explicit                    BpInterface(const sp<IBinder>& remote);
 
 protected:
-    typedef INTERFACE           BaseInterface;
     virtual IBinder*            onAsBinder();
 };
 
 // ----------------------------------------------------------------------
 
 #define DECLARE_META_INTERFACE(INTERFACE)                               \
-public:                                                                 \
     static const ::android::String16 descriptor;                        \
     static ::android::sp<I##INTERFACE> asInterface(                     \
             const ::android::sp<::android::IBinder>& obj);              \
     virtual const ::android::String16& getInterfaceDescriptor() const;  \
     I##INTERFACE();                                                     \
     virtual ~I##INTERFACE();                                            \
-    static bool setDefaultImpl(std::unique_ptr<I##INTERFACE> impl);     \
-    static const std::unique_ptr<I##INTERFACE>& getDefaultImpl();       \
-private:                                                                \
-    static std::unique_ptr<I##INTERFACE> default_impl;                  \
-public:                                                                 \
 
 
 #define IMPLEMENT_META_INTERFACE(INTERFACE, NAME)                       \
@@ -98,37 +90,22 @@ public:                                                                 \
             const ::android::sp<::android::IBinder>& obj)               \
     {                                                                   \
         ::android::sp<I##INTERFACE> intr;                               \
-        if (obj != nullptr) {                                           \
+        if (obj != NULL) {                                              \
             intr = static_cast<I##INTERFACE*>(                          \
                 obj->queryLocalInterface(                               \
                         I##INTERFACE::descriptor).get());               \
-            if (intr == nullptr) {                                      \
+            if (intr == NULL) {                                         \
                 intr = new Bp##INTERFACE(obj);                          \
             }                                                           \
         }                                                               \
         return intr;                                                    \
-    }                                                                   \
-    std::unique_ptr<I##INTERFACE> I##INTERFACE::default_impl;           \
-    bool I##INTERFACE::setDefaultImpl(std::unique_ptr<I##INTERFACE> impl)\
-    {                                                                   \
-        if (!I##INTERFACE::default_impl && impl) {                      \
-            I##INTERFACE::default_impl = std::move(impl);               \
-            return true;                                                \
-        }                                                               \
-        return false;                                                   \
-    }                                                                   \
-    const std::unique_ptr<I##INTERFACE>& I##INTERFACE::getDefaultImpl() \
-    {                                                                   \
-        return I##INTERFACE::default_impl;                              \
     }                                                                   \
     I##INTERFACE::I##INTERFACE() { }                                    \
     I##INTERFACE::~I##INTERFACE() { }                                   \
 
 
 #define CHECK_INTERFACE(interface, data, reply)                         \
-    do {                                                                \
-      if (!(data).checkInterface(this)) { return PERMISSION_DENIED; }   \
-    } while (false)                                                     \
+    if (!(data).checkInterface(this)) { return PERMISSION_DENIED; }     \
 
 
 // ----------------------------------------------------------------------
@@ -139,7 +116,7 @@ inline sp<IInterface> BnInterface<INTERFACE>::queryLocalInterface(
         const String16& _descriptor)
 {
     if (_descriptor == INTERFACE::descriptor) return this;
-    return nullptr;
+    return NULL;
 }
 
 template<typename INTERFACE>
@@ -165,7 +142,7 @@ inline IBinder* BpInterface<INTERFACE>::onAsBinder()
 {
     return remote();
 }
-
+    
 // ----------------------------------------------------------------------
 
 }; // namespace android

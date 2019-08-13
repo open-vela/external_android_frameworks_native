@@ -20,6 +20,8 @@
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 
+#include <private/binder/Static.h>
+
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -134,7 +136,6 @@ IMPLEMENT_META_INTERFACE(BatteryStats, "com.android.internal.app.IBatteryStats")
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnBatteryStats::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {

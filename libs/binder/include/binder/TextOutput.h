@@ -38,7 +38,7 @@ public:
     
     class Bundle {
     public:
-        inline explicit Bundle(TextOutput& to) : mTO(to) { to.pushBundle(); }
+        inline Bundle(TextOutput& to) : mTO(to) { to.pushBundle(); }
         inline ~Bundle() { mTO.popBundle(); }
     private:
         TextOutput&     mTO;
@@ -80,7 +80,7 @@ TextOutput& operator<<(TextOutput& to, TextOutputManipFunc func);
 class TypeCode
 {
 public:
-    inline explicit TypeCode(uint32_t code);
+    inline TypeCode(uint32_t code);
     inline ~TypeCode();
 
     inline uint32_t typeCode() const;

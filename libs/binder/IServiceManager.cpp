@@ -18,7 +18,6 @@
 
 #include <binder/IServiceManager.h>
 
-#include <android/os/IServiceManager.h>
 #include <utils/Log.h>
 #include <binder/IPCThreadState.h>
 #ifndef __ANDROID_VNDK__
@@ -28,29 +27,24 @@
 #include <cutils/properties.h>
 #include <utils/String8.h>
 #include <utils/SystemClock.h>
+#include <utils/CallStack.h>
 
-#include "Static.h"
+#include <private/binder/Static.h>
 
 #include <unistd.h>
 
 namespace android {
 
-using AidlServiceManager = android::os::IServiceManager;
-using android::binder::Status;
-
 sp<IServiceManager> defaultServiceManager()
 {
-    static Mutex gDefaultServiceManagerLock;
-    static sp<IServiceManager> gDefaultServiceManager;
-
-    if (gDefaultServiceManager != nullptr) return gDefaultServiceManager;
+    if (gDefaultServiceManager != NULL) return gDefaultServiceManager;
 
     {
         AutoMutex _l(gDefaultServiceManagerLock);
-        while (gDefaultServiceManager == nullptr) {
+        while (gDefaultServiceManager == NULL) {
             gDefaultServiceManager = interface_cast<IServiceManager>(
-                ProcessState::self()->getContextObject(nullptr));
-            if (gDefaultServiceManager == nullptr)
+                ProcessState::self()->getContextObject(NULL));
+            if (gDefaultServiceManager == NULL)
                 sleep(1);
         }
     }
@@ -63,7 +57,7 @@ sp<IServiceManager> defaultServiceManager()
 
 bool checkCallingPermission(const String16& permission)
 {
-    return checkCallingPermission(permission, nullptr, nullptr);
+    return checkCallingPermission(permission, NULL, NULL);
 }
 
 static String16 _permission("permission");
@@ -81,18 +75,15 @@ bool checkCallingPermission(const String16& permission, int32_t* outPid, int32_t
 
 bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
 {
-    static Mutex gPermissionControllerLock;
-    static sp<IPermissionController> gPermissionController;
-
     sp<IPermissionController> pc;
-    gPermissionControllerLock.lock();
+    gDefaultServiceManagerLock.lock();
     pc = gPermissionController;
-    gPermissionControllerLock.unlock();
+    gDefaultServiceManagerLock.unlock();
 
     int64_t startTime = 0;
 
     while (true) {
-        if (pc != nullptr) {
+        if (pc != NULL) {
             bool res = pc->checkPermission(permission, pid, uid);
             if (res) {
                 if (startTime != 0) {
@@ -111,16 +102,16 @@ bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
             }
 
             // Object is dead!
-            gPermissionControllerLock.lock();
+            gDefaultServiceManagerLock.lock();
             if (gPermissionController == pc) {
-                gPermissionController = nullptr;
+                gPermissionController = NULL;
             }
-            gPermissionControllerLock.unlock();
+            gDefaultServiceManagerLock.unlock();
         }
 
         // Need to retrieve the permission controller.
         sp<IBinder> binder = defaultServiceManager()->checkService(_permission);
-        if (binder == nullptr) {
+        if (binder == NULL) {
             // Wait for the permission controller to come back...
             if (startTime == 0) {
                 startTime = uptimeMillis();
@@ -131,9 +122,9 @@ bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
         } else {
             pc = interface_cast<IPermissionController>(binder);
             // Install the new permission controller, and try again.
-            gPermissionControllerLock.lock();
+            gDefaultServiceManagerLock.lock();
             gPermissionController = pc;
-            gPermissionControllerLock.unlock();
+            gDefaultServiceManagerLock.unlock();
         }
     }
 }
@@ -146,17 +137,14 @@ class BpServiceManager : public BpInterface<IServiceManager>
 {
 public:
     explicit BpServiceManager(const sp<IBinder>& impl)
-        : BpInterface<IServiceManager>(impl),
-          mTheRealServiceManager(interface_cast<AidlServiceManager>(impl))
+        : BpInterface<IServiceManager>(impl)
     {
     }
 
-    sp<IBinder> getService(const String16& name) const override
+    virtual sp<IBinder> getService(const String16& name) const
     {
-        static bool gSystemBootCompleted = false;
-
         sp<IBinder> svc = checkService(name);
-        if (svc != nullptr) return svc;
+        if (svc != NULL) return svc;
 
         const bool isVendorService =
             strcmp(ProcessState::self()->getDriverName().c_str(), "/dev/vndbinder") == 0;
@@ -173,47 +161,58 @@ public:
         int n = 0;
         while (uptimeMillis() < timeout) {
             n++;
-            ALOGI("Waiting for service '%s' on '%s'...", String8(name).string(),
-                ProcessState::self()->getDriverName().c_str());
+            if (isVendorService) {
+                ALOGI("Waiting for vendor service %s...", String8(name).string());
+                CallStack stack(LOG_TAG);
+            } else if (n%10 == 0) {
+                ALOGI("Waiting for service %s...", String8(name).string());
+            }
             usleep(1000*sleepTime);
 
             sp<IBinder> svc = checkService(name);
-            if (svc != nullptr) return svc;
+            if (svc != NULL) return svc;
         }
         ALOGW("Service %s didn't start. Returning NULL", String8(name).string());
-        return nullptr;
+        return NULL;
     }
 
-    sp<IBinder> checkService(const String16& name) const override {
-        sp<IBinder> ret;
-        if (!mTheRealServiceManager->checkService(String8(name).c_str(), &ret).isOk()) {
-            return nullptr;
-        }
-        return ret;
+    virtual sp<IBinder> checkService( const String16& name) const
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+        data.writeString16(name);
+        remote()->transact(CHECK_SERVICE_TRANSACTION, data, &reply);
+        return reply.readStrongBinder();
     }
 
-    status_t addService(const String16& name, const sp<IBinder>& service,
-                        bool allowIsolated, int dumpsysPriority) override {
-        Status status = mTheRealServiceManager->addService(String8(name).c_str(), service, allowIsolated, dumpsysPriority);
-        return status.exceptionCode();
+    virtual status_t addService(const String16& name, const sp<IBinder>& service,
+                                bool allowIsolated, int dumpsysPriority) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+        data.writeString16(name);
+        data.writeStrongBinder(service);
+        data.writeInt32(allowIsolated ? 1 : 0);
+        data.writeInt32(dumpsysPriority);
+        status_t err = remote()->transact(ADD_SERVICE_TRANSACTION, data, &reply);
+        return err == NO_ERROR ? reply.readExceptionCode() : err;
     }
 
     virtual Vector<String16> listServices(int dumpsysPriority) {
-        std::vector<std::string> ret;
-        if (!mTheRealServiceManager->listServices(dumpsysPriority, &ret).isOk()) {
-            return {};
-        }
-
         Vector<String16> res;
-        res.setCapacity(ret.size());
-        for (const std::string& name : ret) {
-            res.push(String16(name.c_str()));
+        int n = 0;
+
+        for (;;) {
+            Parcel data, reply;
+            data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+            data.writeInt32(n++);
+            data.writeInt32(dumpsysPriority);
+            status_t err = remote()->transact(LIST_SERVICES_TRANSACTION, data, &reply);
+            if (err != NO_ERROR)
+                break;
+            res.add(reply.readString16());
         }
         return res;
     }
-
-private:
-    sp<AidlServiceManager> mTheRealServiceManager;
 };
 
 IMPLEMENT_META_INTERFACE(ServiceManager, "android.os.IServiceManager");

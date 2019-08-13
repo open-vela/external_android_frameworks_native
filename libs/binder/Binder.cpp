@@ -219,7 +219,7 @@ void BBinder::setRequestingSid(bool requestingSid)
         if (!e) return; // out of memory
     }
 
-    e->mRequestingSid = true;
+    e->mRequestingSid = requestingSid;
 }
 
 BBinder::~BBinder()

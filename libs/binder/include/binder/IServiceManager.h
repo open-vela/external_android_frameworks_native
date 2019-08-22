@@ -71,13 +71,6 @@ public:
      */
     // NOLINTNEXTLINE(google-default-arguments)
     virtual Vector<String16> listServices(int dumpsysFlags = DUMP_FLAG_PRIORITY_ALL) = 0;
-
-    enum {
-        GET_SERVICE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
-        CHECK_SERVICE_TRANSACTION,
-        ADD_SERVICE_TRANSACTION,
-        LIST_SERVICES_TRANSACTION,
-    };
 };
 
 sp<IServiceManager> defaultServiceManager();
@@ -88,7 +81,7 @@ status_t getService(const String16& name, sp<INTERFACE>* outService)
     const sp<IServiceManager> sm = defaultServiceManager();
     if (sm != nullptr) {
         *outService = interface_cast<INTERFACE>(sm->getService(name));
-        if ((*outService) != NULL) return NO_ERROR;
+        if ((*outService) != nullptr) return NO_ERROR;
     }
     return NAME_NOT_FOUND;
 }

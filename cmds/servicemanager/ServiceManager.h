@@ -25,7 +25,6 @@ namespace android {
 class ServiceManager : public os::BnServiceManager, public IBinder::DeathRecipient {
 public:
     ServiceManager(std::unique_ptr<Access>&& access);
-    ~ServiceManager();
 
     binder::Status getService(const std::string& name, sp<IBinder>* outBinder) override;
     binder::Status checkService(const std::string& name, sp<IBinder>* outBinder) override;

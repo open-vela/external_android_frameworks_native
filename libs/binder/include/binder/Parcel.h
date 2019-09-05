@@ -45,10 +45,6 @@ class ProcessState;
 class String8;
 class TextOutput;
 
-namespace binder {
-class Value;
-};
-
 class Parcel {
     friend class IPCThreadState;
 public:
@@ -381,7 +377,7 @@ public:
     bool                replaceCallingWorkSourceUid(uid_t uid);
     // Returns the work source provided by the caller. This can only be trusted for trusted calling
     // uid.
-    uid_t               readCallingWorkSourceUid() const;
+    uid_t               readCallingWorkSourceUid();
     void                readRequestHeaders() const;
 
 private:

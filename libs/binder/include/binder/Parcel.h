@@ -33,9 +33,9 @@
 #include <binder/Parcelable.h>
 
 #ifdef BINDER_IPC_32BIT
-typedef unsigned int binder_size_t;
+typedef __u32 binder_size_t;
 #else
-typedef unsigned long long binder_size_t;
+typedef __u64 binder_size_t;
 #endif
 
 
@@ -384,6 +384,7 @@ public:
     // Returns the work source provided by the caller. This can only be trusted for trusted calling
     // uid.
     uid_t               readCallingWorkSourceUid() const;
+    void                readRequestHeaders() const;
 
 private:
     typedef void        (*release_func)(Parcel* parcel,

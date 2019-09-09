@@ -54,9 +54,7 @@ public:
 protected:
     virtual status_t writeLines(const struct iovec& vec, size_t N)
     {
-        ssize_t ret = writev(mFD, &vec, N);
-        if (ret == -1) return -errno;
-        if (static_cast<size_t>(ret) != N) return UNKNOWN_ERROR;
+        writev(mFD, &vec, N);
         return NO_ERROR;
     }
 

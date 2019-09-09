@@ -17,10 +17,8 @@
 #include "ServiceManager.h"
 
 #include <android-base/logging.h>
-#include <android-base/properties.h>
 #include <cutils/android_filesystem_config.h>
 #include <cutils/multiuser.h>
-#include <thread>
 
 using ::android::binder::Status;
 
@@ -43,44 +41,39 @@ ServiceManager::~ServiceManager() {
 }
 
 Status ServiceManager::getService(const std::string& name, sp<IBinder>* outBinder) {
-    *outBinder = tryGetService(name, true);
-    // returns ok regardless of result for legacy reasons
-    return Status::ok();
+    // Servicemanager is single-threaded and cannot block. This method exists for legacy reasons.
+    return checkService(name, outBinder);
 }
 
 Status ServiceManager::checkService(const std::string& name, sp<IBinder>* outBinder) {
-    *outBinder = tryGetService(name, false);
-    // returns ok regardless of result for legacy reasons
-    return Status::ok();
-}
-
-sp<IBinder> ServiceManager::tryGetService(const std::string& name, bool startIfNotFound) {
     auto ctx = mAccess->getCallingContext();
 
-    sp<IBinder> out;
-    if (auto it = mNameToService.find(name); it != mNameToService.end()) {
-        const Service& service = it->second;
+    auto it = mNameToService.find(name);
+    if (it == mNameToService.end()) {
+        *outBinder = nullptr;
+        return Status::ok();
+    }
 
-        if (!service.allowIsolated) {
-            uid_t appid = multiuser_get_app_id(ctx.uid);
-            bool isIsolated = appid >= AID_ISOLATED_START && appid <= AID_ISOLATED_END;
+    const Service& service = it->second;
 
-            if (isIsolated) {
-                return nullptr;
-            }
+    if (!service.allowIsolated) {
+        uid_t appid = multiuser_get_app_id(ctx.uid);
+        bool isIsolated = appid >= AID_ISOLATED_START && appid <= AID_ISOLATED_END;
+
+        if (isIsolated) {
+            *outBinder = nullptr;
+            return Status::ok();
         }
-        out = service.binder;
     }
 
     if (!mAccess->canFind(ctx, name)) {
-        return nullptr;
+        // returns ok and null for legacy reasons
+        *outBinder = nullptr;
+        return Status::ok();
     }
 
-    if (!out && startIfNotFound) {
-        tryStartService(name);
-    }
-
-    return out;
+    *outBinder = service.binder;
+    return Status::ok();
 }
 
 bool isValidServiceName(const std::string& name) {
@@ -258,15 +251,6 @@ void ServiceManager::binderDied(const wp<IBinder>& who) {
     for (auto it = mNameToCallback.begin(); it != mNameToCallback.end();) {
         removeCallback(who, &it, nullptr /*found*/);
     }
-}
-
-void ServiceManager::tryStartService(const std::string& name) {
-    ALOGI("Since '%s' could not be found, trying to start it as a lazy AIDL service",
-          name.c_str());
-
-    std::thread([=] {
-        (void)base::SetProperty("ctl.interface_start", "aidl/" + name);
-    }).detach();
 }
 
 }  // namespace android

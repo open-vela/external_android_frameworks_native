@@ -22,8 +22,9 @@
 #include <utils/String16.h>
 #include <utils/Vector.h>
 
-// linux/binder.h defines this, but we don't want to include it here in order to
-// avoid exporting the kernel headers
+
+// linux/binder.h already defines this, but we can't just include it from there
+// because there are host builds that include this file.
 #ifndef B_PACK_CHARS
 #define B_PACK_CHARS(c1, c2, c3, c4) \
     ((((c1)<<24)) | (((c2)<<16)) | (((c3)<<8)) | (c4))

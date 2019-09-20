@@ -24,7 +24,7 @@ namespace android {
 /* obtain structures and constants from the kernel header */
 
 // TODO(b/31559095): bionic on host
-#ifndef __ANDROID__
+#ifdef __ANDROID_HOST__
 #define __packed __attribute__((__packed__))
 #endif
 

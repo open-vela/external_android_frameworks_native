@@ -509,7 +509,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#ifdef __ANDROID_VNDK__
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');
@@ -2351,22 +2351,6 @@ void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
         if (offset < minOffset) {
             ALOGE("%s: bad object offset %" PRIu64 " < %" PRIu64 "\n",
                   __func__, (uint64_t)offset, (uint64_t)minOffset);
-            mObjectsSize = 0;
-            break;
-        }
-        const flat_binder_object* flat
-            = reinterpret_cast<const flat_binder_object*>(mData + offset);
-        uint32_t type = flat->hdr.type;
-        if (!(type == BINDER_TYPE_BINDER || type == BINDER_TYPE_HANDLE ||
-              type == BINDER_TYPE_FD)) {
-            // We should never receive other types (eg BINDER_TYPE_FDA) as long as we don't support
-            // them in libbinder. If we do receive them, it probably means a kernel bug; try to
-            // recover gracefully by clearing out the objects, and releasing the objects we do
-            // know about.
-            android_errorWriteLog(0x534e4554, "135930648");
-            ALOGE("%s: unsupported type object (%" PRIu32 ") at offset %" PRIu64 "\n",
-                  __func__, type, (uint64_t)offset);
-            releaseObjects();
             mObjectsSize = 0;
             break;
         }

@@ -21,17 +21,11 @@
 #include <iomanip>
 #include <sstream>
 
-std::string hexString(const void* bytes, size_t len) {
-    if (bytes == nullptr) return "<null>";
-
+std::string hexString(const std::vector<uint8_t>& hash) {
     std::ostringstream s;
     s << std::hex << std::setfill('0');
-    for (size_t i = 0; i < len; i++) {
-        s << std::setw(2) << static_cast<int>(
-            static_cast<const uint8_t*>(bytes)[i]);
+    for (uint8_t i : hash) {
+        s << std::setw(2) << static_cast<int>(i);
     }
     return s.str();
-}
-std::string hexString(const std::vector<uint8_t>& bytes) {
-    return hexString(bytes.data(), bytes.size());
 }

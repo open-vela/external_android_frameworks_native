@@ -26,20 +26,10 @@ namespace android {
 
 // ----------------------------------------------------------------------
 
-/**
- * Service manager for C++ services.
- *
- * IInterface is only for legacy ABI compatibility
- */
 class IServiceManager : public IInterface
 {
 public:
-    // for ABI compatibility
-    virtual const String16& getInterfaceDescriptor() const;
-
-    IServiceManager();
-    virtual ~IServiceManager();
-
+    DECLARE_META_INTERFACE(ServiceManager)
     /**
      * Must match values in IServiceManager.aidl
      */

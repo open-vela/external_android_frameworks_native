@@ -22,8 +22,9 @@
 #include <utils/String16.h>
 #include <utils/Vector.h>
 
-// linux/binder.h defines this, but we don't want to include it here in order to
-// avoid exporting the kernel headers
+
+// linux/binder.h already defines this, but we can't just include it from there
+// because there are host builds that include this file.
 #ifndef B_PACK_CHARS
 #define B_PACK_CHARS(c1, c2, c3, c4) \
     ((((c1)<<24)) | (((c2)<<16)) | (((c3)<<8)) | (c4))
@@ -46,7 +47,7 @@ class IShellCallback;
  * (method calls, property get and set) is down through a low-level
  * protocol implemented on top of the transact() API.
  */
-class [[clang::lto_visibility_public]] IBinder : public virtual RefBase
+class IBinder : public virtual RefBase
 {
 public:
     enum {
@@ -58,15 +59,9 @@ public:
         SHELL_COMMAND_TRANSACTION = B_PACK_CHARS('_','C','M','D'),
         INTERFACE_TRANSACTION   = B_PACK_CHARS('_', 'N', 'T', 'F'),
         SYSPROPS_TRANSACTION    = B_PACK_CHARS('_', 'S', 'P', 'R'),
-        EXTENSION_TRANSACTION   = B_PACK_CHARS('_', 'E', 'X', 'T'),
-        DEBUG_PID_TRANSACTION   = B_PACK_CHARS('_', 'P', 'I', 'D'),
 
         // Corresponds to TF_ONE_WAY -- an asynchronous call.
-        FLAG_ONEWAY             = 0x00000001,
-
-        // Private userspace flag for transaction which is being requested from
-        // a vendor context.
-        FLAG_PRIVATE_VENDOR     = 0x10000000,
+        FLAG_ONEWAY             = 0x00000001
     };
 
                           IBinder();
@@ -91,55 +86,6 @@ public:
                                          Vector<String16>& args, const sp<IShellCallback>& callback,
                                          const sp<IResultReceiver>& resultReceiver);
 
-    /**
-     * This allows someone to add their own additions to an interface without
-     * having to modify the original interface.
-     *
-     * For instance, imagine if we have this interface:
-     *     interface IFoo { void doFoo(); }
-     *
-     * If an unrelated owner (perhaps in a downstream codebase) wants to make a
-     * change to the interface, they have two options:
-     *
-     * A). Historical option that has proven to be BAD! Only the original
-     *     author of an interface should change an interface. If someone
-     *     downstream wants additional functionality, they should not ever
-     *     change the interface or use this method.
-     *
-     *    BAD TO DO:  interface IFoo {                       BAD TO DO
-     *    BAD TO DO:      void doFoo();                      BAD TO DO
-     *    BAD TO DO: +    void doBar(); // adding a method   BAD TO DO
-     *    BAD TO DO:  }                                      BAD TO DO
-     *
-     * B). Option that this method enables!
-     *     Leave the original interface unchanged (do not change IFoo!).
-     *     Instead, create a new interface in a downstream package:
-     *
-     *         package com.<name>; // new functionality in a new package
-     *         interface IBar { void doBar(); }
-     *
-     *     When registering the interface, add:
-     *         sp<MyFoo> foo = new MyFoo; // class in AOSP codebase
-     *         sp<MyBar> bar = new MyBar; // custom extension class
-     *         foo->setExtension(bar);    // use method in BBinder
-     *
-     *     Then, clients of IFoo can get this extension:
-     *         sp<IBinder> binder = ...;
-     *         sp<IFoo> foo = interface_cast<IFoo>(binder); // handle if null
-     *         sp<IBinder> barBinder;
-     *         ... handle error ... = binder->getExtension(&barBinder);
-     *         sp<IBar> bar = interface_cast<IBar>(barBinder);
-     *         // if bar is null, then there is no extension or a different
-     *         // type of extension
-     */
-    status_t                getExtension(sp<IBinder>* out);
-
-    /**
-     * Dump PID for a binder, for debugging.
-     */
-    status_t                getDebugPid(pid_t* outPid);
-
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        transact(   uint32_t code,
                                         const Parcel& data,
                                         Parcel* reply,
@@ -185,9 +131,8 @@ public:
      * (Nor should you need to, as there is nothing useful you can
      * directly do with it now that it has passed on.)
      */
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        linkToDeath(const sp<DeathRecipient>& recipient,
-                                        void* cookie = nullptr,
+                                        void* cookie = NULL,
                                         uint32_t flags = 0) = 0;
 
     /**
@@ -196,45 +141,21 @@ public:
      * dies.  The @a cookie is optional.  If non-NULL, you can
      * supply a NULL @a recipient, and the recipient previously
      * added with that cookie will be unlinked.
-     *
-     * If the binder is dead, this will return DEAD_OBJECT. Deleting
-     * the object will also unlink all death recipients.
      */
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        unlinkToDeath(  const wp<DeathRecipient>& recipient,
-                                            void* cookie = nullptr,
+                                            void* cookie = NULL,
                                             uint32_t flags = 0,
-                                            wp<DeathRecipient>* outRecipient = nullptr) = 0;
+                                            wp<DeathRecipient>* outRecipient = NULL) = 0;
 
     virtual bool            checkSubclass(const void* subclassID) const;
 
     typedef void (*object_cleanup_func)(const void* id, void* obj, void* cleanupCookie);
 
-    /**
-     * This object is attached for the lifetime of this binder object. When
-     * this binder object is destructed, the cleanup function of all attached
-     * objects are invoked with their respective objectID, object, and
-     * cleanupCookie. Access to these APIs can be made from multiple threads,
-     * but calls from different threads are allowed to be interleaved.
-     */
     virtual void            attachObject(   const void* objectID,
                                             void* object,
                                             void* cleanupCookie,
                                             object_cleanup_func func) = 0;
-    /**
-     * Returns object attached with attachObject.
-     */
     virtual void*           findObject(const void* objectID) const = 0;
-    /**
-     * WARNING: this API does not call the cleanup function for legacy reasons.
-     * It also does not return void* for legacy reasons. If you need to detach
-     * an object and destroy it, there are two options:
-     * - if you can, don't call detachObject and instead wait for the destructor
-     *   to clean it up.
-     * - manually retrieve and destruct the object (if multiple of your threads
-     *   are accessing these APIs, you must guarantee that attachObject isn't
-     *   called after findObject and before detachObject is called).
-     */
     virtual void            detachObject(const void* objectID) = 0;
 
     virtual BBinder*        localBinder();
@@ -246,7 +167,7 @@ protected:
 private:
 };
 
-} // namespace android
+}; // namespace android
 
 // ---------------------------------------------------------------------------
 

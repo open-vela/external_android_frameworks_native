@@ -81,50 +81,6 @@ status_t IBinder::shellCommand(const sp<IBinder>& target, int in, int out, int e
     return target->transact(SHELL_COMMAND_TRANSACTION, send, &reply);
 }
 
-status_t IBinder::getExtension(sp<IBinder>* out) {
-    BBinder* local = this->localBinder();
-    if (local != nullptr) {
-        *out = local->getExtension();
-        return OK;
-    }
-
-    BpBinder* proxy = this->remoteBinder();
-    LOG_ALWAYS_FATAL_IF(proxy == nullptr);
-
-    Parcel data;
-    Parcel reply;
-    status_t status = transact(EXTENSION_TRANSACTION, data, &reply);
-    if (status != OK) return status;
-
-    return reply.readNullableStrongBinder(out);
-}
-
-status_t IBinder::getDebugPid(pid_t* out) {
-    BBinder* local = this->localBinder();
-    if (local != nullptr) {
-      *out = local->getDebugPid();
-      return OK;
-    }
-
-    BpBinder* proxy = this->remoteBinder();
-    LOG_ALWAYS_FATAL_IF(proxy == nullptr);
-
-    Parcel data;
-    Parcel reply;
-    status_t status = transact(DEBUG_PID_TRANSACTION, data, &reply);
-    if (status != OK) return status;
-
-    int32_t pid;
-    status = reply.readInt32(&pid);
-    if (status != OK) return status;
-
-    if (pid < 0 || pid > std::numeric_limits<pid_t>::max()) {
-        return BAD_VALUE;
-    }
-    *out = pid;
-    return OK;
-}
-
 // ---------------------------------------------------------------------------
 
 class BBinder::Extras
@@ -132,7 +88,6 @@ class BBinder::Extras
 public:
     // unlocked objects
     bool mRequestingSid = false;
-    sp<IBinder> mExtension;
 
     // for below objects
     Mutex mLock;
@@ -173,20 +128,13 @@ status_t BBinder::transact(
     status_t err = NO_ERROR;
     switch (code) {
         case PING_TRANSACTION:
-            err = pingBinder();
-            break;
-        case EXTENSION_TRANSACTION:
-            err = reply->writeStrongBinder(getExtension());
-            break;
-        case DEBUG_PID_TRANSACTION:
-            err = reply->writeInt32(getDebugPid());
+            reply->writeInt32(pingBinder());
             break;
         default:
             err = onTransact(code, data, reply, flags);
             break;
     }
 
-    // In case this is being transacted on in the same process.
     if (reply != nullptr) {
         reply->setDataPosition(0);
     }
@@ -271,21 +219,6 @@ void BBinder::setRequestingSid(bool requestingSid)
     }
 
     e->mRequestingSid = requestingSid;
-}
-
-sp<IBinder> BBinder::getExtension() {
-    Extras* e = mExtras.load(std::memory_order_acquire);
-    if (e == nullptr) return nullptr;
-    return e->mExtension;
-}
-
-pid_t BBinder::getDebugPid() {
-    return getpid();
-}
-
-void BBinder::setExtension(const sp<IBinder>& extension) {
-    Extras* e = getOrCreateExtras();
-    e->mExtension = extension;
 }
 
 BBinder::~BBinder()
@@ -419,4 +352,4 @@ bool BpRefBase::onIncStrongAttempted(uint32_t /*flags*/, const void* /*id*/)
 
 // ---------------------------------------------------------------------------
 
-} // namespace android
+}; // namespace android

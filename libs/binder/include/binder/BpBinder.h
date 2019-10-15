@@ -34,7 +34,7 @@ class BpBinder : public IBinder
 public:
     static BpBinder*    create(int32_t handle);
 
-    int32_t             handle() const;
+    inline  int32_t     handle() const { return mHandle; }
 
     virtual const String16&    getInterfaceDescriptor() const;
     virtual bool        isBinderAlive() const;
@@ -45,7 +45,7 @@ public:
     virtual status_t    transact(   uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
-                                    uint32_t flags = 0) final;
+                                    uint32_t flags = 0);
 
     // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    linkToDeath(const sp<DeathRecipient>& recipient,
@@ -61,12 +61,13 @@ public:
     virtual void        attachObject(   const void* objectID,
                                         void* object,
                                         void* cleanupCookie,
-                                        object_cleanup_func func) final;
-    virtual void*       findObject(const void* objectID) const final;
-    virtual void        detachObject(const void* objectID) final;
+                                        object_cleanup_func func);
+    virtual void*       findObject(const void* objectID) const;
+    virtual void        detachObject(const void* objectID);
 
     virtual BpBinder*   remoteBinder();
 
+            status_t    setConstantData(const void* data, size_t size);
             void        sendObituary();
 
     static uint32_t     getBinderProxyCount(uint32_t uid);
@@ -144,7 +145,7 @@ private:
     static bool                                 sBinderProxyThrottleCreate;
 };
 
-} // namespace android
+}; // namespace android
 
 // ---------------------------------------------------------------------------
 

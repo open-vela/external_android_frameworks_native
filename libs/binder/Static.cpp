@@ -17,7 +17,7 @@
 // All static variables go here, to control initialization and
 // destruction order in the library.
 
-#include "Static.h"
+#include <private/binder/Static.h>
 
 #include <binder/BufferedTextOutput.h>
 #include <binder/IPCThreadState.h>
@@ -54,9 +54,7 @@ public:
 protected:
     virtual status_t writeLines(const struct iovec& vec, size_t N)
     {
-        ssize_t ret = writev(mFD, &vec, N);
-        if (ret == -1) return -errno;
-        if (static_cast<size_t>(ret) != N) return UNKNOWN_ERROR;
+        writev(mFD, &vec, N);
         return NO_ERROR;
     }
 
@@ -74,7 +72,28 @@ TextOutput& aerr(gStderrTextOutput);
 
 // ------------ ProcessState.cpp
 
-Mutex& gProcessMutex = *new Mutex;
+Mutex gProcessMutex;
 sp<ProcessState> gProcess;
+
+class LibBinderIPCtStatics
+{
+public:
+    LibBinderIPCtStatics()
+    {
+    }
+    
+    ~LibBinderIPCtStatics()
+    {
+        IPCThreadState::shutdown();
+    }
+};
+
+static LibBinderIPCtStatics gIPCStatics;
+
+// ------------ IServiceManager.cpp
+
+Mutex gDefaultServiceManagerLock;
+sp<IServiceManager> gDefaultServiceManager;
+sp<IPermissionController> gPermissionController;
 
 }   // namespace android

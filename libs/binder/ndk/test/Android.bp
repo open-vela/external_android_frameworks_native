@@ -44,10 +44,10 @@ cc_defaults {
         "libandroid_runtime_lazy",
         "libbase",
         "libbinder",
-        "libbinder_ndk",
         "libutils",
     ],
     static_libs: [
+        "libbinder_ndk",
         "test_libbinder_ndk_library",
     ],
 }
@@ -66,33 +66,4 @@ cc_test {
     defaults: ["test_libbinder_ndk_test_defaults"],
     srcs: ["main_server.cpp"],
     gtest: false,
-}
-
-cc_test {
-    name: "binderVendorDoubleLoadTest",
-    vendor: true,
-    srcs: [
-        "binderVendorDoubleLoadTest.cpp",
-    ],
-    static_libs: [
-        "IBinderVendorDoubleLoadTest-cpp",
-        "IBinderVendorDoubleLoadTest-ndk_platform",
-        "libbinder_aidl_test_stub-ndk_platform",
-    ],
-    shared_libs: [
-        "libbase",
-        "libbinder",
-        "libbinder_ndk",
-        "libutils",
-    ],
-    test_suites: ["device-tests"],
-}
-
-aidl_interface {
-    name: "IBinderVendorDoubleLoadTest",
-    // TODO(b/119771576): only vendor is needed
-    vendor_available: true,
-    srcs: [
-        "IBinderVendorDoubleLoadTest.aidl",
-    ],
 }

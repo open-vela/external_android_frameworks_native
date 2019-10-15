@@ -43,17 +43,17 @@ IBinder::~IBinder()
 
 sp<IInterface>  IBinder::queryLocalInterface(const String16& /*descriptor*/)
 {
-    return nullptr;
+    return NULL;
 }
 
 BBinder* IBinder::localBinder()
 {
-    return nullptr;
+    return NULL;
 }
 
 BpBinder* IBinder::remoteBinder()
 {
-    return nullptr;
+    return NULL;
 }
 
 bool IBinder::checkSubclass(const void* /*subclassID*/) const
@@ -76,53 +76,9 @@ status_t IBinder::shellCommand(const sp<IBinder>& target, int in, int out, int e
     for (size_t i = 0; i < numArgs; i++) {
         send.writeString16(args[i]);
     }
-    send.writeStrongBinder(callback != nullptr ? IInterface::asBinder(callback) : nullptr);
-    send.writeStrongBinder(resultReceiver != nullptr ? IInterface::asBinder(resultReceiver) : nullptr);
+    send.writeStrongBinder(callback != NULL ? IInterface::asBinder(callback) : NULL);
+    send.writeStrongBinder(resultReceiver != NULL ? IInterface::asBinder(resultReceiver) : NULL);
     return target->transact(SHELL_COMMAND_TRANSACTION, send, &reply);
-}
-
-status_t IBinder::getExtension(sp<IBinder>* out) {
-    BBinder* local = this->localBinder();
-    if (local != nullptr) {
-        *out = local->getExtension();
-        return OK;
-    }
-
-    BpBinder* proxy = this->remoteBinder();
-    LOG_ALWAYS_FATAL_IF(proxy == nullptr);
-
-    Parcel data;
-    Parcel reply;
-    status_t status = transact(EXTENSION_TRANSACTION, data, &reply);
-    if (status != OK) return status;
-
-    return reply.readNullableStrongBinder(out);
-}
-
-status_t IBinder::getDebugPid(pid_t* out) {
-    BBinder* local = this->localBinder();
-    if (local != nullptr) {
-      *out = local->getDebugPid();
-      return OK;
-    }
-
-    BpBinder* proxy = this->remoteBinder();
-    LOG_ALWAYS_FATAL_IF(proxy == nullptr);
-
-    Parcel data;
-    Parcel reply;
-    status_t status = transact(DEBUG_PID_TRANSACTION, data, &reply);
-    if (status != OK) return status;
-
-    int32_t pid;
-    status = reply.readInt32(&pid);
-    if (status != OK) return status;
-
-    if (pid < 0 || pid > std::numeric_limits<pid_t>::max()) {
-        return BAD_VALUE;
-    }
-    *out = pid;
-    return OK;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,11 +86,6 @@ status_t IBinder::getDebugPid(pid_t* out) {
 class BBinder::Extras
 {
 public:
-    // unlocked objects
-    bool mRequestingSid = false;
-    sp<IBinder> mExtension;
-
-    // for below objects
     Mutex mLock;
     BpBinder::ObjectManager mObjects;
 };
@@ -164,7 +115,6 @@ const String16& BBinder::getInterfaceDescriptor() const
     return sEmptyDescriptor;
 }
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BBinder::transact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
@@ -173,28 +123,20 @@ status_t BBinder::transact(
     status_t err = NO_ERROR;
     switch (code) {
         case PING_TRANSACTION:
-            err = pingBinder();
-            break;
-        case EXTENSION_TRANSACTION:
-            err = reply->writeStrongBinder(getExtension());
-            break;
-        case DEBUG_PID_TRANSACTION:
-            err = reply->writeInt32(getDebugPid());
+            reply->writeInt32(pingBinder());
             break;
         default:
             err = onTransact(code, data, reply, flags);
             break;
     }
 
-    // In case this is being transacted on in the same process.
-    if (reply != nullptr) {
+    if (reply != NULL) {
         reply->setDataPosition(0);
     }
 
     return err;
 }
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BBinder::linkToDeath(
     const sp<DeathRecipient>& /*recipient*/, void* /*cookie*/,
     uint32_t /*flags*/)
@@ -202,7 +144,6 @@ status_t BBinder::linkToDeath(
     return INVALID_OPERATION;
 }
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BBinder::unlinkToDeath(
     const wp<DeathRecipient>& /*recipient*/, void* /*cookie*/,
     uint32_t /*flags*/, wp<DeathRecipient>* /*outRecipient*/)
@@ -219,8 +160,19 @@ void BBinder::attachObject(
     const void* objectID, void* object, void* cleanupCookie,
     object_cleanup_func func)
 {
-    Extras* e = getOrCreateExtras();
-    if (!e) return; // out of memory
+    Extras* e = mExtras.load(std::memory_order_acquire);
+
+    if (!e) {
+        e = new Extras;
+        Extras* expected = nullptr;
+        if (!mExtras.compare_exchange_strong(expected, e,
+                                             std::memory_order_release,
+                                             std::memory_order_acquire)) {
+            delete e;
+            e = expected;  // Filled in by CAS
+        }
+        if (e == 0) return; // out of memory
+    }
 
     AutoMutex _l(e->mLock);
     e->mObjects.attach(objectID, object, cleanupCookie, func);
@@ -229,7 +181,7 @@ void BBinder::attachObject(
 void* BBinder::findObject(const void* objectID) const
 {
     Extras* e = mExtras.load(std::memory_order_acquire);
-    if (!e) return nullptr;
+    if (!e) return NULL;
 
     AutoMutex _l(e->mLock);
     return e->mObjects.find(objectID);
@@ -249,45 +201,6 @@ BBinder* BBinder::localBinder()
     return this;
 }
 
-bool BBinder::isRequestingSid()
-{
-    Extras* e = mExtras.load(std::memory_order_acquire);
-
-    return e && e->mRequestingSid;
-}
-
-void BBinder::setRequestingSid(bool requestingSid)
-{
-    Extras* e = mExtras.load(std::memory_order_acquire);
-
-    if (!e) {
-        // default is false. Most things don't need sids, so avoiding allocations when possible.
-        if (!requestingSid) {
-            return;
-        }
-
-        e = getOrCreateExtras();
-        if (!e) return; // out of memory
-    }
-
-    e->mRequestingSid = requestingSid;
-}
-
-sp<IBinder> BBinder::getExtension() {
-    Extras* e = mExtras.load(std::memory_order_acquire);
-    if (e == nullptr) return nullptr;
-    return e->mExtension;
-}
-
-pid_t BBinder::getDebugPid() {
-    return getpid();
-}
-
-void BBinder::setExtension(const sp<IBinder>& extension) {
-    Extras* e = getOrCreateExtras();
-    e->mExtension = extension;
-}
-
 BBinder::~BBinder()
 {
     Extras* e = mExtras.load(std::memory_order_relaxed);
@@ -295,7 +208,6 @@ BBinder::~BBinder()
 }
 
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BBinder::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t /*flags*/)
 {
@@ -334,11 +246,9 @@ status_t BBinder::onTransact(
             (void)out;
             (void)err;
 
-            if (resultReceiver != nullptr) {
+            if (resultReceiver != NULL) {
                 resultReceiver->send(INVALID_OPERATION);
             }
-
-            return NO_ERROR;
         }
 
         case SYSPROPS_TRANSACTION: {
@@ -351,25 +261,6 @@ status_t BBinder::onTransact(
     }
 }
 
-BBinder::Extras* BBinder::getOrCreateExtras()
-{
-    Extras* e = mExtras.load(std::memory_order_acquire);
-
-    if (!e) {
-        e = new Extras;
-        Extras* expected = nullptr;
-        if (!mExtras.compare_exchange_strong(expected, e,
-                                             std::memory_order_release,
-                                             std::memory_order_acquire)) {
-            delete e;
-            e = expected;  // Filled in by CAS
-        }
-        if (e == nullptr) return nullptr; // out of memory
-    }
-
-    return e;
-}
-
 // ---------------------------------------------------------------------------
 
 enum {
@@ -380,7 +271,7 @@ enum {
 };
 
 BpRefBase::BpRefBase(const sp<IBinder>& o)
-    : mRemote(o.get()), mRefs(nullptr), mState(0)
+    : mRemote(o.get()), mRefs(NULL), mState(0)
 {
     extendObjectLifetime(OBJECT_LIFETIME_WEAK);
 
@@ -419,4 +310,4 @@ bool BpRefBase::onIncStrongAttempted(uint32_t /*flags*/, const void* /*id*/)
 
 // ---------------------------------------------------------------------------
 
-} // namespace android
+}; // namespace android

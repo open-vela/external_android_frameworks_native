@@ -17,8 +17,6 @@
 #ifndef ANDROID_IP_PREFIX_H
 #define ANDROID_IP_PREFIX_H
 
-#ifndef __ANDROID_VNDK__
-
 #include <netinet/in.h>
 
 #include <binder/Parcelable.h>
@@ -74,8 +72,8 @@ public:
 private:
     union InternalUnion {
         InternalUnion() = default;
-        explicit InternalUnion(const struct in6_addr &addr):mIn6Addr(addr) { };
-        explicit InternalUnion(const struct in_addr &addr):mInAddr(addr) { };
+        InternalUnion(const struct in6_addr &addr):mIn6Addr(addr) { };
+        InternalUnion(const struct in_addr &addr):mInAddr(addr) { };
         struct in6_addr mIn6Addr;
         struct in_addr mInAddr;
     } mUnion;
@@ -86,9 +84,5 @@ private:
 }  // namespace net
 
 }  // namespace android
-
-#else // __ANDROID_VNDK__
-#error "This header is not visible to vendors"
-#endif // __ANDROID_VNDK__
 
 #endif  // ANDROID_IP_PREFIX_H

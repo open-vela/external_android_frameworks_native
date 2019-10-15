@@ -50,6 +50,10 @@
 #include <private/binder/binder_module.h>
 #include "Static.h"
 
+#ifndef INT32_MAX
+#define INT32_MAX ((int32_t)(2147483647))
+#endif
+
 #define LOG_REFS(...)
 //#define LOG_REFS(...) ALOG(LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOG_ALLOC(...)
@@ -505,7 +509,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_APEX_COM_ANDROID_VNDK_CURRENT__) || (defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__))
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');
@@ -746,37 +750,61 @@ status_t Parcel::writeUtf8AsUtf16(const std::unique_ptr<std::string>& str) {
   return writeUtf8AsUtf16(*str);
 }
 
-status_t Parcel::writeByteVectorInternal(const int8_t* data, size_t size) {
-    if (size > std::numeric_limits<int32_t>::max()) {
-        return BAD_VALUE;
+namespace {
+
+template<typename T>
+status_t writeByteVectorInternal(Parcel* parcel, const std::vector<T>& val)
+{
+    status_t status;
+    if (val.size() > std::numeric_limits<int32_t>::max()) {
+        status = BAD_VALUE;
+        return status;
     }
 
-    status_t status = writeInt32(size);
+    status = parcel->writeInt32(val.size());
     if (status != OK) {
         return status;
     }
 
-    return write(data, size);
+    void* data = parcel->writeInplace(val.size());
+    if (!data) {
+        status = BAD_VALUE;
+        return status;
+    }
+
+    memcpy(data, val.data(), val.size());
+    return status;
 }
 
+template<typename T>
+status_t writeByteVectorInternalPtr(Parcel* parcel,
+                                    const std::unique_ptr<std::vector<T>>& val)
+{
+    if (!val) {
+        return parcel->writeInt32(-1);
+    }
+
+    return writeByteVectorInternal(parcel, *val);
+}
+
+}  // namespace
+
 status_t Parcel::writeByteVector(const std::vector<int8_t>& val) {
-    return writeByteVectorInternal(val.data(), val.size());
+    return writeByteVectorInternal(this, val);
 }
 
 status_t Parcel::writeByteVector(const std::unique_ptr<std::vector<int8_t>>& val)
 {
-    if (!val) return writeInt32(-1);
-    return writeByteVectorInternal(val->data(), val->size());
+    return writeByteVectorInternalPtr(this, val);
 }
 
 status_t Parcel::writeByteVector(const std::vector<uint8_t>& val) {
-    return writeByteVectorInternal(reinterpret_cast<const int8_t*>(val.data()), val.size());
+    return writeByteVectorInternal(this, val);
 }
 
 status_t Parcel::writeByteVector(const std::unique_ptr<std::vector<uint8_t>>& val)
 {
-    if (!val) return writeInt32(-1);
-    return writeByteVectorInternal(reinterpret_cast<const int8_t*>(val->data()), val->size());
+    return writeByteVectorInternalPtr(this, val);
 }
 
 status_t Parcel::writeInt32Vector(const std::vector<int32_t>& val)
@@ -1449,41 +1477,81 @@ restart_write:
     return err;
 }
 
-status_t Parcel::readByteVectorInternal(int8_t* data, size_t size) const {
-    if (size_t(size) > dataAvail()) {
-      return BAD_VALUE;
+namespace {
+
+template<typename T>
+status_t readByteVectorInternal(const Parcel* parcel,
+                                std::vector<T>* val) {
+    val->clear();
+
+    int32_t size;
+    status_t status = parcel->readInt32(&size);
+
+    if (status != OK) {
+        return status;
     }
-    return read(data, size);
+
+    if (size < 0) {
+        status = UNEXPECTED_NULL;
+        return status;
+    }
+    if (size_t(size) > parcel->dataAvail()) {
+        status = BAD_VALUE;
+        return status;
+    }
+
+    T* data = const_cast<T*>(reinterpret_cast<const T*>(parcel->readInplace(size)));
+    if (!data) {
+        status = BAD_VALUE;
+        return status;
+    }
+    val->reserve(size);
+    val->insert(val->end(), data, data + size);
+
+    return status;
 }
 
+template<typename T>
+status_t readByteVectorInternalPtr(
+        const Parcel* parcel,
+        std::unique_ptr<std::vector<T>>* val) {
+    const int32_t start = parcel->dataPosition();
+    int32_t size;
+    status_t status = parcel->readInt32(&size);
+    val->reset();
+
+    if (status != OK || size < 0) {
+        return status;
+    }
+
+    parcel->setDataPosition(start);
+    val->reset(new (std::nothrow) std::vector<T>());
+
+    status = readByteVectorInternal(parcel, val->get());
+
+    if (status != OK) {
+        val->reset();
+    }
+
+    return status;
+}
+
+}  // namespace
+
 status_t Parcel::readByteVector(std::vector<int8_t>* val) const {
-    if (status_t status = resizeOutVector(val); status != OK) return status;
-    return readByteVectorInternal(val->data(), val->size());
+    return readByteVectorInternal(this, val);
 }
 
 status_t Parcel::readByteVector(std::vector<uint8_t>* val) const {
-    if (status_t status = resizeOutVector(val); status != OK) return status;
-    return readByteVectorInternal(reinterpret_cast<int8_t*>(val->data()), val->size());
+    return readByteVectorInternal(this, val);
 }
 
 status_t Parcel::readByteVector(std::unique_ptr<std::vector<int8_t>>* val) const {
-    if (status_t status = resizeOutVector(val); status != OK) return status;
-    if (val->get() == nullptr) {
-        // resizeOutVector does not create the out vector if size is < 0.
-        // This occurs when writing a null byte vector.
-        return OK;
-    }
-    return readByteVectorInternal((*val)->data(), (*val)->size());
+    return readByteVectorInternalPtr(this, val);
 }
 
 status_t Parcel::readByteVector(std::unique_ptr<std::vector<uint8_t>>* val) const {
-    if (status_t status = resizeOutVector(val); status != OK) return status;
-    if (val->get() == nullptr) {
-        // resizeOutVector does not create the out vector if size is < 0.
-        // This occurs when writing a null byte vector.
-        return OK;
-    }
-    return readByteVectorInternal(reinterpret_cast<int8_t*>((*val)->data()), (*val)->size());
+    return readByteVectorInternalPtr(this, val);
 }
 
 status_t Parcel::readInt32Vector(std::unique_ptr<std::vector<int32_t>>* val) const {
@@ -2283,6 +2351,22 @@ void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
         if (offset < minOffset) {
             ALOGE("%s: bad object offset %" PRIu64 " < %" PRIu64 "\n",
                   __func__, (uint64_t)offset, (uint64_t)minOffset);
+            mObjectsSize = 0;
+            break;
+        }
+        const flat_binder_object* flat
+            = reinterpret_cast<const flat_binder_object*>(mData + offset);
+        uint32_t type = flat->hdr.type;
+        if (!(type == BINDER_TYPE_BINDER || type == BINDER_TYPE_HANDLE ||
+              type == BINDER_TYPE_FD)) {
+            // We should never receive other types (eg BINDER_TYPE_FDA) as long as we don't support
+            // them in libbinder. If we do receive them, it probably means a kernel bug; try to
+            // recover gracefully by clearing out the objects, and releasing the objects we do
+            // know about.
+            android_errorWriteLog(0x534e4554, "135930648");
+            ALOGE("%s: unsupported type object (%" PRIu32 ") at offset %" PRIu64 "\n",
+                  __func__, type, (uint64_t)offset);
+            releaseObjects();
             mObjectsSize = 0;
             break;
         }

@@ -1,58 +1,51 @@
 cc_defaults {
-    name: "servicemanager_defaults",
+    name: "servicemanager_flags",
 
     cflags: [
         "-Wall",
         "-Wextra",
         "-Werror",
     ],
-
-    srcs: [
-        "Access.cpp",
-        "ServiceManager.cpp",
-    ],
-
-    shared_libs: [
-        "libbase",
-        "libbinder", // also contains servicemanager_interface
-        "libvintf",
-        "libcutils",
-        "liblog",
-        "libutils",
-        "libselinux",
-    ],
-
-    target: {
-        vendor: {
-            exclude_shared_libs: ["libvintf"],
+    product_variables: {
+        binder32bit: {
+            cflags: ["-DBINDER_IPC_32BIT=1"],
         },
     },
+
+    shared_libs: ["liblog"],
+}
+
+cc_binary {
+    name: "bctest",
+    defaults: ["servicemanager_flags"],
+    srcs: [
+        "bctest.c",
+        "binder.c",
+    ],
 }
 
 cc_binary {
     name: "servicemanager",
-    defaults: ["servicemanager_defaults"],
+    defaults: ["servicemanager_flags"],
+    srcs: [
+        "service_manager.c",
+        "binder.c",
+    ],
+    shared_libs: ["libcutils", "libselinux"],
     init_rc: ["servicemanager.rc"],
-    srcs: ["main.cpp"],
 }
 
 cc_binary {
     name: "vndservicemanager",
-    defaults: ["servicemanager_defaults"],
-    init_rc: ["vndservicemanager.rc"],
+    defaults: ["servicemanager_flags"],
     vendor: true,
+    srcs: [
+        "service_manager.c",
+        "binder.c",
+    ],
     cflags: [
         "-DVENDORSERVICEMANAGER=1",
     ],
-    srcs: ["main.cpp"],
-}
-
-cc_test {
-    name: "servicemanager_test",
-    test_suites: ["device-tests"],
-    defaults: ["servicemanager_defaults"],
-    srcs: [
-        "test_sm.cpp",
-    ],
-    static_libs: ["libgmock"],
+    shared_libs: ["libcutils", "libselinux"],
+    init_rc: ["vndservicemanager.rc"],
 }

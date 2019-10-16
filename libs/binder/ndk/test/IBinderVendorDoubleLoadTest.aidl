@@ -14,5 +14,6 @@
  * limitations under the License.
  */
 
-template <typename P>
-using ParcelRead = std::function<void(const P& p, uint8_t data)>;
+interface IBinderVendorDoubleLoadTest {
+    @utf8InCpp String RepeatString(@utf8InCpp String toRepeat);
+}

@@ -17,9 +17,6 @@
     },
     {
       "name": "binderStabilityTest"
-    },
-    {
-      "name": "CtsNdkBinderTestCases"
     }
   ]
 }

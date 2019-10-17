@@ -165,7 +165,7 @@ Status ServiceManager::addService(const std::string& name, const sp<IBinder>& bi
 #endif  // !VENDORSERVICEMANAGER
 
     // implicitly unlinked when the binder is removed
-    if (binder->remoteBinder() != nullptr && binder->linkToDeath(this) != OK) {
+    if (OK != binder->linkToDeath(this)) {
         LOG(ERROR) << "Could not linkToDeath when adding " << name;
         return Status::fromExceptionCode(Status::EX_ILLEGAL_STATE);
     }

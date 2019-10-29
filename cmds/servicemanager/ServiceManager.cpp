@@ -34,7 +34,11 @@ using ::android::internal::Stability;
 namespace android {
 
 #ifndef VENDORSERVICEMANAGER
-static bool isVintfDeclared(const std::string& name) {
+static bool meetsDeclarationRequirements(const sp<IBinder>& binder, const std::string& name) {
+    if (!Stability::requiresVintfDeclaration(binder)) {
+        return true;
+    }
+
     size_t firstSlash = name.find('/');
     size_t lastDot = name.rfind('.', firstSlash);
     if (firstSlash == std::string::npos || lastDot == std::string::npos) {
@@ -57,14 +61,6 @@ static bool isVintfDeclared(const std::string& name) {
     LOG(ERROR) << "Could not find " << package << "." << iface << "/" << instance
                << " in the VINTF manifest.";
     return false;
-}
-
-static bool meetsDeclarationRequirements(const sp<IBinder>& binder, const std::string& name) {
-    if (!Stability::requiresVintfDeclaration(binder)) {
-        return true;
-    }
-
-    return isVintfDeclared(name);
 }
 #endif  // !VENDORSERVICEMANAGER
 
@@ -271,21 +267,6 @@ Status ServiceManager::unregisterForNotifications(
         return Status::fromExceptionCode(Status::EX_ILLEGAL_STATE);
     }
 
-    return Status::ok();
-}
-
-Status ServiceManager::isDeclared(const std::string& name, bool* outReturn) {
-    auto ctx = mAccess->getCallingContext();
-
-    if (!mAccess->canFind(ctx, name)) {
-        return Status::fromExceptionCode(Status::EX_SECURITY);
-    }
-
-    *outReturn = false;
-
-#ifndef VENDORSERVICEMANAGER
-    *outReturn = isVintfDeclared(name);
-#endif
     return Status::ok();
 }
 

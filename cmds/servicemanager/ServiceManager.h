@@ -40,7 +40,6 @@ public:
                                             const sp<IServiceCallback>& callback) override;
     binder::Status unregisterForNotifications(const std::string& name,
                                               const sp<IServiceCallback>& callback) override;
-    binder::Status isDeclared(const std::string& name, bool* outReturn) override;
 
     void binderDied(const wp<IBinder>& who) override;
 

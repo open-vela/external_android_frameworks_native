@@ -356,11 +356,6 @@ public:
     status_t            resizeOutVector(std::vector<T>* val) const;
     template<typename T>
     status_t            resizeOutVector(std::unique_ptr<std::vector<T>>* val) const;
-    template<typename T>
-    status_t            reserveOutVector(std::vector<T>* val, size_t* size) const;
-    template<typename T>
-    status_t            reserveOutVector(std::unique_ptr<std::vector<T>>* val,
-                                         size_t* size) const;
 
     // Like Parcel.java's readExceptionCode().  Reads the first int32
     // off of a Parcel's header, returning 0 or the negative error
@@ -480,8 +475,7 @@ private:
     status_t            readEnum(T* pArg) const;
 
     status_t writeByteVectorInternal(const int8_t* data, size_t size);
-    template<typename T>
-    status_t readByteVectorInternal(std::vector<T>* val, size_t size) const;
+    status_t readByteVectorInternal(int8_t* data, size_t size) const;
 
     template<typename T, typename U>
     status_t            unsafeReadTypedVector(std::vector<T>* val,
@@ -720,42 +714,6 @@ status_t Parcel::resizeOutVector(std::unique_ptr<std::vector<T>>* val) const {
     val->reset();
     if (size >= 0) {
         val->reset(new std::vector<T>(size_t(size)));
-    }
-
-    return OK;
-}
-
-template<typename T>
-status_t Parcel::reserveOutVector(std::vector<T>* val, size_t* size) const {
-    int32_t read_size;
-    status_t err = readInt32(&read_size);
-    if (err != NO_ERROR) {
-        return err;
-    }
-
-    if (read_size < 0) {
-        return UNEXPECTED_NULL;
-    }
-    *size = static_cast<size_t>(read_size);
-    val->reserve(*size);
-    return OK;
-}
-
-template<typename T>
-status_t Parcel::reserveOutVector(std::unique_ptr<std::vector<T>>* val,
-                                  size_t* size) const {
-    int32_t read_size;
-    status_t err = readInt32(&read_size);
-    if (err != NO_ERROR) {
-        return err;
-    }
-
-    if (read_size >= 0) {
-        *size = static_cast<size_t>(read_size);
-        val->reset(new std::vector<T>());
-        (*val)->reserve(*size);
-    } else {
-        val->reset();
     }
 
     return OK;
@@ -1030,33 +988,20 @@ status_t Parcel::readEnum(T* pArg) const {
     return readInt64(reinterpret_cast<int64_t *>(pArg));
 }
 
-template<typename T>
-inline status_t Parcel::readByteVectorInternal(std::vector<T>* val, size_t size) const {
-  // readByteVectorInternal expects a vector that has been reserved (but not
-  // resized) to have the provided size.
-  const T* data = reinterpret_cast<const T*>(readInplace(size));
-  if (!data) return BAD_VALUE;
-  val->clear();
-  val->insert(val->begin(), data, data+size);
-  return NO_ERROR;
-}
-
 template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
 status_t Parcel::readEnumVector(std::vector<T>* val) const {
-    size_t size;
-    if (status_t status = reserveOutVector(val, &size); status != OK) return status;
-    return readByteVectorInternal(val, size);
+    if (status_t status = resizeOutVector(val); status != OK) return status;
+    return readByteVectorInternal(reinterpret_cast<int8_t*>(val->data()), val->size());
 }
 template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
 status_t Parcel::readEnumVector(std::unique_ptr<std::vector<T>>* val) const {
-    size_t size;
-    if (status_t status = reserveOutVector(val, &size); status != OK) return status;
+    if (status_t status = resizeOutVector(val); status != OK) return status;
     if (val->get() == nullptr) {
-        // reserveOutVector does not create the out vector if size is < 0.
+        // resizeOutVector does not create the out vector if size is < 0.
         // This occurs when writing a null Enum vector.
         return OK;
     }
-    return readByteVectorInternal(val->get(), size);
+    return readByteVectorInternal(reinterpret_cast<int8_t*>((*val)->data()), (*val)->size());
 }
 template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
 status_t Parcel::readEnumVector(std::vector<T>* val) const {

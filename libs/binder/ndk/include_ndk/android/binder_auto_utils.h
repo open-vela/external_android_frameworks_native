@@ -21,7 +21,7 @@
 
 /**
  * @file binder_auto_utils.h
- * @brief These objects provide a more C++-like thin interface to the binder.
+ * @brief These objects provide a more C++-like thin interface to the .
  */
 
 #pragma once

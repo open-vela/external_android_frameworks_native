@@ -1449,38 +1449,41 @@ restart_write:
     return err;
 }
 
+status_t Parcel::readByteVectorInternal(int8_t* data, size_t size) const {
+    if (size_t(size) > dataAvail()) {
+      return BAD_VALUE;
+    }
+    return read(data, size);
+}
+
 status_t Parcel::readByteVector(std::vector<int8_t>* val) const {
-    size_t size;
-    if (status_t status = reserveOutVector(val, &size); status != OK) return status;
-    return readByteVectorInternal(val, size);
+    if (status_t status = resizeOutVector(val); status != OK) return status;
+    return readByteVectorInternal(val->data(), val->size());
 }
 
 status_t Parcel::readByteVector(std::vector<uint8_t>* val) const {
-    size_t size;
-    if (status_t status = reserveOutVector(val, &size); status != OK) return status;
-    return readByteVectorInternal(val, size);
+    if (status_t status = resizeOutVector(val); status != OK) return status;
+    return readByteVectorInternal(reinterpret_cast<int8_t*>(val->data()), val->size());
 }
 
 status_t Parcel::readByteVector(std::unique_ptr<std::vector<int8_t>>* val) const {
-    size_t size;
-    if (status_t status = reserveOutVector(val, &size); status != OK) return status;
+    if (status_t status = resizeOutVector(val); status != OK) return status;
     if (val->get() == nullptr) {
-        // reserveOutVector does not create the out vector if size is < 0.
+        // resizeOutVector does not create the out vector if size is < 0.
         // This occurs when writing a null byte vector.
         return OK;
     }
-    return readByteVectorInternal(val->get(), size);
+    return readByteVectorInternal((*val)->data(), (*val)->size());
 }
 
 status_t Parcel::readByteVector(std::unique_ptr<std::vector<uint8_t>>* val) const {
-    size_t size;
-    if (status_t status = reserveOutVector(val, &size); status != OK) return status;
+    if (status_t status = resizeOutVector(val); status != OK) return status;
     if (val->get() == nullptr) {
-        // reserveOutVector does not create the out vector if size is < 0.
+        // resizeOutVector does not create the out vector if size is < 0.
         // This occurs when writing a null byte vector.
         return OK;
     }
-    return readByteVectorInternal(val->get(), size);
+    return readByteVectorInternal(reinterpret_cast<int8_t*>((*val)->data()), (*val)->size());
 }
 
 status_t Parcel::readInt32Vector(std::unique_ptr<std::vector<int32_t>>* val) const {
@@ -2283,22 +2286,6 @@ void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
             mObjectsSize = 0;
             break;
         }
-        const flat_binder_object* flat
-            = reinterpret_cast<const flat_binder_object*>(mData + offset);
-        uint32_t type = flat->hdr.type;
-        if (!(type == BINDER_TYPE_BINDER || type == BINDER_TYPE_HANDLE ||
-              type == BINDER_TYPE_FD)) {
-            // We should never receive other types (eg BINDER_TYPE_FDA) as long as we don't support
-            // them in libbinder. If we do receive them, it probably means a kernel bug; try to
-            // recover gracefully by clearing out the objects, and releasing the objects we do
-            // know about.
-            android_errorWriteLog(0x534e4554, "135930648");
-            ALOGE("%s: unsupported type object (%" PRIu32 ") at offset %" PRIu64 "\n",
-                  __func__, type, (uint64_t)offset);
-            releaseObjects();
-            mObjectsSize = 0;
-            break;
-        }
         minOffset = offset + sizeof(flat_binder_object);
     }
     scanForFds();
@@ -2559,13 +2546,11 @@ status_t Parcel::continueWrite(size_t desired)
             if (objectsSize == 0) {
                 free(mObjects);
                 mObjects = nullptr;
-                mObjectsCapacity = 0;
             } else {
                 binder_size_t* objects =
                     (binder_size_t*)realloc(mObjects, objectsSize*sizeof(binder_size_t));
                 if (objects) {
                     mObjects = objects;
-                    mObjectsCapacity = objectsSize;
                 }
             }
             mObjectsSize = objectsSize;

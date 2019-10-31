@@ -30,7 +30,7 @@
 #include <sys/cdefs.h>
 
 __BEGIN_DECLS
-#if __ANDROID_API__ >= 29
+#if __ANDROID_API__ >= __ANDROID_API_Q__
 
 enum {
     STATUS_OK = 0,
@@ -105,16 +105,12 @@ typedef struct AStatus AStatus;
 /**
  * New status which is considered a success.
  *
- * Available since API level 29.
- *
  * \return a newly constructed status object that the caller owns.
  */
 __attribute__((warn_unused_result)) AStatus* AStatus_newOk() __INTRODUCED_IN(29);
 
 /**
  * New status with exception code.
- *
- * Available since API level 29.
  *
  * \param exception the code that this status should represent. If this is EX_NONE, then this
  * constructs an non-error status object.
@@ -126,8 +122,6 @@ __attribute__((warn_unused_result)) AStatus* AStatus_fromExceptionCode(binder_ex
 
 /**
  * New status with exception code and message.
- *
- * Available since API level 29.
  *
  * \param exception the code that this status should represent. If this is EX_NONE, then this
  * constructs an non-error status object.
@@ -143,8 +137,6 @@ __attribute__((warn_unused_result)) AStatus* AStatus_fromExceptionCodeWithMessag
  *
  * This is considered to be EX_TRANSACTION_FAILED with extra information.
  *
- * Available since API level 29.
- *
  * \param serviceSpecific an implementation defined error code.
  *
  * \return a newly constructed status object that the caller owns.
@@ -156,8 +148,6 @@ __attribute__((warn_unused_result)) AStatus* AStatus_fromServiceSpecificError(
  * New status with a service specific error and message.
  *
  * This is considered to be EX_TRANSACTION_FAILED with extra information.
- *
- * Available since API level 29.
  *
  * \param serviceSpecific an implementation defined error code.
  * \param message the error message to associate with this status object.
@@ -172,8 +162,6 @@ __attribute__((warn_unused_result)) AStatus* AStatus_fromServiceSpecificErrorWit
  * is returned by an API on AIBinder or AParcel, and that is to be returned from a method returning
  * an AStatus instance.
  *
- * Available since API level 29.
- *
  * \param a low-level error to associate with this status object.
  *
  * \return a newly constructed status object that the caller owns.
@@ -185,8 +173,6 @@ __attribute__((warn_unused_result)) AStatus* AStatus_fromStatus(binder_status_t 
  * Whether this object represents a successful transaction. If this function returns true, then
  * AStatus_getExceptionCode will return EX_NONE.
  *
- * Available since API level 29.
- *
  * \param status the status being queried.
  *
  * \return whether the status represents a successful transaction. For more details, see below.
@@ -195,8 +181,6 @@ bool AStatus_isOk(const AStatus* status) __INTRODUCED_IN(29);
 
 /**
  * The exception that this status object represents.
- *
- * Available since API level 29.
  *
  * \param status the status being queried.
  *
@@ -210,8 +194,6 @@ binder_exception_t AStatus_getExceptionCode(const AStatus* status) __INTRODUCED_
  * 0, the status object may still represent a different exception or status. To find out if this
  * transaction as a whole is okay, use AStatus_isOk instead.
  *
- * Available since API level 29.
- *
  * \param status the status being queried.
  *
  * \return the service-specific error code if the exception code is EX_SERVICE_SPECIFIC or 0.
@@ -223,8 +205,6 @@ int32_t AStatus_getServiceSpecificError(const AStatus* status) __INTRODUCED_IN(2
  * if AStatus_getExceptionCode returns EX_TRANSACTION_FAILED. If this function return 0, the status
  * object may represent a different exception or a service specific error. To find out if this
  * transaction as a whole is okay, use AStatus_isOk instead.
- *
- * Available since API level 29.
  *
  * \param status the status being queried.
  *
@@ -238,8 +218,6 @@ binder_status_t AStatus_getStatus(const AStatus* status) __INTRODUCED_IN(29);
  *
  * The returned string has the lifetime of the status object passed into this function.
  *
- * Available since API level 29.
- *
  * \param status the status being queried.
  *
  * \return the message associated with this error.
@@ -249,13 +227,11 @@ const char* AStatus_getMessage(const AStatus* status) __INTRODUCED_IN(29);
 /**
  * Deletes memory associated with the status instance.
  *
- * Available since API level 29.
- *
  * \param status the status to delete, returned from AStatus_newOk or one of the AStatus_from* APIs.
  */
 void AStatus_delete(AStatus* status) __INTRODUCED_IN(29);
 
-#endif  //__ANDROID_API__ >= 29
+#endif  //__ANDROID_API__ >= __ANDROID_API_Q__
 __END_DECLS
 
 /** @} */

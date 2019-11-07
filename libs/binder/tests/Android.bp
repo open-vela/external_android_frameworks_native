@@ -119,7 +119,12 @@ cc_test {
     srcs: ["binderSafeInterfaceTest.cpp"],
 
     cppflags: [
-        "-Wextra",
+        "-Weverything",
+        "-Wno-c++98-compat",
+        "-Wno-c++98-compat-pedantic",
+        "-Wno-global-constructors",
+        "-Wno-padded",
+        "-Wno-weak-vtables",
     ],
 
     cpp_std: "experimental",

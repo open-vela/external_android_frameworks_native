@@ -4,11 +4,16 @@ cc_binary {
     srcs: ["service.cpp"],
 
     shared_libs: [
+        "libcutils",
         "libutils",
         "libbinder",
     ],
 
-    cflags: ["-DXP_UNIX"],
+    cflags: [
+        "-DXP_UNIX",
+        "-Wall",
+        "-Werror",
+    ],
 }
 
 cc_binary {
@@ -18,9 +23,15 @@ cc_binary {
     srcs: ["service.cpp"],
 
     shared_libs: [
+        "libcutils",
         "libutils",
         "libbinder",
     ],
 
-    cflags: ["-DXP_UNIX", "-DVENDORSERVICES"],
+    cflags: [
+        "-DXP_UNIX",
+        "-DVENDORSERVICES",
+        "-Wall",
+        "-Werror",
+    ],
 }

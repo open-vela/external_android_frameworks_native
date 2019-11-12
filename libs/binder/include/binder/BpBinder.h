@@ -19,47 +19,63 @@
 
 #include <binder/IBinder.h>
 #include <utils/KeyedVector.h>
+#include <utils/Mutex.h>
 #include <utils/threads.h>
+
+#include <unordered_map>
 
 // ---------------------------------------------------------------------------
 namespace android {
 
+using binder_proxy_limit_callback = void(*)(int);
+
 class BpBinder : public IBinder
 {
 public:
-                        BpBinder(int32_t handle);
+    static BpBinder*    create(int32_t handle);
 
-    inline  int32_t     handle() const { return mHandle; }
+    int32_t             handle() const;
 
     virtual const String16&    getInterfaceDescriptor() const;
     virtual bool        isBinderAlive() const;
     virtual status_t    pingBinder();
     virtual status_t    dump(int fd, const Vector<String16>& args);
 
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    transact(   uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
+                                    uint32_t flags = 0) final;
+
+    // NOLINTNEXTLINE(google-default-arguments)
+    virtual status_t    linkToDeath(const sp<DeathRecipient>& recipient,
+                                    void* cookie = nullptr,
                                     uint32_t flags = 0);
 
-    virtual status_t    linkToDeath(const sp<DeathRecipient>& recipient,
-                                    void* cookie = NULL,
-                                    uint32_t flags = 0);
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    unlinkToDeath(  const wp<DeathRecipient>& recipient,
-                                        void* cookie = NULL,
+                                        void* cookie = nullptr,
                                         uint32_t flags = 0,
-                                        wp<DeathRecipient>* outRecipient = NULL);
+                                        wp<DeathRecipient>* outRecipient = nullptr);
 
     virtual void        attachObject(   const void* objectID,
                                         void* object,
                                         void* cleanupCookie,
-                                        object_cleanup_func func);
-    virtual void*       findObject(const void* objectID) const;
-    virtual void        detachObject(const void* objectID);
+                                        object_cleanup_func func) final;
+    virtual void*       findObject(const void* objectID) const final;
+    virtual void        detachObject(const void* objectID) final;
 
     virtual BpBinder*   remoteBinder();
 
-            status_t    setConstantData(const void* data, size_t size);
             void        sendObituary();
+
+    static uint32_t     getBinderProxyCount(uint32_t uid);
+    static void         getCountByUid(Vector<uint32_t>& uids, Vector<uint32_t>& counts);
+    static void         enableCountByUid();
+    static void         disableCountByUid();
+    static void         setCountByUidEnabled(bool enable);
+    static void         setLimitCallback(binder_proxy_limit_callback cb);
+    static void         setBinderProxyCountWatermarks(int high, int low);
 
     class ObjectManager
     {
@@ -91,6 +107,7 @@ public:
     };
 
 protected:
+                        BpBinder(int32_t handle,int32_t trackedUid);
     virtual             ~BpBinder();
     virtual void        onFirstRef();
     virtual void        onLastStrongRef(const void* id);
@@ -115,9 +132,19 @@ private:
             ObjectManager       mObjects;
             Parcel*             mConstantData;
     mutable String16            mDescriptorCache;
+            int32_t             mTrackedUid;
+
+    static Mutex                                sTrackingLock;
+    static std::unordered_map<int32_t,uint32_t> sTrackingMap;
+    static int                                  sNumTrackedUids;
+    static std::atomic_bool                     sCountByUidEnabled;
+    static binder_proxy_limit_callback          sLimitCallback;
+    static uint32_t                             sBinderProxyCountHighWatermark;
+    static uint32_t                             sBinderProxyCountLowWatermark;
+    static bool                                 sBinderProxyThrottleCreate;
 };
 
-}; // namespace android
+} // namespace android
 
 // ---------------------------------------------------------------------------
 

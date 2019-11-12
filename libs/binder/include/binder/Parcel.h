@@ -17,7 +17,9 @@
 #ifndef ANDROID_PARCEL_H
 #define ANDROID_PARCEL_H
 
+#include <map> // for legacy reasons
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <android-base/unique_fd.h>
@@ -27,26 +29,28 @@
 #include <utils/String16.h>
 #include <utils/Vector.h>
 #include <utils/Flattenable.h>
-#include <linux/android/binder.h>
 
 #include <binder/IInterface.h>
 #include <binder/Parcelable.h>
-#include <binder/Map.h>
+
+#ifdef BINDER_IPC_32BIT
+typedef unsigned int binder_size_t;
+#else
+typedef unsigned long long binder_size_t;
+#endif
+
 
 // ---------------------------------------------------------------------------
 namespace android {
 
 template <typename T> class Flattenable;
 template <typename T> class LightFlattenable;
+struct flat_binder_object;
 class IBinder;
 class IPCThreadState;
 class ProcessState;
 class String8;
 class TextOutput;
-
-namespace binder {
-class Value;
-};
 
 class Parcel {
     friend class IPCThreadState;
@@ -66,7 +70,7 @@ public:
     status_t            setDataSize(size_t size);
     void                setDataPosition(size_t pos) const;
     status_t            setDataCapacity(size_t size);
-    
+
     status_t            setData(const uint8_t* buffer, size_t len);
 
     status_t            appendFrom(const Parcel *parcel,
@@ -91,15 +95,11 @@ public:
     // IPCThreadState, which as an optimization may optionally be
     // passed in.
     bool                enforceInterface(const String16& interface,
-                                         IPCThreadState* threadState = NULL) const;
+                                         IPCThreadState* threadState = nullptr) const;
     bool                checkInterface(IBinder*) const;
 
     void                freeData();
 
-private:
-    const binder_size_t* objects() const;
-
-public:
     size_t              objectsCount() const;
     
     status_t            errorCheck() const;
@@ -120,7 +120,6 @@ public:
     status_t            writeString16(const std::unique_ptr<String16>& str);
     status_t            writeString16(const char16_t* str, size_t len);
     status_t            writeStrongBinder(const sp<IBinder>& val);
-    status_t            writeWeakBinder(const wp<IBinder>& val);
     status_t            writeInt32Array(size_t len, const int32_t *val);
     status_t            writeByteArray(size_t len, const uint8_t *val);
     status_t            writeBool(bool val);
@@ -139,6 +138,8 @@ public:
     status_t            writeInt32Vector(const std::vector<int32_t>& val);
     status_t            writeInt64Vector(const std::unique_ptr<std::vector<int64_t>>& val);
     status_t            writeInt64Vector(const std::vector<int64_t>& val);
+    status_t            writeUint64Vector(const std::unique_ptr<std::vector<uint64_t>>& val);
+    status_t            writeUint64Vector(const std::vector<uint64_t>& val);
     status_t            writeFloatVector(const std::unique_ptr<std::vector<float>>& val);
     status_t            writeFloatVector(const std::vector<float>& val);
     status_t            writeDoubleVector(const std::unique_ptr<std::vector<double>>& val);
@@ -157,6 +158,18 @@ public:
     status_t            writeStrongBinderVector(const std::unique_ptr<std::vector<sp<IBinder>>>& val);
     status_t            writeStrongBinderVector(const std::vector<sp<IBinder>>& val);
 
+    // Write an Enum vector with underlying type int8_t.
+    // Does not use padding; each byte is contiguous.
+    template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
+    status_t            writeEnumVector(const std::vector<T>& val);
+    template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
+    status_t            writeEnumVector(const std::unique_ptr<std::vector<T>>& val);
+    // Write an Enum vector with underlying type != int8_t.
+    template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
+    status_t            writeEnumVector(const std::vector<T>& val);
+    template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
+    status_t            writeEnumVector(const std::unique_ptr<std::vector<T>>& val);
+
     template<typename T>
     status_t            writeParcelableVector(const std::unique_ptr<std::vector<std::unique_ptr<T>>>& val);
     template<typename T>
@@ -169,8 +182,6 @@ public:
 
     status_t            writeParcelable(const Parcelable& parcelable);
 
-    status_t            writeValue(const binder::Value& value);
-
     template<typename T>
     status_t            write(const Flattenable<T>& val);
 
@@ -181,9 +192,6 @@ public:
     status_t            writeVectorSize(const std::vector<T>& val);
     template<typename T>
     status_t            writeVectorSize(const std::unique_ptr<std::vector<T>>& val);
-
-    status_t            writeMap(const binder::Map& map);
-    status_t            writeNullableMap(const std::unique_ptr<binder::Map>& map);
 
     // Place a native_handle into the parcel (the native_handle's file-
     // descriptors are dup'ed, so it is safe to delete the native_handle
@@ -204,6 +212,10 @@ public:
     // valid for the lifetime of the parcel.
     // The Parcel does not take ownership of the given fd unless you ask it to.
     status_t            writeParcelFileDescriptor(int fd, bool takeOwnership = false);
+
+    // Place a Java "parcel file descriptor" into the parcel.  A dup of the fd is made, which will
+    // be closed once the parcel is destroyed.
+    status_t            writeDupParcelFileDescriptor(int fd);
 
     // Place a file descriptor into the parcel.  This will not affect the
     // semantics of the smart file descriptor. A new descriptor will be
@@ -237,8 +249,6 @@ public:
     // Currently the native implementation doesn't do any of the StrictMode
     // stack gathering and serialization that the Java implementation does.
     status_t            writeNoException();
-
-    void                remove(size_t start, size_t amt);
     
     status_t            read(void* outData, size_t len) const;
     const void*         readInplace(size_t len) const;
@@ -277,7 +287,19 @@ public:
     sp<IBinder>         readStrongBinder() const;
     status_t            readStrongBinder(sp<IBinder>* val) const;
     status_t            readNullableStrongBinder(sp<IBinder>* val) const;
-    wp<IBinder>         readWeakBinder() const;
+
+
+    // Read an Enum vector with underlying type int8_t.
+    // Does not use padding; each byte is contiguous.
+    template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
+    status_t            readEnumVector(std::vector<T>* val) const;
+    template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
+    status_t            readEnumVector(std::unique_ptr<std::vector<T>>* val) const;
+    // Read an Enum vector with underlying type != int8_t.
+    template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
+    status_t            readEnumVector(std::vector<T>* val) const;
+    template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
+    status_t            readEnumVector(std::unique_ptr<std::vector<T>>* val) const;
 
     template<typename T>
     status_t            readParcelableVector(
@@ -289,8 +311,6 @@ public:
 
     template<typename T>
     status_t            readParcelable(std::unique_ptr<T>* parcelable) const;
-
-    status_t            readValue(binder::Value* value) const;
 
     template<typename T>
     status_t            readStrongBinder(sp<T>* val) const;
@@ -309,6 +329,8 @@ public:
     status_t            readInt32Vector(std::vector<int32_t>* val) const;
     status_t            readInt64Vector(std::unique_ptr<std::vector<int64_t>>* val) const;
     status_t            readInt64Vector(std::vector<int64_t>* val) const;
+    status_t            readUint64Vector(std::unique_ptr<std::vector<uint64_t>>* val) const;
+    status_t            readUint64Vector(std::vector<uint64_t>* val) const;
     status_t            readFloatVector(std::unique_ptr<std::vector<float>>* val) const;
     status_t            readFloatVector(std::vector<float>* val) const;
     status_t            readDoubleVector(std::unique_ptr<std::vector<double>>* val) const;
@@ -334,9 +356,11 @@ public:
     status_t            resizeOutVector(std::vector<T>* val) const;
     template<typename T>
     status_t            resizeOutVector(std::unique_ptr<std::vector<T>>* val) const;
-
-    status_t            readMap(binder::Map* map)const;
-    status_t            readNullableMap(std::unique_ptr<binder::Map>* map) const;
+    template<typename T>
+    status_t            reserveOutVector(std::vector<T>* val, size_t* size) const;
+    template<typename T>
+    status_t            reserveOutVector(std::unique_ptr<std::vector<T>>* val,
+                                         size_t* size) const;
 
     // Like Parcel.java's readExceptionCode().  Reads the first int32
     // off of a Parcel's header, returning 0 or the negative error
@@ -364,6 +388,9 @@ public:
     status_t            readUniqueFileDescriptor(
                             base::unique_fd* val) const;
 
+    // Retrieve a Java "parcel file descriptor" from the parcel.
+    status_t            readUniqueParcelFileDescriptor(base::unique_fd* val) const;
+
 
     // Retrieve a vector of smart file descriptors from the parcel.
     status_t            readUniqueFileDescriptorVector(
@@ -383,6 +410,11 @@ public:
     // Debugging: get metrics on current allocations.
     static size_t       getGlobalAllocSize();
     static size_t       getGlobalAllocCount();
+
+    bool                replaceCallingWorkSourceUid(uid_t uid);
+    // Returns the work source provided by the caller. This can only be trusted for trusted calling
+    // uid.
+    uid_t               readCallingWorkSourceUid() const;
 
 private:
     typedef void        (*release_func)(Parcel* parcel,
@@ -418,7 +450,14 @@ private:
     void                initState();
     void                scanForFds() const;
     status_t            validateReadData(size_t len) const;
-                        
+    void                updateWorkSourceRequestHeaderPosition() const;
+
+    status_t            finishFlattenBinder(const sp<IBinder>& binder,
+                                            const flat_binder_object& flat);
+    status_t            finishUnflattenBinder(const sp<IBinder>& binder, sp<IBinder>* out) const;
+    status_t            flattenBinder(const sp<IBinder>& binder);
+    status_t            unflattenBinder(sp<IBinder>* out) const;
+
     template<class T>
     status_t            readAligned(T *pArg) const;
 
@@ -429,6 +468,20 @@ private:
 
     status_t            writeRawNullableParcelable(const Parcelable*
                                                    parcelable);
+
+    template<typename T, std::enable_if_t<std::is_same_v<typename std::underlying_type_t<T>,int32_t>, bool> = 0>
+    status_t            writeEnum(const T& val);
+    template<typename T, std::enable_if_t<std::is_same_v<typename std::underlying_type_t<T>,int64_t>, bool> = 0>
+    status_t            writeEnum(const T& val);
+
+    template<typename T, std::enable_if_t<std::is_same_v<typename std::underlying_type_t<T>,int32_t>, bool> = 0>
+    status_t            readEnum(T* pArg) const;
+    template<typename T, std::enable_if_t<std::is_same_v<typename std::underlying_type_t<T>,int64_t>, bool> = 0>
+    status_t            readEnum(T* pArg) const;
+
+    status_t writeByteVectorInternal(const int8_t* data, size_t size);
+    template<typename T>
+    status_t readByteVectorInternal(std::vector<T>* val, size_t size) const;
 
     template<typename T, typename U>
     status_t            unsafeReadTypedVector(std::vector<T>* val,
@@ -465,6 +518,9 @@ private:
     size_t              mObjectsCapacity;
     mutable size_t      mNextObjectHint;
     mutable bool        mObjectsSorted;
+
+    mutable bool        mRequestHeaderPresent;
+    mutable size_t      mWorkSourceRequestHeaderPosition;
 
     mutable bool        mFdsKnown;
     mutable bool        mHasFds;
@@ -547,7 +603,7 @@ public:
         friend class Parcel;
     public:
         inline const void* data() const { return mData; }
-        inline void* mutableData() { return isMutable() ? mData : NULL; }
+        inline void* mutableData() { return isMutable() ? mData : nullptr; }
     };
 
     class WritableBlob : public Blob {
@@ -587,7 +643,7 @@ status_t Parcel::write(const LightFlattenable<T>& val) {
     }
     if (size) {
         void* buffer = writeInplace(size);
-        if (buffer == NULL)
+        if (buffer == nullptr)
             return NO_MEMORY;
         return val.flatten(buffer, size);
     }
@@ -615,7 +671,7 @@ status_t Parcel::read(LightFlattenable<T>& val) const {
     }
     if (size) {
         void const* buffer = readInplace(size);
-        return buffer == NULL ? NO_MEMORY :
+        return buffer == nullptr ? NO_MEMORY :
                 val.unflatten(buffer, size);
     }
     return NO_ERROR;
@@ -664,6 +720,42 @@ status_t Parcel::resizeOutVector(std::unique_ptr<std::vector<T>>* val) const {
     val->reset();
     if (size >= 0) {
         val->reset(new std::vector<T>(size_t(size)));
+    }
+
+    return OK;
+}
+
+template<typename T>
+status_t Parcel::reserveOutVector(std::vector<T>* val, size_t* size) const {
+    int32_t read_size;
+    status_t err = readInt32(&read_size);
+    if (err != NO_ERROR) {
+        return err;
+    }
+
+    if (read_size < 0) {
+        return UNEXPECTED_NULL;
+    }
+    *size = static_cast<size_t>(read_size);
+    val->reserve(*size);
+    return OK;
+}
+
+template<typename T>
+status_t Parcel::reserveOutVector(std::unique_ptr<std::vector<T>>* val,
+                                  size_t* size) const {
+    int32_t read_size;
+    status_t err = readInt32(&read_size);
+    if (err != NO_ERROR) {
+        return err;
+    }
+
+    if (read_size >= 0) {
+        *size = static_cast<size_t>(read_size);
+        val->reset(new std::vector<T>());
+        (*val)->reserve(*size);
+    } else {
+        val->reset();
     }
 
     return OK;
@@ -902,6 +994,79 @@ status_t Parcel::writeParcelableVector(const std::shared_ptr<std::vector<std::un
     return unsafeWriteTypedVector(*val, &Parcel::writeNullableParcelable<T>);
 }
 
+template<typename T, std::enable_if_t<std::is_same_v<typename std::underlying_type_t<T>,int32_t>, bool>>
+status_t Parcel::writeEnum(const T& val) {
+    return writeInt32(static_cast<int32_t>(val));
+}
+template<typename T, std::enable_if_t<std::is_same_v<typename std::underlying_type_t<T>,int64_t>, bool>>
+status_t Parcel::writeEnum(const T& val) {
+    return writeInt64(static_cast<int64_t>(val));
+}
+
+template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
+status_t Parcel::writeEnumVector(const std::vector<T>& val) {
+    return writeByteVectorInternal(reinterpret_cast<const int8_t*>(val.data()), val.size());
+}
+template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
+status_t Parcel::writeEnumVector(const std::unique_ptr<std::vector<T>>& val) {
+    if (!val) return writeInt32(-1);
+    return writeByteVectorInternal(reinterpret_cast<const int8_t*>(val->data()), val->size());
+}
+template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
+status_t Parcel::writeEnumVector(const std::vector<T>& val) {
+    return writeTypedVector(val, &Parcel::writeEnum);
+}
+template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
+status_t Parcel::writeEnumVector(const std::unique_ptr<std::vector<T>>& val) {
+    return writeNullableTypedVector(val, &Parcel::writeEnum);
+}
+
+template<typename T, std::enable_if_t<std::is_same_v<typename std::underlying_type_t<T>,int32_t>, bool>>
+status_t Parcel::readEnum(T* pArg) const {
+    return readInt32(reinterpret_cast<int32_t *>(pArg));
+}
+template<typename T, std::enable_if_t<std::is_same_v<typename std::underlying_type_t<T>,int64_t>, bool>>
+status_t Parcel::readEnum(T* pArg) const {
+    return readInt64(reinterpret_cast<int64_t *>(pArg));
+}
+
+template<typename T>
+inline status_t Parcel::readByteVectorInternal(std::vector<T>* val, size_t size) const {
+  // readByteVectorInternal expects a vector that has been reserved (but not
+  // resized) to have the provided size.
+  const T* data = reinterpret_cast<const T*>(readInplace(size));
+  if (!data) return BAD_VALUE;
+  val->clear();
+  val->insert(val->begin(), data, data+size);
+  return NO_ERROR;
+}
+
+template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
+status_t Parcel::readEnumVector(std::vector<T>* val) const {
+    size_t size;
+    if (status_t status = reserveOutVector(val, &size); status != OK) return status;
+    return readByteVectorInternal(val, size);
+}
+template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
+status_t Parcel::readEnumVector(std::unique_ptr<std::vector<T>>* val) const {
+    size_t size;
+    if (status_t status = reserveOutVector(val, &size); status != OK) return status;
+    if (val->get() == nullptr) {
+        // reserveOutVector does not create the out vector if size is < 0.
+        // This occurs when writing a null Enum vector.
+        return OK;
+    }
+    return readByteVectorInternal(val->get(), size);
+}
+template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
+status_t Parcel::readEnumVector(std::vector<T>* val) const {
+    return readTypedVector(val, &Parcel::readEnum);
+}
+template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool>>
+status_t Parcel::readEnumVector(std::unique_ptr<std::vector<T>>* val) const {
+    return readNullableTypedVector(val, &Parcel::readEnum);
+}
+
 // ---------------------------------------------------------------------------
 
 inline TextOutput& operator<<(TextOutput& to, const Parcel& parcel)
@@ -910,24 +1075,7 @@ inline TextOutput& operator<<(TextOutput& to, const Parcel& parcel)
     return to;
 }
 
-// ---------------------------------------------------------------------------
-
-// Generic acquire and release of objects.
-void acquire_object(const sp<ProcessState>& proc,
-                    const flat_binder_object& obj, const void* who);
-void release_object(const sp<ProcessState>& proc,
-                    const flat_binder_object& obj, const void* who);
-
-void flatten_binder(const sp<ProcessState>& proc,
-                    const sp<IBinder>& binder, flat_binder_object* out);
-void flatten_binder(const sp<ProcessState>& proc,
-                    const wp<IBinder>& binder, flat_binder_object* out);
-status_t unflatten_binder(const sp<ProcessState>& proc,
-                          const flat_binder_object& flat, sp<IBinder>* out);
-status_t unflatten_binder(const sp<ProcessState>& proc,
-                          const flat_binder_object& flat, wp<IBinder>* out);
-
-}; // namespace android
+} // namespace android
 
 // ---------------------------------------------------------------------------
 

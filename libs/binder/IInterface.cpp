@@ -32,36 +32,18 @@ IInterface::~IInterface() {
 // static
 sp<IBinder> IInterface::asBinder(const IInterface* iface)
 {
-    if (iface == NULL) return NULL;
+    if (iface == nullptr) return nullptr;
     return const_cast<IInterface*>(iface)->onAsBinder();
 }
 
 // static
 sp<IBinder> IInterface::asBinder(const sp<IInterface>& iface)
 {
-    if (iface == NULL) return NULL;
+    if (iface == nullptr) return nullptr;
     return iface->onAsBinder();
 }
 
 
 // ---------------------------------------------------------------------------
 
-}; // namespace android
-
-extern "C" {
-
-void _ZN7android10IInterface8asBinderEv(void *retval, void* self) {
-    ALOGW("deprecated asBinder call, please update your code");
-    //ALOGI("self: %p, retval: %p", self, retval);
-    android::sp<android::IBinder> *ret = new(retval) android::sp<android::IBinder>;
-    *ret = android::IInterface::asBinder((android::IInterface*)self);
-}
-
-void _ZNK7android10IInterface8asBinderEv(void *retval, void *self) {
-    ALOGW("deprecated asBinder call, please update your code");
-    //ALOGI("self: %p, retval: %p", self, retval);
-    android::sp<android::IBinder> *ret = new(retval) android::sp<android::IBinder>;
-    *ret = android::IInterface::asBinder((android::IInterface*)self);
-}
-
-} // extern "C"
+} // namespace android

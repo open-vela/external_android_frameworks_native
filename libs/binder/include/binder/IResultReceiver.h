@@ -41,6 +41,7 @@ public:
 class BnResultReceiver : public BnInterface<IResultReceiver>
 {
 public:
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
@@ -49,7 +50,7 @@ public:
 
 // ----------------------------------------------------------------------
 
-}; // namespace android
+} // namespace android
 
 #endif // ANDROID_IRESULT_RECEIVER_H
 

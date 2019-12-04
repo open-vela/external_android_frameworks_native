@@ -38,10 +38,30 @@ protected:
 
 // ----------------------------------------------------------------------
 
+/**
+ * If this is a local object and the descriptor matches, this will return the
+ * actual local object which is implementing the interface. Otherwise, this will
+ * return a proxy to the interface without checking the interface descriptor.
+ * This means that subsequent calls may fail with BAD_TYPE.
+ */
 template<typename INTERFACE>
 inline sp<INTERFACE> interface_cast(const sp<IBinder>& obj)
 {
     return INTERFACE::asInterface(obj);
+}
+
+/**
+ * This is the same as interface_cast, except that it always checks to make sure
+ * the descriptor matches, and if it doesn't match, it will return nullptr.
+ */
+template<typename INTERFACE>
+inline sp<INTERFACE> checked_interface_cast(const sp<IBinder>& obj)
+{
+    if (obj->getInterfaceDescriptor() != INTERFACE::descriptor) {
+        return nullptr;
+    }
+
+    return interface_cast<INTERFACE>(obj);
 }
 
 // ----------------------------------------------------------------------
@@ -88,8 +108,12 @@ private:                                                                \
 public:                                                                 \
 
 
+#define __IINTF_CONCAT(x, y) (x ## y)
 #define IMPLEMENT_META_INTERFACE(INTERFACE, NAME)                       \
-    const ::android::String16 I##INTERFACE::descriptor(NAME);           \
+    const ::android::StaticString16                                     \
+        I##INTERFACE##_descriptor_static_str16(__IINTF_CONCAT(u, NAME));\
+    const ::android::String16 I##INTERFACE::descriptor(                 \
+        I##INTERFACE##_descriptor_static_str16);                        \
     const ::android::String16&                                          \
             I##INTERFACE::getInterfaceDescriptor() const {              \
         return I##INTERFACE::descriptor;                                \
@@ -168,6 +192,6 @@ inline IBinder* BpInterface<INTERFACE>::onAsBinder()
 
 // ----------------------------------------------------------------------
 
-}; // namespace android
+} // namespace android
 
 #endif // ANDROID_IINTERFACE_H

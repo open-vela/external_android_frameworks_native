@@ -21,10 +21,6 @@
 #include <binder/IAppOpsCallback.h>
 #include <binder/IInterface.h>
 
-#ifdef __ANDROID_VNDK__
-#error "This header is not visible to vendors"
-#endif
-
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -35,25 +31,16 @@ public:
     DECLARE_META_INTERFACE(AppOpsService)
 
     virtual int32_t checkOperation(int32_t code, int32_t uid, const String16& packageName) = 0;
-    virtual int32_t noteOperation(int32_t code, int32_t uid, const String16& packageName,
-            const std::unique_ptr<String16>& featureId) = 0;
+    virtual int32_t noteOperation(int32_t code, int32_t uid, const String16& packageName) = 0;
     virtual int32_t startOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-            const String16& packageName, const std::unique_ptr<String16>& featureId,
-            bool startIfModeDefault) = 0;
+            const String16& packageName) = 0;
     virtual void finishOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-            const String16& packageName, const std::unique_ptr<String16>& featureId) = 0;
+            const String16& packageName) = 0;
     virtual void startWatchingMode(int32_t op, const String16& packageName,
             const sp<IAppOpsCallback>& callback) = 0;
     virtual void stopWatchingMode(const sp<IAppOpsCallback>& callback) = 0;
     virtual sp<IBinder> getToken(const sp<IBinder>& clientToken) = 0;
     virtual int32_t permissionToOpCode(const String16& permission) = 0;
-    virtual int32_t checkAudioOperation(int32_t code, int32_t usage,int32_t uid,
-            const String16& packageName) = 0;
-    virtual void setCameraAudioRestriction(int32_t mode) = 0;
-    virtual void noteAsyncOp(const std::unique_ptr<String16>& callingPackageName, int32_t uid,
-            const String16& packageName, int32_t opCode, const std::unique_ptr<String16>& featureId,
-            const String16& message) = 0;
-    virtual bool shouldCollectNotes(int32_t opCode) = 0;
 
     enum {
         CHECK_OPERATION_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
@@ -64,10 +51,6 @@ public:
         STOP_WATCHING_MODE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+5,
         GET_TOKEN_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+6,
         PERMISSION_TO_OP_CODE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+7,
-        CHECK_AUDIO_OPERATION_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+8,
-        NOTE_ASYNC_OP_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+9,
-        SHOULD_COLLECT_NOTES_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+10,
-        SET_CAMERA_AUDIO_RESTRICTION_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION+11,
     };
 
     enum {
@@ -82,7 +65,6 @@ public:
 class BnAppOpsService : public BnInterface<IAppOpsService>
 {
 public:
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
@@ -91,6 +73,6 @@ public:
 
 // ----------------------------------------------------------------------
 
-} // namespace android
+}; // namespace android
 
 #endif // ANDROID_IAPP_OPS_SERVICE_H

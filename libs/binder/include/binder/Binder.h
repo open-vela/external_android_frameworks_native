@@ -34,46 +34,32 @@ public:
     virtual status_t    pingBinder();
     virtual status_t    dump(int fd, const Vector<String16>& args);
 
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    transact(   uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
-                                    uint32_t flags = 0) final;
-
-    // NOLINTNEXTLINE(google-default-arguments)
-    virtual status_t    linkToDeath(const sp<DeathRecipient>& recipient,
-                                    void* cookie = nullptr,
                                     uint32_t flags = 0);
 
-    // NOLINTNEXTLINE(google-default-arguments)
+    virtual status_t    linkToDeath(const sp<DeathRecipient>& recipient,
+                                    void* cookie = NULL,
+                                    uint32_t flags = 0);
+
     virtual status_t    unlinkToDeath(  const wp<DeathRecipient>& recipient,
-                                        void* cookie = nullptr,
+                                        void* cookie = NULL,
                                         uint32_t flags = 0,
-                                        wp<DeathRecipient>* outRecipient = nullptr);
+                                        wp<DeathRecipient>* outRecipient = NULL);
 
     virtual void        attachObject(   const void* objectID,
                                         void* object,
                                         void* cleanupCookie,
-                                        object_cleanup_func func) final;
-    virtual void*       findObject(const void* objectID) const final;
-    virtual void        detachObject(const void* objectID) final;
+                                        object_cleanup_func func);
+    virtual void*       findObject(const void* objectID) const;
+    virtual void        detachObject(const void* objectID);
 
     virtual BBinder*    localBinder();
-
-    bool                isRequestingSid();
-    // This must be called before the object is sent to another process. Not thread safe.
-    void                setRequestingSid(bool requestSid);
-
-    sp<IBinder>         getExtension();
-    // This must be called before the object is sent to another process. Not thread safe.
-    void                setExtension(const sp<IBinder>& extension);
-
-    pid_t               getDebugPid();
 
 protected:
     virtual             ~BBinder();
 
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
@@ -84,8 +70,6 @@ private:
             BBinder&    operator=(const BBinder& o);
 
     class Extras;
-
-    Extras*             getOrCreateExtras();
 
     std::atomic<Extras*> mExtras;
             void*       mReserved0;
@@ -114,7 +98,7 @@ private:
     std::atomic<int32_t>    mState;
 };
 
-} // namespace android
+}; // namespace android
 
 // ---------------------------------------------------------------------------
 

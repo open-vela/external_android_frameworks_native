@@ -17,8 +17,6 @@
 #ifndef ANDROID_PROCESS_INFO_SERVICE_H
 #define ANDROID_PROCESS_INFO_SERVICE_H
 
-#ifndef __ANDROID_VNDK__
-
 #include <binder/IProcessInfoService.h>
 #include <utils/Errors.h>
 #include <utils/Singleton.h>
@@ -78,11 +76,7 @@ public:
 
 // ----------------------------------------------------------------------
 
-} // namespace android
-
-#else // __ANDROID_VNDK__
-#error "This header is not visible to vendors"
-#endif // __ANDROID_VNDK__
+}; // namespace android
 
 #endif // ANDROID_PROCESS_INFO_SERVICE_H
 

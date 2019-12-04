@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,26 +14,6 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_MAP_H
-#define ANDROID_MAP_H
-
-#include <map>
-#include <string>
-
-// ---------------------------------------------------------------------------
-namespace android {
-namespace binder {
-
-class Value;
-
-/**
- * Convenience typedef for ::std::map<::std::string,::android::binder::Value>
- */
-typedef ::std::map<::std::string, Value> Map;
-
-} // namespace binder
-} // namespace android
-
-// ---------------------------------------------------------------------------
-
-#endif // ANDROID_MAP_H
+interface IBinderVendorDoubleLoadTest {
+    @utf8InCpp String RepeatString(@utf8InCpp String toRepeat);
+}

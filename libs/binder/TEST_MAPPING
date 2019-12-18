@@ -1,0 +1,25 @@
+{
+  "presubmit": [
+    {
+      "name": "binderSafeInterfaceTest"
+    },
+    {
+      "name": "binderVendorDoubleLoadTest"
+    },
+    {
+      "name": "binderDriverInterfaceTest"
+    },
+    {
+      "name": "binderTextOutputTest"
+    },
+    {
+      "name": "binderLibTest"
+    },
+    {
+      "name": "binderStabilityTest"
+    },
+    {
+      "name": "CtsNdkBinderTestCases"
+    }
+  ]
+}

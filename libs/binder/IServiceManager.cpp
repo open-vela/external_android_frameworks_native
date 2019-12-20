@@ -271,8 +271,6 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
             std::unique_lock<std::mutex> lock(mMutex);
             mBinder = binder;
             lock.unlock();
-            // Flushing here helps ensure the service's ref count remains accurate
-            IPCThreadState::self()->flushCommands();
             mCv.notify_one();
             return Status::ok();
         }

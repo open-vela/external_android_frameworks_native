@@ -16,7 +16,6 @@
 
 package android.os;
 
-import android.os.IClientCallback;
 import android.os.IServiceCallback;
 
 /**
@@ -97,15 +96,4 @@ interface IServiceManager {
      * manifest.
      */
     boolean isDeclared(@utf8InCpp String name);
-
-    /**
-     * Request a callback when the number of clients of the service changes.
-     * Used by LazyServiceRegistrar to dynamically stop services that have no clients.
-     */
-    void registerClientCallback(@utf8InCpp String name, IBinder service, IClientCallback callback);
-
-    /**
-     * Attempt to unregister and remove a service. Will fail if the service is still in use.
-     */
-    void tryUnregisterService(@utf8InCpp String name, IBinder service);
 }

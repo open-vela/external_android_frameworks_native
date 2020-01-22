@@ -26,22 +26,12 @@ namespace android {
 
 // ----------------------------------------------------------------------
 
-/**
- * Service manager for C++ services.
- *
- * IInterface is only for legacy ABI compatibility
- */
 class IServiceManager : public IInterface
 {
 public:
-    // for ABI compatibility
-    virtual const String16& getInterfaceDescriptor() const;
-
-    IServiceManager();
-    virtual ~IServiceManager();
-
+    DECLARE_META_INTERFACE(ServiceManager)
     /**
-     * Must match values in IServiceManager.aidl
+     * Must match values in IServiceManager.java
      */
     /* Allows services to dump sections according to priorities. */
     static const int DUMP_FLAG_PRIORITY_CRITICAL = 1 << 0;
@@ -82,57 +72,15 @@ public:
     // NOLINTNEXTLINE(google-default-arguments)
     virtual Vector<String16> listServices(int dumpsysFlags = DUMP_FLAG_PRIORITY_ALL) = 0;
 
-    /**
-     * Efficiently wait for a service.
-     *
-     * Returns nullptr only for permission problem or fatal error.
-     */
-    virtual sp<IBinder> waitForService(const String16& name) = 0;
-
-    /**
-     * Check if a service is declared (e.g. VINTF manifest).
-     *
-     * If this returns true, waitForService should always be able to return the
-     * service.
-     */
-    virtual bool isDeclared(const String16& name) = 0;
+    enum {
+        GET_SERVICE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
+        CHECK_SERVICE_TRANSACTION,
+        ADD_SERVICE_TRANSACTION,
+        LIST_SERVICES_TRANSACTION,
+    };
 };
 
 sp<IServiceManager> defaultServiceManager();
-
-template<typename INTERFACE>
-sp<INTERFACE> waitForService(const String16& name) {
-    const sp<IServiceManager> sm = defaultServiceManager();
-    return interface_cast<INTERFACE>(sm->waitForService(name));
-}
-
-template<typename INTERFACE>
-sp<INTERFACE> waitForDeclaredService(const String16& name) {
-    const sp<IServiceManager> sm = defaultServiceManager();
-    if (!sm->isDeclared(name)) return nullptr;
-    return interface_cast<INTERFACE>(sm->waitForService(name));
-}
-
-template <typename INTERFACE>
-sp<INTERFACE> checkDeclaredService(const String16& name) {
-    const sp<IServiceManager> sm = defaultServiceManager();
-    if (!sm->isDeclared(name)) return nullptr;
-    return interface_cast<INTERFACE>(sm->checkService(name));
-}
-
-template<typename INTERFACE>
-sp<INTERFACE> waitForVintfService(
-        const String16& instance = String16("default")) {
-    return waitForDeclaredService<INTERFACE>(
-        INTERFACE::descriptor + String16("/") + instance);
-}
-
-template<typename INTERFACE>
-sp<INTERFACE> checkVintfService(
-        const String16& instance = String16("default")) {
-    return checkDeclaredService<INTERFACE>(
-        INTERFACE::descriptor + String16("/") + instance);
-}
 
 template<typename INTERFACE>
 status_t getService(const String16& name, sp<INTERFACE>* outService)
@@ -150,7 +98,7 @@ bool checkCallingPermission(const String16& permission,
                             int32_t* outPid, int32_t* outUid);
 bool checkPermission(const String16& permission, pid_t pid, uid_t uid);
 
-} // namespace android
+}; // namespace android
 
 #endif // ANDROID_ISERVICE_MANAGER_H
 

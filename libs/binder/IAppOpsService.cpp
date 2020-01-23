@@ -48,17 +48,12 @@ public:
         return reply.readInt32();
     }
 
-    virtual int32_t noteOperation(int32_t code, int32_t uid, const String16& packageName,
-                const std::optional<String16>& featureId, bool shouldCollectAsyncNotedOp,
-                const String16& message) {
+    virtual int32_t noteOperation(int32_t code, int32_t uid, const String16& packageName) {
         Parcel data, reply;
         data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
         data.writeInt32(code);
         data.writeInt32(uid);
         data.writeString16(packageName);
-        data.writeString16(featureId);
-        data.writeInt32(shouldCollectAsyncNotedOp ? 1 : 0);
-        data.writeString16(message);
         remote()->transact(NOTE_OPERATION_TRANSACTION, data, &reply);
         // fail on exception
         if (reply.readExceptionCode() != 0) return MODE_ERRORED;
@@ -66,18 +61,14 @@ public:
     }
 
     virtual int32_t startOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-                const String16& packageName, const std::optional<String16>& featureId,
-                bool startIfModeDefault, bool shouldCollectAsyncNotedOp, const String16& message) {
+                const String16& packageName, bool startIfModeDefault) {
         Parcel data, reply;
         data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
         data.writeStrongBinder(token);
         data.writeInt32(code);
         data.writeInt32(uid);
         data.writeString16(packageName);
-        data.writeString16(featureId);
         data.writeInt32(startIfModeDefault ? 1 : 0);
-        data.writeInt32(shouldCollectAsyncNotedOp ? 1 : 0);
-        data.writeString16(message);
         remote()->transact(START_OPERATION_TRANSACTION, data, &reply);
         // fail on exception
         if (reply.readExceptionCode() != 0) return MODE_ERRORED;
@@ -85,14 +76,13 @@ public:
     }
 
     virtual void finishOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-            const String16& packageName, const std::optional<String16>& featureId) {
+            const String16& packageName) {
         Parcel data, reply;
         data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
         data.writeStrongBinder(token);
         data.writeInt32(code);
         data.writeInt32(uid);
         data.writeString16(packageName);
-        data.writeString16(featureId);
         remote()->transact(FINISH_OPERATION_TRANSACTION, data, &reply);
     }
 
@@ -112,6 +102,17 @@ public:
         data.writeStrongBinder(IInterface::asBinder(callback));
         remote()->transact(STOP_WATCHING_MODE_TRANSACTION, data, &reply);
     }
+
+    virtual sp<IBinder> getToken(const sp<IBinder>& clientToken) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
+        data.writeStrongBinder(clientToken);
+        remote()->transact(GET_TOKEN_TRANSACTION, data, &reply);
+        // fail on exception
+        if (reply.readExceptionCode() != 0) return nullptr;
+        return reply.readStrongBinder();
+    }
+
 
     virtual int32_t permissionToOpCode(const String16& permission) {
         Parcel data, reply;
@@ -137,25 +138,6 @@ public:
             return MODE_ERRORED;
         }
         return reply.readInt32();
-    }
-
-    virtual void setCameraAudioRestriction(int32_t mode) {
-        Parcel data, reply;
-        data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
-        data.writeInt32(mode);
-        remote()->transact(SET_CAMERA_AUDIO_RESTRICTION_TRANSACTION, data, &reply);
-    }
-
-    virtual bool shouldCollectNotes(int32_t opCode) {
-        Parcel data, reply;
-        data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
-        data.writeInt32(opCode);
-        remote()->transact(SHOULD_COLLECT_NOTES_TRANSACTION, data, &reply);
-        // fail on exception
-        if (reply.readExceptionCode() != 0) {
-            return false;
-        }
-        return reply.readBool();
     }
 };
 
@@ -184,12 +166,7 @@ status_t BnAppOpsService::onTransact(
             int32_t code = data.readInt32();
             int32_t uid = data.readInt32();
             String16 packageName = data.readString16();
-            std::optional<String16> featureId;
-            data.readString16(&featureId);
-            bool shouldCollectAsyncNotedOp = data.readInt32() == 1;
-            String16 message = data.readString16();
-            int32_t res = noteOperation(code, uid, packageName, featureId,
-                    shouldCollectAsyncNotedOp, message);
+            int32_t res = noteOperation(code, uid, packageName);
             reply->writeNoException();
             reply->writeInt32(res);
             return NO_ERROR;
@@ -200,13 +177,8 @@ status_t BnAppOpsService::onTransact(
             int32_t code = data.readInt32();
             int32_t uid = data.readInt32();
             String16 packageName = data.readString16();
-            std::optional<String16> featureId;
-            data.readString16(&featureId);
             bool startIfModeDefault = data.readInt32() == 1;
-            bool shouldCollectAsyncNotedOp = data.readInt32() == 1;
-            String16 message = data.readString16();
-            int32_t res = startOperation(token, code, uid, packageName, featureId,
-                    startIfModeDefault, shouldCollectAsyncNotedOp, message);
+            int32_t res = startOperation(token, code, uid, packageName, startIfModeDefault);
             reply->writeNoException();
             reply->writeInt32(res);
             return NO_ERROR;
@@ -217,9 +189,7 @@ status_t BnAppOpsService::onTransact(
             int32_t code = data.readInt32();
             int32_t uid = data.readInt32();
             String16 packageName = data.readString16();
-            std::optional<String16> featureId;
-            data.readString16(&featureId);
-            finishOperation(token, code, uid, packageName, featureId);
+            finishOperation(token, code, uid, packageName);
             reply->writeNoException();
             return NO_ERROR;
         } break;
@@ -239,6 +209,14 @@ status_t BnAppOpsService::onTransact(
             reply->writeNoException();
             return NO_ERROR;
         } break;
+        case GET_TOKEN_TRANSACTION: {
+            CHECK_INTERFACE(IAppOpsService, data, reply);
+            sp<IBinder> clientToken = data.readStrongBinder();
+            sp<IBinder> token = getToken(clientToken);
+            reply->writeNoException();
+            reply->writeStrongBinder(token);
+            return NO_ERROR;
+        } break;
         case PERMISSION_TO_OP_CODE_TRANSACTION: {
             CHECK_INTERFACE(IAppOpsService, data, reply);
             String16 permission = data.readString16();
@@ -256,21 +234,6 @@ status_t BnAppOpsService::onTransact(
             const int32_t res = checkAudioOperation(code, usage, uid, packageName);
             reply->writeNoException();
             reply->writeInt32(res);
-            return NO_ERROR;
-        } break;
-        case SET_CAMERA_AUDIO_RESTRICTION_TRANSACTION: {
-            CHECK_INTERFACE(IAppOpsService, data, reply);
-            const int32_t mode = data.readInt32();
-            setCameraAudioRestriction(mode);
-            reply->writeNoException();
-            return NO_ERROR;
-        } break;
-        case SHOULD_COLLECT_NOTES_TRANSACTION: {
-            CHECK_INTERFACE(IAppOpsService, data, reply);
-            int32_t opCode = data.readInt32();
-            bool shouldCollect = shouldCollectNotes(opCode);
-            reply->writeNoException();
-            reply->writeBool(shouldCollect);
             return NO_ERROR;
         } break;
         default:

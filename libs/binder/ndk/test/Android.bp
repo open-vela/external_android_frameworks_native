@@ -79,7 +79,7 @@ cc_test {
         "libbinder_ndk",
         "libutils",
     ],
-    test_suites: ["general-tests"],
+    test_suites: ["device-tests"],
 }
 
 aidl_interface {

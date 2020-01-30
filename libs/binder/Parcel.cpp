@@ -422,8 +422,10 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
         const sp<ProcessState> proc(ProcessState::self());
         // grow objects
         if (mObjectsCapacity < mObjectsSize + numObjects) {
+            if ((size_t) numObjects > SIZE_MAX - mObjectsSize) return NO_MEMORY; // overflow
+            if (mObjectsSize + numObjects > SIZE_MAX / 3) return NO_MEMORY; // overflow
             size_t newSize = ((mObjectsSize + numObjects)*3)/2;
-            if (newSize*sizeof(binder_size_t) < mObjectsSize) return NO_MEMORY;   // overflow
+            if (newSize > SIZE_MAX / sizeof(binder_size_t)) return NO_MEMORY; // overflow
             binder_size_t *objects =
                 (binder_size_t*)realloc(mObjects, newSize*sizeof(binder_size_t));
             if (objects == (binder_size_t*)nullptr) {
@@ -1276,8 +1278,10 @@ restart_write:
         if (err != NO_ERROR) return err;
     }
     if (!enoughObjects) {
+        if (mObjectsSize > SIZE_MAX - 2) return NO_MEMORY; // overflow
+        if ((mObjectsSize + 2) > SIZE_MAX / 3) return NO_MEMORY; // overflow
         size_t newSize = ((mObjectsSize+2)*3)/2;
-        if (newSize*sizeof(binder_size_t) < mObjectsSize) return NO_MEMORY;   // overflow
+        if (newSize > SIZE_MAX / sizeof(binder_size_t)) return NO_MEMORY; // overflow
         binder_size_t* objects = (binder_size_t*)realloc(mObjects, newSize*sizeof(binder_size_t));
         if (objects == nullptr) return NO_MEMORY;
         mObjects = objects;
@@ -2283,6 +2287,22 @@ void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
             mObjectsSize = 0;
             break;
         }
+        const flat_binder_object* flat
+            = reinterpret_cast<const flat_binder_object*>(mData + offset);
+        uint32_t type = flat->hdr.type;
+        if (!(type == BINDER_TYPE_BINDER || type == BINDER_TYPE_HANDLE ||
+              type == BINDER_TYPE_FD)) {
+            // We should never receive other types (eg BINDER_TYPE_FDA) as long as we don't support
+            // them in libbinder. If we do receive them, it probably means a kernel bug; try to
+            // recover gracefully by clearing out the objects, and releasing the objects we do
+            // know about.
+            android_errorWriteLog(0x534e4554, "135930648");
+            ALOGE("%s: unsupported type object (%" PRIu32 ") at offset %" PRIu64 "\n",
+                  __func__, type, (uint64_t)offset);
+            releaseObjects();
+            mObjectsSize = 0;
+            break;
+        }
         minOffset = offset + sizeof(flat_binder_object);
     }
     scanForFds();
@@ -2389,6 +2409,8 @@ status_t Parcel::growData(size_t len)
         return BAD_VALUE;
     }
 
+    if (len > SIZE_MAX - mDataSize) return NO_MEMORY; // overflow
+    if (mDataSize + len > SIZE_MAX / 3) return NO_MEMORY; // overflow
     size_t newSize = ((mDataSize+len)*3)/2;
     return (newSize <= mDataSize)
             ? (status_t) NO_MEMORY
@@ -2543,11 +2565,13 @@ status_t Parcel::continueWrite(size_t desired)
             if (objectsSize == 0) {
                 free(mObjects);
                 mObjects = nullptr;
+                mObjectsCapacity = 0;
             } else {
                 binder_size_t* objects =
                     (binder_size_t*)realloc(mObjects, objectsSize*sizeof(binder_size_t));
                 if (objects) {
                     mObjects = objects;
+                    mObjectsCapacity = objectsSize;
                 }
             }
             mObjectsSize = objectsSize;

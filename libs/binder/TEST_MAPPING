@@ -26,9 +26,6 @@
     },
     {
       "name": "aidl_lazy_test"
-    },
-    {
-      "name": "libbinderthreadstateutils_test"
     }
   ]
 }

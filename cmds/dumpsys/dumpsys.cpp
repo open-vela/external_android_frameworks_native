@@ -29,7 +29,6 @@
 #include <utils/Log.h>
 #include <utils/Vector.h>
 
-#include <iostream>
 #include <fcntl.h>
 #include <getopt.h>
 #include <stdio.h>
@@ -232,14 +231,14 @@ int Dumpsys::main(int argc, char* const argv[]) {
     const size_t N = services.size();
     if (N > 1) {
         // first print a list of the current services
-        std::cout << "Currently running services:" << std::endl;
+        aout << "Currently running services:" << endl;
 
         for (size_t i=0; i<N; i++) {
             sp<IBinder> service = sm_->checkService(services[i]);
 
             if (service != nullptr) {
                 bool skipped = IsSkipped(skippedServices, services[i]);
-                std::cout << "  " << services[i] << (skipped ? " (skipped)" : "") << std::endl;
+                aout << "  " << services[i] << (skipped ? " (skipped)" : "") << endl;
             }
         }
     }
@@ -264,10 +263,10 @@ int Dumpsys::main(int argc, char* const argv[]) {
                           asProto, elapsedDuration, bytesWritten);
 
             if (status == TIMED_OUT) {
-                std::cout << std::endl
+                aout << endl
                      << "*** SERVICE '" << serviceName << "' DUMP TIMEOUT (" << timeoutArgMs
-                     << "ms) EXPIRED ***" << std::endl
-                     << std::endl;
+                     << "ms) EXPIRED ***" << endl
+                     << endl;
             }
 
             if (addSeparator) {
@@ -333,14 +332,14 @@ status_t Dumpsys::startDumpThread(Type type, const String16& serviceName,
                                   const Vector<String16>& args) {
     sp<IBinder> service = sm_->checkService(serviceName);
     if (service == nullptr) {
-        std::cerr << "Can't find service: " << serviceName << std::endl;
+        aerr << "Can't find service: " << serviceName << endl;
         return NAME_NOT_FOUND;
     }
 
     int sfd[2];
     if (pipe(sfd) != 0) {
-        std::cerr << "Failed to create pipe to dump service info for " << serviceName << ": "
-             << strerror(errno) << std::endl;
+        aerr << "Failed to create pipe to dump service info for " << serviceName << ": "
+             << strerror(errno) << endl;
         return -errno;
     }
 
@@ -360,13 +359,13 @@ status_t Dumpsys::startDumpThread(Type type, const String16& serviceName,
             err = dumpPidToFd(service, remote_end);
             break;
         default:
-            std::cerr << "Unknown dump type" << static_cast<int>(type) << std::endl;
+            aerr << "Unknown dump type" << static_cast<int>(type) << endl;
             return;
         }
 
         if (err != OK) {
-            std::cerr << "Error dumping service info status_t: " << statusToString(err) << " "
-                 << serviceName << std::endl;
+            aerr << "Error dumping service info status_t: " << statusToString(err) << " "
+                 << serviceName << endl;
         }
     });
     return OK;
@@ -423,8 +422,8 @@ status_t Dumpsys::writeDump(int fd, const String16& serviceName, std::chrono::mi
 
         int rc = TEMP_FAILURE_RETRY(poll(&pfd, 1, time_left_ms()));
         if (rc < 0) {
-            std::cerr << "Error in poll while dumping service " << serviceName << " : "
-                 << strerror(errno) << std::endl;
+            aerr << "Error in poll while dumping service " << serviceName << " : "
+                 << strerror(errno) << endl;
             status = -errno;
             break;
         } else if (rc == 0) {
@@ -435,8 +434,8 @@ status_t Dumpsys::writeDump(int fd, const String16& serviceName, std::chrono::mi
         char buf[4096];
         rc = TEMP_FAILURE_RETRY(read(redirectFd_.get(), buf, sizeof(buf)));
         if (rc < 0) {
-            std::cerr << "Failed to read while dumping service " << serviceName << ": "
-                 << strerror(errno) << std::endl;
+            aerr << "Failed to read while dumping service " << serviceName << ": "
+                 << strerror(errno) << endl;
             status = -errno;
             break;
         } else if (rc == 0) {
@@ -445,8 +444,8 @@ status_t Dumpsys::writeDump(int fd, const String16& serviceName, std::chrono::mi
         }
 
         if (!WriteFully(fd, buf, rc)) {
-            std::cerr << "Failed to write while dumping service " << serviceName << ": "
-                 << strerror(errno) << std::endl;
+            aerr << "Failed to write while dumping service " << serviceName << ": "
+                 << strerror(errno) << endl;
             status = -errno;
             break;
         }

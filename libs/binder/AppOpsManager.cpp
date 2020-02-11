@@ -21,6 +21,13 @@
 
 #include <utils/SystemClock.h>
 
+#include <sys/types.h>
+
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
+#define LOG_TAG "AppOpsManager"
+
 namespace android {
 
 namespace {
@@ -37,17 +44,23 @@ const int APP_OPS_MANAGER_UNAVAILABLE_MODE = AppOpsManager::MODE_IGNORED;
 }  // namespace
 
 static String16 _appops("appops");
-static pthread_mutex_t gTokenMutex = PTHREAD_MUTEX_INITIALIZER;
-static sp<IBinder> gToken;
+static pthread_mutex_t gClientIdMutex = PTHREAD_MUTEX_INITIALIZER;
+static sp<IBinder> gClientId;
 
-static const sp<IBinder>& getToken(const sp<IAppOpsService>& service) {
-    pthread_mutex_lock(&gTokenMutex);
-    if (gToken == nullptr || gToken->pingBinder() != NO_ERROR) {
-        gToken = service->getToken(new BBinder());
+static const sp<IBinder>& getClientId() {
+    pthread_mutex_lock(&gClientIdMutex);
+    if (gClientId == nullptr) {
+        gClientId = new BBinder();
     }
-    pthread_mutex_unlock(&gTokenMutex);
-    return gToken;
+    pthread_mutex_unlock(&gClientIdMutex);
+    return gClientId;
 }
+
+thread_local uint64_t notedAppOpsInThisBinderTransaction[2];
+thread_local int32_t uidOfThisBinderTransaction = -1;
+
+// Whether an appop should be collected: 0 == not initialized, 1 == don't note, 2 == note
+uint8_t appOpsToNote[AppOpsManager::_NUM_OP] = {0};
 
 AppOpsManager::AppOpsManager()
 {
@@ -102,24 +115,48 @@ int32_t AppOpsManager::checkAudioOpNoThrow(int32_t op, int32_t usage, int32_t ui
 }
 
 int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPackage) {
+    return noteOp(op, uid, callingPackage, std::unique_ptr<String16>(),
+            String16("Legacy AppOpsManager.noteOp call"));
+}
+
+int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPackage,
+        const std::unique_ptr<String16>& featureId, const String16& message) {
     sp<IAppOpsService> service = getService();
-    return service != nullptr
-            ? service->noteOperation(op, uid, callingPackage)
+    int32_t mode = service != nullptr
+            ? service->noteOperation(op, uid, callingPackage, featureId, shouldCollectNotes(op),
+                    message)
             : APP_OPS_MANAGER_UNAVAILABLE_MODE;
+
+    return mode;
 }
 
 int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
         bool startIfModeDefault) {
+    return startOpNoThrow(op, uid, callingPackage, startIfModeDefault, std::unique_ptr<String16>(),
+            String16("Legacy AppOpsManager.startOpNoThrow call"));
+}
+
+int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
+        bool startIfModeDefault, const std::unique_ptr<String16>& featureId,
+        const String16& message) {
     sp<IAppOpsService> service = getService();
-    return service != nullptr
-            ? service->startOperation(getToken(service), op, uid, callingPackage,
-                    startIfModeDefault) : APP_OPS_MANAGER_UNAVAILABLE_MODE;
+    int32_t mode = service != nullptr
+            ? service->startOperation(getClientId(), op, uid, callingPackage,
+                    featureId, startIfModeDefault, shouldCollectNotes(op), message)
+            : APP_OPS_MANAGER_UNAVAILABLE_MODE;
+
+    return mode;
 }
 
 void AppOpsManager::finishOp(int32_t op, int32_t uid, const String16& callingPackage) {
+    finishOp(op, uid, callingPackage, std::unique_ptr<String16>());
+}
+
+void AppOpsManager::finishOp(int32_t op, int32_t uid, const String16& callingPackage,
+        const std::unique_ptr<String16>& callingFeatureId) {
     sp<IAppOpsService> service = getService();
     if (service != nullptr) {
-        service->finishOperation(getToken(service), op, uid, callingPackage);
+        service->finishOperation(getClientId(), op, uid, callingPackage, callingFeatureId);
     }
 }
 
@@ -146,5 +183,24 @@ int32_t AppOpsManager::permissionToOpCode(const String16& permission) {
     return -1;
 }
 
+void AppOpsManager::setCameraAudioRestriction(int32_t mode) {
+    sp<IAppOpsService> service = getService();
+    if (service != nullptr) {
+        service->setCameraAudioRestriction(mode);
+    }
+}
+
+// check it the appops needs to be collected and cache result
+bool AppOpsManager::shouldCollectNotes(int32_t opcode) {
+    if (appOpsToNote[opcode] == 0) {
+        if (getService()->shouldCollectNotes(opcode)) {
+            appOpsToNote[opcode] = 2;
+        } else {
+            appOpsToNote[opcode] = 1;
+        }
+    }
+
+    return appOpsToNote[opcode] == 2;
+}
 
 } // namespace android

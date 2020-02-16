@@ -114,8 +114,3 @@ LIBBINDER_NDK30 { # introduced=30
   local:
     *;
 };
-
-LIBBINDER_NDK_PLATFORM {
-  global:
-    AParcel_getAllowFds;
-};

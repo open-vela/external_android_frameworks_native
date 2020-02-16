@@ -15,7 +15,6 @@
  */
 
 #include <android/binder_parcel.h>
-#include <android/binder_parcel_platform.h>
 #include "parcel_internal.h"
 
 #include "ibinder_internal.h"
@@ -644,10 +643,6 @@ binder_status_t AParcel_readCharArray(const AParcel* parcel, void* arrayData,
 binder_status_t AParcel_readByteArray(const AParcel* parcel, void* arrayData,
                                       AParcel_byteArrayAllocator allocator) {
     return ReadArray<int8_t>(parcel, arrayData, allocator);
-}
-
-bool AParcel_getAllowFds(const AParcel* parcel) {
-    return parcel->get()->allowFds();
 }
 
 // @END

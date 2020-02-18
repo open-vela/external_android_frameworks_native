@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,5 +14,19 @@
  * limitations under the License.
  */
 
-template <typename P>
-using ParcelRead = std::function<void(const P& p, uint8_t data)>;
+#pragma once
+
+#include <android/binder_parcel.h>
+
+__BEGIN_DECLS
+
+/**
+ * Gets whether or not FDs are allowed by this AParcel
+ *
+ * \return true if FDs are allowed, false if they are not. That is
+ * if this returns false then AParcel_writeParcelFileDescriptor will
+ * return STATUS_FDS_NOT_ALLOWED.
+ */
+bool AParcel_getAllowFds(const AParcel*);
+
+__END_DECLS

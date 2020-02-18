@@ -64,9 +64,13 @@ private:
     int mFD;
 };
 
-TextOutput& alog(*new LogTextOutput());
-TextOutput& aout(*new FdTextOutput(STDOUT_FILENO));
-TextOutput& aerr(*new FdTextOutput(STDERR_FILENO));
+static LogTextOutput gLogTextOutput;
+static FdTextOutput gStdoutTextOutput(STDOUT_FILENO);
+static FdTextOutput gStderrTextOutput(STDERR_FILENO);
+
+TextOutput& alog(gLogTextOutput);
+TextOutput& aout(gStdoutTextOutput);
+TextOutput& aerr(gStderrTextOutput);
 
 // ------------ ProcessState.cpp
 

@@ -64,7 +64,8 @@ private:
 
 bool ClientCounterCallback::registerService(const sp<IBinder>& service, const std::string& name,
                                             bool allowIsolated, int dumpFlags) {
-    auto manager = interface_cast<AidlServiceManager>(asBinder(defaultServiceManager()));
+    auto manager = interface_cast<AidlServiceManager>(
+                    ProcessState::self()->getContextObject(nullptr));
 
     bool reRegister = mRegisteredServices.count(name) > 0;
     std::string regStr = (reRegister) ? "Re-registering" : "Registering";
@@ -113,7 +114,9 @@ Status ClientCounterCallback::onClients(const sp<IBinder>& service, bool clients
 void ClientCounterCallback::tryShutdown() {
     ALOGI("Trying to shut down the service. No clients in use for any service in process.");
 
-    auto manager = interface_cast<AidlServiceManager>(asBinder(defaultServiceManager()));
+    // This makes the same assumption as IServiceManager.cpp. Could dedupe if used in more places.
+    auto manager = interface_cast<AidlServiceManager>(
+            ProcessState::self()->getContextObject(nullptr));
 
     auto unRegisterIt = mRegisteredServices.begin();
     for (; unRegisterIt != mRegisteredServices.end(); ++unRegisterIt) {

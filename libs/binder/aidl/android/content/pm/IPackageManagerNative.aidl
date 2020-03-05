@@ -87,7 +87,4 @@ interface IPackageManagerNative {
      * package.
      */
     @utf8InCpp String getModuleMetadataPackageName();
-
-    /* Returns the names of all packages. */
-    @utf8InCpp String[] getAllPackages();
 }

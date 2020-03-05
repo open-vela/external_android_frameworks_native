@@ -27,10 +27,6 @@
 // ---------------------------------------------------------------------------
 namespace android {
 
-namespace internal {
-class Stability;
-};
-
 using binder_proxy_limit_callback = void(*)(int);
 
 class BpBinder : public IBinder
@@ -119,9 +115,6 @@ protected:
 
 private:
     const   int32_t             mHandle;
-
-    friend ::android::internal::Stability;
-            int32_t             mStability;
 
     struct Obituary {
         wp<DeathRecipient> recipient;

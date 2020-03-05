@@ -32,7 +32,6 @@ public:
     ParcelFileDescriptor();
     explicit ParcelFileDescriptor(android::base::unique_fd fd);
     ParcelFileDescriptor(ParcelFileDescriptor&& other) : mFd(std::move(other.mFd)) { }
-    ParcelFileDescriptor& operator=(ParcelFileDescriptor&& other) = default;
     ~ParcelFileDescriptor() override;
 
     int get() const { return mFd.get(); }

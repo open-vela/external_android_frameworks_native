@@ -30,6 +30,19 @@
 
 namespace android {
 
+namespace {
+
+#if defined(__BRILLO__)
+// Because Brillo has no application model, security policy is managed
+// statically (at build time) with SELinux controls.
+// As a consequence, it also never runs the AppOpsManager service.
+const int APP_OPS_MANAGER_UNAVAILABLE_MODE = AppOpsManager::MODE_ALLOWED;
+#else
+const int APP_OPS_MANAGER_UNAVAILABLE_MODE = AppOpsManager::MODE_IGNORED;
+#endif  // defined(__BRILLO__)
+
+}  // namespace
+
 static const sp<IBinder>& getClientId() {
     static pthread_mutex_t gClientIdMutex = PTHREAD_MUTEX_INITIALIZER;
     static sp<IBinder> gClientId;
@@ -52,6 +65,10 @@ AppOpsManager::AppOpsManager()
 {
 }
 
+#if defined(__BRILLO__)
+// There is no AppOpsService on Brillo
+sp<IAppOpsService> AppOpsManager::getService() { return NULL; }
+#else
 sp<IAppOpsService> AppOpsManager::getService()
 {
     static String16 _appops("appops");
@@ -79,13 +96,14 @@ sp<IAppOpsService> AppOpsManager::getService()
     }
     return service;
 }
+#endif  // defined(__BRILLO__)
 
 int32_t AppOpsManager::checkOp(int32_t op, int32_t uid, const String16& callingPackage)
 {
     sp<IAppOpsService> service = getService();
     return service != nullptr
             ? service->checkOperation(op, uid, callingPackage)
-            : AppOpsManager::MODE_IGNORED;
+            : APP_OPS_MANAGER_UNAVAILABLE_MODE;
 }
 
 int32_t AppOpsManager::checkAudioOpNoThrow(int32_t op, int32_t usage, int32_t uid,
@@ -93,7 +111,7 @@ int32_t AppOpsManager::checkAudioOpNoThrow(int32_t op, int32_t usage, int32_t ui
     sp<IAppOpsService> service = getService();
     return service != nullptr
            ? service->checkAudioOperation(op, usage, uid, callingPackage)
-           : AppOpsManager::MODE_IGNORED;
+           : APP_OPS_MANAGER_UNAVAILABLE_MODE;
 }
 
 int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPackage) {
@@ -107,7 +125,7 @@ int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPa
     int32_t mode = service != nullptr
             ? service->noteOperation(op, uid, callingPackage, featureId, shouldCollectNotes(op),
                     message)
-            : AppOpsManager::MODE_IGNORED;
+            : APP_OPS_MANAGER_UNAVAILABLE_MODE;
 
     return mode;
 }
@@ -125,7 +143,7 @@ int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& c
     int32_t mode = service != nullptr
             ? service->startOperation(getClientId(), op, uid, callingPackage,
                     featureId, startIfModeDefault, shouldCollectNotes(op), message)
-            : AppOpsManager::MODE_IGNORED;
+            : APP_OPS_MANAGER_UNAVAILABLE_MODE;
 
     return mode;
 }

@@ -230,7 +230,7 @@ int Dumpsys::main(int argc, char* const argv[]) {
     }
 
     const size_t N = services.size();
-    if (N > 1 || showListOnly) {
+    if (N > 1) {
         // first print a list of the current services
         std::cout << "Currently running services:" << std::endl;
 

@@ -57,14 +57,14 @@ public:
     virtual ~MemoryHeapBase();
 
     /* implement IMemoryHeap interface */
-    int         getHeapID() const override;
+    virtual int         getHeapID() const;
 
     /* virtual address of the heap. returns MAP_FAILED in case of error */
-    void*       getBase() const override;
+    virtual void*       getBase() const;
 
-    size_t      getSize() const override;
-    uint32_t    getFlags() const override;
-    off_t       getOffset() const override;
+    virtual size_t      getSize() const;
+    virtual uint32_t    getFlags() const;
+            off_t       getOffset() const override;
 
     const char*         getDevice() const;
 

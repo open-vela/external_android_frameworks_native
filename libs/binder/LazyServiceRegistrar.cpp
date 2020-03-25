@@ -31,15 +31,10 @@ using AidlServiceManager = android::os::IServiceManager;
 
 class ClientCounterCallback : public ::android::os::BnClientCallback {
 public:
-    ClientCounterCallback() : mNumConnectedServices(0), mForcePersist(false) {}
+    ClientCounterCallback() : mNumConnectedServices(0) {}
 
     bool registerService(const sp<IBinder>& service, const std::string& name,
                          bool allowIsolated, int dumpFlags);
-
-    /**
-     * Set a flag to prevent services from automatically shutting down
-     */
-    void forcePersist(bool persist);
 
 protected:
     Status onClients(const sp<IBinder>& service, bool clients) override;
@@ -65,8 +60,6 @@ private:
      * Map of registered names and services
      */
     std::map<std::string, Service> mRegisteredServices;
-
-    bool mForcePersist;
 };
 
 bool ClientCounterCallback::registerService(const sp<IBinder>& service, const std::string& name,
@@ -95,14 +88,6 @@ bool ClientCounterCallback::registerService(const sp<IBinder>& service, const st
     return true;
 }
 
-void ClientCounterCallback::forcePersist(bool persist) {
-    mForcePersist = persist;
-    if(!mForcePersist) {
-        // Attempt a shutdown in case the number of clients hit 0 while the flag was on
-        tryShutdown();
-    }
-}
-
 /**
  * onClients is oneway, so no need to worry about multi-threading. Note that this means multiple
  * invocations could occur on different threads however.
@@ -118,21 +103,14 @@ Status ClientCounterCallback::onClients(const sp<IBinder>& service, bool clients
           mNumConnectedServices, mRegisteredServices.size(),
           String8(service->getInterfaceDescriptor()).string(), clients);
 
-    tryShutdown();
+    if (mNumConnectedServices == 0) {
+        tryShutdown();
+    }
+
     return Status::ok();
 }
 
 void ClientCounterCallback::tryShutdown() {
-    if(mNumConnectedServices > 0) {
-        // Should only shut down if there are no clients
-        return;
-    }
-
-    if(mForcePersist) {
-        ALOGI("Shutdown prevented by forcePersist override flag.");
-        return;
-    }
-
     ALOGI("Trying to shut down the service. No clients in use for any service in process.");
 
     auto manager = interface_cast<AidlServiceManager>(asBinder(defaultServiceManager()));
@@ -185,10 +163,6 @@ status_t LazyServiceRegistrar::registerService(const sp<IBinder>& service, const
         return UNKNOWN_ERROR;
     }
     return OK;
-}
-
-void LazyServiceRegistrar::forcePersist(bool persist) {
-    mClientCC->forcePersist(persist);
 }
 
 }  // namespace hardware

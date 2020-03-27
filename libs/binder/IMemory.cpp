@@ -82,10 +82,10 @@ public:
     explicit BpMemoryHeap(const sp<IBinder>& impl);
     virtual ~BpMemoryHeap();
 
-    int getHeapID() const override;
-    void* getBase() const override;
-    size_t getSize() const override;
-    uint32_t getFlags() const override;
+    virtual int getHeapID() const;
+    virtual void* getBase() const;
+    virtual size_t getSize() const;
+    virtual uint32_t getFlags() const;
     off_t getOffset() const override;
 
 private:
@@ -150,10 +150,6 @@ void* IMemory::fastPointer(const sp<IBinder>& binder, ssize_t offset) const
 }
 
 void* IMemory::unsecurePointer() const {
-    return pointer();
-}
-
-void* IMemory::pointer() const {
     ssize_t offset;
     sp<IMemoryHeap> heap = getMemory(&offset);
     void* const base = heap!=nullptr ? heap->base() : MAP_FAILED;
@@ -161,6 +157,8 @@ void* IMemory::pointer() const {
         return nullptr;
     return static_cast<char*>(base) + offset;
 }
+
+void* IMemory::pointer() const { return unsecurePointer(); }
 
 size_t IMemory::size() const {
     size_t size;

@@ -158,9 +158,7 @@ cc_library {
 filegroup {
     name: "libbinder_aidl",
     srcs: [
-        "aidl/android/content/pm/IPackageChangeObserver.aidl",
         "aidl/android/content/pm/IPackageManagerNative.aidl",
-        "aidl/android/content/pm/PackageChangeEvent.aidl",
         "aidl/android/os/IClientCallback.aidl",
         "aidl/android/os/IServiceCallback.aidl",
         "aidl/android/os/IServiceManager.aidl",
@@ -170,7 +168,6 @@ filegroup {
 
 aidl_interface {
     name: "libbinder_aidl_test_stub",
-    unstable: true,
     local_include_dir: "aidl",
     srcs: [":libbinder_aidl"],
     vendor_available: true,

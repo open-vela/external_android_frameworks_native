@@ -137,7 +137,6 @@ cc_test {
 
 aidl_interface {
     name: "binderStabilityTestIface",
-    unstable: true,
     srcs: [
         "IBinderStabilityTest.aidl",
     ],

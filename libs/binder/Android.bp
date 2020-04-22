@@ -28,7 +28,6 @@ cc_library_headers {
         "libcutils_headers",
         "libutils_headers",
     ],
-    min_sdk_version: "29",
 }
 
 // These interfaces are android-specific implementation unrelated to binder
@@ -153,16 +152,13 @@ cc_library {
     sanitize: {
         misc_undefined: ["integer"],
     },
-    min_sdk_version: "29",
 }
 
 // AIDL interface between libbinder and framework.jar
 filegroup {
     name: "libbinder_aidl",
     srcs: [
-        "aidl/android/content/pm/IPackageChangeObserver.aidl",
         "aidl/android/content/pm/IPackageManagerNative.aidl",
-        "aidl/android/content/pm/PackageChangeEvent.aidl",
         "aidl/android/os/IClientCallback.aidl",
         "aidl/android/os/IServiceCallback.aidl",
         "aidl/android/os/IServiceManager.aidl",

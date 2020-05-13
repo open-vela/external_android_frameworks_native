@@ -15,7 +15,7 @@
  */
 #pragma once
 
-#include <memory>
+#include <optional>
 #include <utility>
 
 namespace android {
@@ -32,11 +32,11 @@ namespace aidl {
 //     c = std::move(a);
 
 template <typename T>
-using nullable = std::unique_ptr<T>;
+using nullable = std::optional<T>;
 
 template <typename T, typename... Args>
 inline nullable<T> make_nullable(Args&&... args) {
-    return std::make_unique<T>(std::forward<Args>(args)...);
+    return std::make_optional<T>(std::forward<Args>(args)...);
 }
 
 } // namespace aidl

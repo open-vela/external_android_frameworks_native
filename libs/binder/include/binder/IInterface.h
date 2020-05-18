@@ -20,8 +20,6 @@
 
 #include <binder/Binder.h>
 
-#include <assert.h>
-
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -157,11 +155,7 @@ public:                                                                 \
     std::unique_ptr<I##INTERFACE> I##INTERFACE::default_impl;           \
     bool I##INTERFACE::setDefaultImpl(std::unique_ptr<I##INTERFACE> impl)\
     {                                                                   \
-        /* Only one user of this interface can use this function     */ \
-        /* at a time. This is a heuristic to detect if two different */ \
-        /* users in the same process use this function.              */ \
-        assert(!I##INTERFACE::default_impl);                            \
-        if (impl) {                                                     \
+        if (!I##INTERFACE::default_impl && impl) {                      \
             I##INTERFACE::default_impl = std::move(impl);               \
             return true;                                                \
         }                                                               \

@@ -20,6 +20,8 @@
 
 #include <binder/Binder.h>
 
+#include <assert.h>
+
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -155,7 +157,11 @@ public:                                                                 \
     std::unique_ptr<I##INTERFACE> I##INTERFACE::default_impl;           \
     bool I##INTERFACE::setDefaultImpl(std::unique_ptr<I##INTERFACE> impl)\
     {                                                                   \
-        if (!I##INTERFACE::default_impl && impl) {                      \
+        /* Only one user of this interface can use this function     */ \
+        /* at a time. This is a heuristic to detect if two different */ \
+        /* users in the same process use this function.              */ \
+        assert(!I##INTERFACE::default_impl);                            \
+        if (impl) {                                                     \
             I##INTERFACE::default_impl = std::move(impl);               \
             return true;                                                \
         }                                                               \
@@ -253,6 +259,7 @@ constexpr const char* const kManualInterfaces[] = {
   "android.media.IDrmClient",
   "android.media.IEffect",
   "android.media.IEffectClient",
+  "android.media.IMediaAnalyticsService",
   "android.media.IMediaCodecList",
   "android.media.IMediaDrmService",
   "android.media.IMediaExtractor",
@@ -261,7 +268,6 @@ constexpr const char* const kManualInterfaces[] = {
   "android.media.IMediaHTTPService",
   "android.media.IMediaLogService",
   "android.media.IMediaMetadataRetriever",
-  "android.media.IMediaMetricsService",
   "android.media.IMediaPlayer",
   "android.media.IMediaPlayerClient",
   "android.media.IMediaPlayerService",

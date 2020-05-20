@@ -27,9 +27,7 @@ cc_test {
     defaults: ["binder_test_defaults"],
     srcs: ["binderDriverInterfaceTest.cpp"],
     compile_multilib: "32",
-    multilib: { lib32: { suffix: "" } },
     cflags: ["-DBINDER_IPC_32BIT=1"],
-    test_suites: ["vts"],
 }
 
 cc_test {
@@ -54,10 +52,7 @@ cc_test {
         "libutils",
     ],
     compile_multilib: "32",
-    multilib: { lib32: { suffix: "" } },
     cflags: ["-DBINDER_IPC_32BIT=1"],
-    test_suites: ["vts"],
-    require_root: true,
 }
 
 cc_test {
@@ -166,21 +161,6 @@ cc_test {
         "binderStabilityTestIface-ndk_platform",
     ],
 
-    test_suites: ["device-tests"],
-    require_root: true,
-}
-
-cc_test {
-    name: "binderAllocationLimits",
-    defaults: ["binder_test_defaults"],
-    srcs: ["binderAllocationLimits.cpp"],
-    shared_libs: [
-        "libbinder",
-        "liblog",
-        "libutils",
-        "libutilscallstack",
-        "libbase",
-    ],
     test_suites: ["device-tests"],
     require_root: true,
 }

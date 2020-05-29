@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,5 +14,18 @@
  * limitations under the License.
  */
 
-template <typename P>
-using ParcelRead = std::function<void(const P& p, uint8_t data)>;
+// This AIDL is to test things that can't be tested in CtsNdkBinderTestCases
+// because it requires libbinder_ndk implementation details or APIs not
+// available to apps. Please prefer adding tests to CtsNdkBinderTestCases
+// over here.
+
+import IEmpty;
+
+interface IBinderNdkUnitTest {
+    int repeatInt(int a);
+
+    void takeInterface(IEmpty test);
+    void forceFlushCommands();
+
+    boolean getsRequestedSid();
+}

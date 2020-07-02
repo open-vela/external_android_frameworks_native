@@ -15,7 +15,6 @@
  */
 
 #include <android/binder_ibinder.h>
-#include <android/binder_ibinder_platform.h>
 #include "ibinder_internal.h"
 
 #include <android/binder_stability.h>
@@ -100,14 +99,8 @@ bool AIBinder::associateClass(const AIBinder_Class* clazz) {
 
     String8 descriptor(getBinder()->getInterfaceDescriptor());
     if (descriptor != newDescriptor) {
-        if (getBinder()->isBinderAlive()) {
-            LOG(ERROR) << __func__ << ": Expecting binder to have class '" << newDescriptor.c_str()
-                       << "' but descriptor is actually '" << descriptor.c_str() << "'.";
-        } else {
-            // b/155793159
-            LOG(ERROR) << __func__ << ": Cannot associate class '" << newDescriptor.c_str()
-                       << "' to dead binder.";
-        }
+        LOG(ERROR) << __func__ << ": Expecting binder to have class '" << newDescriptor.c_str()
+                   << "' but descriptor is actually '" << descriptor.c_str() << "'.";
         return false;
     }
 
@@ -682,19 +675,4 @@ binder_status_t AIBinder_setExtension(AIBinder* binder, AIBinder* ext) {
 
     rawBinder->setExtension(ext->getBinder());
     return STATUS_OK;
-}
-
-// platform methods follow
-
-void AIBinder_setRequestingSid(AIBinder* binder, bool requestingSid) {
-    ABBinder* localBinder = binder->asABBinder();
-    if (localBinder == nullptr) {
-        LOG(FATAL) << "AIBinder_setRequestingSid must be called on a local binder";
-    }
-
-    localBinder->setRequestingSid(requestingSid);
-}
-
-const char* AIBinder_getCallingSid() {
-    return ::android::IPCThreadState::self()->getCallingSid();
 }

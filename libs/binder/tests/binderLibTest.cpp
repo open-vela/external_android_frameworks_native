@@ -32,6 +32,8 @@
 #include <sys/epoll.h>
 #include <sys/prctl.h>
 
+#include "binderAbiHelper.h"
+
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 
 using namespace android;
@@ -74,6 +76,7 @@ enum BinderLibTestTranscationCode {
     BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION,
     BINDER_LIB_TEST_GET_WORK_SOURCE_TRANSACTION,
     BINDER_LIB_TEST_ECHO_VECTOR,
+    BINDER_LIB_TEST_REJECT_BUF,
 };
 
 pid_t start_server_process(int arg2, bool usePoll = false)
@@ -1027,6 +1030,34 @@ TEST_F(BinderLibTest, VectorSent) {
     EXPECT_EQ(readValue, testValue);
 }
 
+TEST_F(BinderLibTest, BufRejected) {
+    Parcel data, reply;
+    uint32_t buf;
+    sp<IBinder> server = addServer();
+    ASSERT_TRUE(server != nullptr);
+
+    binder_buffer_object obj {
+        .hdr = { .type = BINDER_TYPE_PTR },
+        .flags = 0,
+        .buffer = reinterpret_cast<binder_uintptr_t>((void*)&buf),
+        .length = 4,
+    };
+    data.setDataCapacity(1024);
+    // Write a bogus object at offset 0 to get an entry in the offset table
+    data.writeFileDescriptor(0);
+    EXPECT_EQ(data.objectsCount(), 1);
+    uint8_t *parcelData = const_cast<uint8_t*>(data.data());
+    // And now, overwrite it with the buffer object
+    memcpy(parcelData, &obj, sizeof(obj));
+    data.setDataSize(sizeof(obj));
+
+    status_t ret = server->transact(BINDER_LIB_TEST_REJECT_BUF, data, &reply);
+    // Either the kernel should reject this transaction (if it's correct), but
+    // if it's not, the server implementation should return an error if it
+    // finds an object in the received Parcel.
+    EXPECT_NE(NO_ERROR, ret);
+}
+
 class BinderLibTestService : public BBinder
 {
     public:
@@ -1309,6 +1340,9 @@ class BinderLibTestService : public BBinder
                 reply->writeUint64Vector(vector);
                 return NO_ERROR;
             }
+            case BINDER_LIB_TEST_REJECT_BUF: {
+                return data.objectsCount() == 0 ? BAD_VALUE : NO_ERROR;
+            }
             default:
                 return UNKNOWN_TRANSACTION;
             };
@@ -1339,6 +1373,9 @@ int run_server(int index, int readypipefd, bool usePoll)
          * testing the extension mechanism.
          */
         testService->setExtension(new BBinder());
+
+        // Required for test "BufRejected'
+        testService->setRequestingSid(true);
 
         /*
          * We need this below, but can't hold a sp<> because it prevents the
@@ -1416,6 +1453,8 @@ int run_server(int index, int readypipefd, bool usePoll)
 }
 
 int main(int argc, char **argv) {
+    ExitIfWrongAbi();
+
     if (argc == 4 && !strcmp(argv[1], "--servername")) {
         binderservername = argv[2];
     } else {

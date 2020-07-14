@@ -19,7 +19,6 @@
 #include <aidl/BnEmpty.h>
 #include <android-base/logging.h>
 #include <android/binder_ibinder_jni.h>
-#include <android/binder_ibinder_platform.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
 #include <gtest/gtest.h>
@@ -35,7 +34,6 @@
 #include <sys/prctl.h>
 #include <chrono>
 #include <condition_variable>
-#include <iostream>
 #include <mutex>
 
 using namespace android;
@@ -54,12 +52,6 @@ class MyBinderNdkUnitTest : public aidl::BnBinderNdkUnitTest {
         android::IPCThreadState::self()->flushCommands();
         return ndk::ScopedAStatus::ok();
     }
-    ndk::ScopedAStatus getsRequestedSid(bool* out) {
-        const char* sid = AIBinder_getCallingSid();
-        std::cout << "Got security context: " << (sid ?: "null") << std::endl;
-        *out = sid != nullptr;
-        return ndk::ScopedAStatus::ok();
-    }
     binder_status_t handleShellCommand(int /*in*/, int out, int /*err*/, const char** args,
                                        uint32_t numArgs) override {
         for (uint32_t i = 0; i < numArgs; i++) {
@@ -74,11 +66,8 @@ int generatedService() {
     ABinderProcess_setThreadPoolMaxThreadCount(0);
 
     auto service = ndk::SharedRefBase::make<MyBinderNdkUnitTest>();
-    auto binder = service->asBinder();
-
-    AIBinder_setRequestingSid(binder.get(), true);
-
-    binder_status_t status = AServiceManager_addService(binder.get(), kBinderNdkUnitTestService);
+    binder_status_t status =
+            AServiceManager_addService(service->asBinder().get(), kBinderNdkUnitTestService);
 
     if (status != STATUS_OK) {
         LOG(FATAL) << "Could not register: " << status << " " << kBinderNdkUnitTestService;
@@ -283,16 +272,6 @@ TEST(NdkBinder, AddServiceMultipleTimes) {
     EXPECT_EQ(STATUS_OK, foo->addService(kInstanceName1));
     EXPECT_EQ(STATUS_OK, foo->addService(kInstanceName2));
     EXPECT_EQ(IFoo::getService(kInstanceName1), IFoo::getService(kInstanceName2));
-}
-
-TEST(NdkBinder, RequestedSidWorks) {
-    ndk::SpAIBinder binder(AServiceManager_getService(kBinderNdkUnitTestService));
-    std::shared_ptr<aidl::IBinderNdkUnitTest> service =
-            aidl::IBinderNdkUnitTest::fromBinder(binder);
-
-    bool gotSid = false;
-    EXPECT_TRUE(service->getsRequestedSid(&gotSid).isOk());
-    EXPECT_TRUE(gotSid);
 }
 
 TEST(NdkBinder, SentAidlBinderCanBeDestroyed) {

@@ -95,6 +95,8 @@ LIBBINDER_NDK { # introduced=29
     AServiceManager_addService; # apex llndk
     AServiceManager_checkService; # apex llndk
     AServiceManager_getService; # apex llndk
+  local:
+    *;
 };
 
 LIBBINDER_NDK30 { # introduced=30
@@ -109,21 +111,11 @@ LIBBINDER_NDK30 { # introduced=30
     AIBinder_markVendorStability; # llndk
     AIBinder_markVintfStability; # apex llndk
     AIBinder_Class_setHandleShellCommand; # apex llndk
-};
-
-LIBBINDER_NDK31 { # introduced=31
-  global:
-    AIBinder_getCallingSid; # apex
-    AIBinder_setRequestingSid; # apex
+  local:
+    *;
 };
 
 LIBBINDER_NDK_PLATFORM {
   global:
     AParcel_getAllowFds;
-    extern "C++" {
-        AIBinder_fromPlatformBinder*;
-        AIBinder_toPlatformBinder*;
-    };
-  local:
-    *;
 };

@@ -91,12 +91,12 @@ int32_t AppOpsManager::checkAudioOpNoThrow(int32_t op, int32_t usage, int32_t ui
 }
 
 int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPackage) {
-    return noteOp(op, uid, callingPackage, std::unique_ptr<String16>(),
+    return noteOp(op, uid, callingPackage, {},
             String16("Legacy AppOpsManager.noteOp call"));
 }
 
 int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPackage,
-        const std::unique_ptr<String16>& attributionTag, const String16& message) {
+        const std::optional<String16>& attributionTag, const String16& message) {
     sp<IAppOpsService> service = getService();
     int32_t mode = service != nullptr
             ? service->noteOperation(op, uid, callingPackage, attributionTag,
@@ -108,12 +108,12 @@ int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPa
 
 int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
         bool startIfModeDefault) {
-    return startOpNoThrow(op, uid, callingPackage, startIfModeDefault, std::unique_ptr<String16>(),
+    return startOpNoThrow(op, uid, callingPackage, startIfModeDefault, {},
             String16("Legacy AppOpsManager.startOpNoThrow call"));
 }
 
 int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
-        bool startIfModeDefault, const std::unique_ptr<String16>& attributionTag,
+        bool startIfModeDefault, const std::optional<String16>& attributionTag,
         const String16& message) {
     sp<IAppOpsService> service = getService();
     int32_t mode = service != nullptr
@@ -125,11 +125,11 @@ int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& c
 }
 
 void AppOpsManager::finishOp(int32_t op, int32_t uid, const String16& callingPackage) {
-    finishOp(op, uid, callingPackage, std::unique_ptr<String16>());
+    finishOp(op, uid, callingPackage, {});
 }
 
 void AppOpsManager::finishOp(int32_t op, int32_t uid, const String16& callingPackage,
-        const std::unique_ptr<String16>& attributionTag) {
+        const std::optional<String16>& attributionTag) {
     sp<IAppOpsService> service = getService();
     if (service != nullptr) {
         service->finishOperation(getClientId(), op, uid, callingPackage, attributionTag);

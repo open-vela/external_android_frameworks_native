@@ -82,10 +82,10 @@ public:
     explicit BpMemoryHeap(const sp<IBinder>& impl);
     virtual ~BpMemoryHeap();
 
-    int getHeapID() const override;
-    void* getBase() const override;
-    size_t getSize() const override;
-    uint32_t getFlags() const override;
+    virtual int getHeapID() const;
+    virtual void* getBase() const;
+    virtual size_t getSize() const;
+    virtual uint32_t getFlags() const;
     off_t getOffset() const override;
 
 private:

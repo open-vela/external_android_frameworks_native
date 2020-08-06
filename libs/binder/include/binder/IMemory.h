@@ -76,8 +76,6 @@ public:
     // NOLINTNEXTLINE(google-default-arguments)
     virtual sp<IMemoryHeap> getMemory(ssize_t* offset=nullptr, size_t* size=nullptr) const = 0;
 
-    void* unsecurePointer() const;
-
     // helpers
     void* fastPointer(const sp<IBinder>& heap, ssize_t offset) const;
     void* pointer() const;
@@ -102,6 +100,6 @@ protected:
 
 // ----------------------------------------------------------------------------
 
-} // namespace android
+}; // namespace android
 
 #endif // ANDROID_IMEMORY_H

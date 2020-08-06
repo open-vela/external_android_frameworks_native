@@ -82,10 +82,10 @@ public:
     explicit BpMemoryHeap(const sp<IBinder>& impl);
     virtual ~BpMemoryHeap();
 
-    int getHeapID() const override;
-    void* getBase() const override;
-    size_t getSize() const override;
-    uint32_t getFlags() const override;
+    virtual int getHeapID() const;
+    virtual void* getBase() const;
+    virtual size_t getSize() const;
+    virtual uint32_t getFlags() const;
     off_t getOffset() const override;
 
 private:
@@ -147,10 +147,6 @@ void* IMemory::fastPointer(const sp<IBinder>& binder, ssize_t offset) const
     if (base == MAP_FAILED)
         return nullptr;
     return static_cast<char*>(base) + offset;
-}
-
-void* IMemory::unsecurePointer() const {
-    return pointer();
 }
 
 void* IMemory::pointer() const {
@@ -514,4 +510,4 @@ void HeapCache::dump_heaps()
 
 
 // ---------------------------------------------------------------------------
-} // namespace android
+}; // namespace android

@@ -17,9 +17,9 @@
 // All static variables go here, to control initialization and
 // destruction order in the library.
 
-#include "Static.h"
+#include <private/binder/Static.h>
 
-#include "BufferedTextOutput.h"
+#include <binder/BufferedTextOutput.h>
 #include <binder/IPCThreadState.h>
 #include <utils/Log.h>
 
@@ -54,9 +54,7 @@ public:
 protected:
     virtual status_t writeLines(const struct iovec& vec, size_t N)
     {
-        ssize_t ret = writev(mFD, &vec, N);
-        if (ret == -1) return -errno;
-        if (static_cast<size_t>(ret) != N) return UNKNOWN_ERROR;
+        writev(mFD, &vec, N);
         return NO_ERROR;
     }
 
@@ -64,8 +62,26 @@ private:
     int mFD;
 };
 
-TextOutput& alog(*new LogTextOutput());
-TextOutput& aout(*new FdTextOutput(STDOUT_FILENO));
-TextOutput& aerr(*new FdTextOutput(STDERR_FILENO));
+static LogTextOutput gLogTextOutput;
+static FdTextOutput gStdoutTextOutput(STDOUT_FILENO);
+static FdTextOutput gStderrTextOutput(STDERR_FILENO);
+
+TextOutput& alog(gLogTextOutput);
+TextOutput& aout(gStdoutTextOutput);
+TextOutput& aerr(gStderrTextOutput);
+
+// ------------ ProcessState.cpp
+
+Mutex& gProcessMutex = *new Mutex;
+sp<ProcessState> gProcess;
+
+// ------------ IServiceManager.cpp
+
+Mutex gDefaultServiceManagerLock;
+sp<IServiceManager> gDefaultServiceManager;
+#ifndef __ANDROID_VNDK__
+sp<IPermissionController> gPermissionController;
+#endif
+bool gSystemBootCompleted = false;
 
 }   // namespace android

@@ -26,7 +26,6 @@
 
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <sys/cdefs.h>
 #include <sys/types.h>
@@ -407,8 +406,6 @@ int32_t AIBinder_debugGetRefCount(AIBinder* binder) __INTRODUCED_IN(29);
  *
  * This returns true if the class association succeeds. If it fails, no change is made to the
  * binder object.
- *
- * Warning: this may fail if the binder is dead.
  *
  * Available since API level 29.
  *

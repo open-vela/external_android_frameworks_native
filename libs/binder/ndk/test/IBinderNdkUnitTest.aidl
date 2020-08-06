@@ -22,10 +22,6 @@
 import IEmpty;
 
 interface IBinderNdkUnitTest {
-    int repeatInt(int a);
-
     void takeInterface(IEmpty test);
     void forceFlushCommands();
-
-    boolean getsRequestedSid();
 }

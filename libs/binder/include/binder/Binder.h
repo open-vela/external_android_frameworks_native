@@ -24,10 +24,6 @@
 // ---------------------------------------------------------------------------
 namespace android {
 
-namespace internal {
-class Stability;
-}
-
 class BBinder : public IBinder
 {
 public:
@@ -42,7 +38,7 @@ public:
     virtual status_t    transact(   uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
-                                    uint32_t flags = 0) final;
+                                    uint32_t flags = 0);
 
     // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    linkToDeath(const sp<DeathRecipient>& recipient,
@@ -58,37 +54,15 @@ public:
     virtual void        attachObject(   const void* objectID,
                                         void* object,
                                         void* cleanupCookie,
-                                        object_cleanup_func func) final;
-    virtual void*       findObject(const void* objectID) const final;
-    virtual void        detachObject(const void* objectID) final;
+                                        object_cleanup_func func);
+    virtual void*       findObject(const void* objectID) const;
+    virtual void        detachObject(const void* objectID);
 
     virtual BBinder*    localBinder();
 
     bool                isRequestingSid();
     // This must be called before the object is sent to another process. Not thread safe.
     void                setRequestingSid(bool requestSid);
-
-    sp<IBinder>         getExtension();
-    // This must be called before the object is sent to another process. Not thread safe.
-    void                setExtension(const sp<IBinder>& extension);
-
-    // This must be called before the object is sent to another process. Not thread safe.
-    //
-    // This function will abort if improper parameters are set. This is like
-    // sched_setscheduler. However, it sets the minimum scheduling policy
-    // only for the duration that this specific binder object is handling the
-    // call in a threadpool. By default, this API is set to SCHED_NORMAL/0. In
-    // this case, the scheduling priority will not actually be modified from
-    // binder defaults. See also IPCThreadState::disableBackgroundScheduling.
-    //
-    // Appropriate values are:
-    // SCHED_NORMAL: -20 <= priority <= 19
-    // SCHED_RR/SCHED_FIFO: 1 <= priority <= 99
-    void                setMinSchedulerPolicy(int policy, int priority);
-    int                 getMinSchedulerPolicy();
-    int                 getMinSchedulerPriority();
-
-    pid_t               getDebugPid();
 
 protected:
     virtual             ~BBinder();
@@ -108,12 +82,7 @@ private:
     Extras*             getOrCreateExtras();
 
     std::atomic<Extras*> mExtras;
-
-    friend ::android::internal::Stability;
-    union {
-        int32_t mStability;
-        void* mReserved0;
-    };
+            void*       mReserved0;
 };
 
 // ---------------------------------------------------------------------------
@@ -139,7 +108,7 @@ private:
     std::atomic<int32_t>    mState;
 };
 
-} // namespace android
+}; // namespace android
 
 // ---------------------------------------------------------------------------
 

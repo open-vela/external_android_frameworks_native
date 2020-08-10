@@ -19,10 +19,12 @@
 #include <aidl/BnEmpty.h>
 #include <android-base/logging.h>
 #include <android/binder_ibinder_jni.h>
+#include <android/binder_ibinder_platform.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
 #include <gtest/gtest.h>
 #include <iface/iface.h>
+#include <utils/Looper.h>
 
 // warning: this is assuming that libbinder_ndk is using the same copy
 // of libbinder that we are.
@@ -34,14 +36,20 @@
 #include <sys/prctl.h>
 #include <chrono>
 #include <condition_variable>
+#include <iostream>
 #include <mutex>
 
 using namespace android;
 
 constexpr char kExistingNonNdkService[] = "SurfaceFlinger";
 constexpr char kBinderNdkUnitTestService[] = "BinderNdkUnitTest";
+constexpr char kLazyBinderNdkUnitTestService[] = "LazyBinderNdkUnitTest";
 
 class MyBinderNdkUnitTest : public aidl::BnBinderNdkUnitTest {
+    ndk::ScopedAStatus repeatInt(int32_t in, int32_t* out) {
+        *out = in;
+        return ndk::ScopedAStatus::ok();
+    }
     ndk::ScopedAStatus takeInterface(const std::shared_ptr<aidl::IEmpty>& empty) {
         (void)empty;
         return ndk::ScopedAStatus::ok();
@@ -50,6 +58,12 @@ class MyBinderNdkUnitTest : public aidl::BnBinderNdkUnitTest {
         // warning: this is assuming that libbinder_ndk is using the same copy
         // of libbinder that we are.
         android::IPCThreadState::self()->flushCommands();
+        return ndk::ScopedAStatus::ok();
+    }
+    ndk::ScopedAStatus getsRequestedSid(bool* out) {
+        const char* sid = AIBinder_getCallingSid();
+        std::cout << "Got security context: " << (sid ?: "null") << std::endl;
+        *out = sid != nullptr;
         return ndk::ScopedAStatus::ok();
     }
     binder_status_t handleShellCommand(int /*in*/, int out, int /*err*/, const char** args,
@@ -66,8 +80,11 @@ int generatedService() {
     ABinderProcess_setThreadPoolMaxThreadCount(0);
 
     auto service = ndk::SharedRefBase::make<MyBinderNdkUnitTest>();
-    binder_status_t status =
-            AServiceManager_addService(service->asBinder().get(), kBinderNdkUnitTestService);
+    auto binder = service->asBinder();
+
+    AIBinder_setRequestingSid(binder.get(), true);
+
+    binder_status_t status = AServiceManager_addService(binder.get(), kBinderNdkUnitTestService);
 
     if (status != STATUS_OK) {
         LOG(FATAL) << "Could not register: " << status << " " << kBinderNdkUnitTestService;
@@ -92,12 +109,53 @@ class MyFoo : public IFoo {
     }
 };
 
-int manualService(const char* instance) {
-    ABinderProcess_setThreadPoolMaxThreadCount(0);
-
+void manualService(const char* instance) {
     // Strong reference to MyFoo kept by service manager.
     binder_status_t status = (new MyFoo)->addService(instance);
 
+    if (status != STATUS_OK) {
+        LOG(FATAL) << "Could not register: " << status << " " << instance;
+    }
+}
+int manualPollingService(const char* instance) {
+    int fd;
+    CHECK(STATUS_OK == ABinderProcess_setupPolling(&fd));
+    manualService(instance);
+
+    class Handler : public LooperCallback {
+        int handleEvent(int /*fd*/, int /*events*/, void* /*data*/) override {
+            ABinderProcess_handlePolledCommands();
+            return 1;  // Continue receiving callbacks.
+        }
+    };
+
+    sp<Looper> looper = Looper::prepare(0 /* opts */);
+    looper->addFd(fd, Looper::POLL_CALLBACK, Looper::EVENT_INPUT, new Handler(), nullptr /*data*/);
+    // normally, would add additional fds
+    while (true) {
+        looper->pollAll(-1 /* timeoutMillis */);
+    }
+    return 1;  // should not reach
+}
+int manualThreadPoolService(const char* instance) {
+    ABinderProcess_setThreadPoolMaxThreadCount(0);
+    manualService(instance);
+    ABinderProcess_joinThreadPool();
+    return 1;
+}
+
+int lazyService(const char* instance) {
+    ABinderProcess_setThreadPoolMaxThreadCount(0);
+    // Wait to register this service to make sure the main test process will
+    // actually wait for the service to be available. Tested with sleep(60),
+    // and reduced for sake of time.
+    sleep(1);
+    // Strong reference to MyBinderNdkUnitTest kept by service manager.
+    // This is just for testing, it has no corresponding init behavior.
+    auto service = ndk::SharedRefBase::make<MyBinderNdkUnitTest>();
+    auto binder = service->asBinder();
+
+    binder_status_t status = AServiceManager_registerLazyService(binder.get(), instance);
     if (status != STATUS_OK) {
         LOG(FATAL) << "Could not register: " << status << " " << instance;
     }
@@ -107,11 +165,10 @@ int manualService(const char* instance) {
     return 1;  // should not return
 }
 
-// This is too slow
-// TEST(NdkBinder, GetServiceThatDoesntExist) {
-//     sp<IFoo> foo = IFoo::getService("asdfghkl;");
-//     EXPECT_EQ(nullptr, foo.get());
-// }
+TEST(NdkBinder, GetServiceThatDoesntExist) {
+    sp<IFoo> foo = IFoo::getService("asdfghkl;");
+    EXPECT_EQ(nullptr, foo.get());
+}
 
 TEST(NdkBinder, CheckServiceThatDoesntExist) {
     AIBinder* binder = AServiceManager_checkService("asdfghkl;");
@@ -133,6 +190,33 @@ TEST(NdkBinder, DoubleNumber) {
     int32_t out;
     EXPECT_EQ(STATUS_OK, foo->doubleNumber(1, &out));
     EXPECT_EQ(2, out);
+}
+
+TEST(NdkBinder, GetLazyService) {
+    // Not declared in the vintf manifest
+    ASSERT_FALSE(AServiceManager_isDeclared(kLazyBinderNdkUnitTestService));
+    ndk::SpAIBinder binder(AServiceManager_waitForService(kLazyBinderNdkUnitTestService));
+    std::shared_ptr<aidl::IBinderNdkUnitTest> service =
+            aidl::IBinderNdkUnitTest::fromBinder(binder);
+    ASSERT_NE(service, nullptr);
+
+    EXPECT_EQ(STATUS_OK, AIBinder_ping(binder.get()));
+}
+
+// This is too slow
+TEST(NdkBinder, CheckLazyServiceShutDown) {
+    ndk::SpAIBinder binder(AServiceManager_waitForService(kLazyBinderNdkUnitTestService));
+    std::shared_ptr<aidl::IBinderNdkUnitTest> service =
+            aidl::IBinderNdkUnitTest::fromBinder(binder);
+    ASSERT_NE(service, nullptr);
+
+    EXPECT_EQ(STATUS_OK, AIBinder_ping(binder.get()));
+    binder = nullptr;
+    service = nullptr;
+    IPCThreadState::self()->flushCommands();
+    // Make sure the service is dead after some time of no use
+    sleep(10);
+    ASSERT_EQ(nullptr, AServiceManager_checkService(kLazyBinderNdkUnitTestService));
 }
 
 void LambdaOnDeath(void* cookie) {
@@ -274,6 +358,16 @@ TEST(NdkBinder, AddServiceMultipleTimes) {
     EXPECT_EQ(IFoo::getService(kInstanceName1), IFoo::getService(kInstanceName2));
 }
 
+TEST(NdkBinder, RequestedSidWorks) {
+    ndk::SpAIBinder binder(AServiceManager_getService(kBinderNdkUnitTestService));
+    std::shared_ptr<aidl::IBinderNdkUnitTest> service =
+            aidl::IBinderNdkUnitTest::fromBinder(binder);
+
+    bool gotSid = false;
+    EXPECT_TRUE(service->getsRequestedSid(&gotSid).isOk());
+    EXPECT_TRUE(gotSid);
+}
+
 TEST(NdkBinder, SentAidlBinderCanBeDestroyed) {
     static volatile bool destroyed = false;
     static std::mutex dMutex;
@@ -306,6 +400,30 @@ TEST(NdkBinder, SentAidlBinderCanBeDestroyed) {
     }
 
     EXPECT_TRUE(destroyed);
+}
+
+TEST(NdkBinder, ConvertToPlatformBinder) {
+    for (const ndk::SpAIBinder& binder :
+         {// remote
+          ndk::SpAIBinder(AServiceManager_getService(kBinderNdkUnitTestService)),
+          // local
+          ndk::SharedRefBase::make<MyBinderNdkUnitTest>()->asBinder()}) {
+        // convert to platform binder
+        EXPECT_NE(binder.get(), nullptr);
+        sp<IBinder> platformBinder = AIBinder_toPlatformBinder(binder.get());
+        EXPECT_NE(platformBinder.get(), nullptr);
+        auto proxy = interface_cast<IBinderNdkUnitTest>(platformBinder);
+        EXPECT_NE(proxy, nullptr);
+
+        // use platform binder
+        int out;
+        EXPECT_TRUE(proxy->repeatInt(4, &out).isOk());
+        EXPECT_EQ(out, 4);
+
+        // convert back
+        ndk::SpAIBinder backBinder = ndk::SpAIBinder(AIBinder_fromPlatformBinder(platformBinder));
+        EXPECT_EQ(backBinder.get(), binder.get());
+    }
 }
 
 class MyResultReceiver : public BnResultReceiver {
@@ -399,11 +517,15 @@ int main(int argc, char* argv[]) {
 
     if (fork() == 0) {
         prctl(PR_SET_PDEATHSIG, SIGHUP);
-        return manualService(IFoo::kInstanceNameToDieFor);
+        return manualThreadPoolService(IFoo::kInstanceNameToDieFor);
     }
     if (fork() == 0) {
         prctl(PR_SET_PDEATHSIG, SIGHUP);
-        return manualService(IFoo::kSomeInstanceName);
+        return manualPollingService(IFoo::kSomeInstanceName);
+    }
+    if (fork() == 0) {
+        prctl(PR_SET_PDEATHSIG, SIGHUP);
+        return lazyService(kLazyBinderNdkUnitTestService);
     }
     if (fork() == 0) {
         prctl(PR_SET_PDEATHSIG, SIGHUP);

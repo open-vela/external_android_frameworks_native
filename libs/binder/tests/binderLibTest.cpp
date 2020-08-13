@@ -32,8 +32,6 @@
 #include <sys/epoll.h>
 #include <sys/prctl.h>
 
-#include "binderAbiHelper.h"
-
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 
 using namespace android;
@@ -49,6 +47,9 @@ static testing::Environment* binder_env;
 static char *binderservername;
 static char *binderserversuffix;
 static char binderserverarg[] = "--binderserver";
+
+static constexpr int kSchedPolicy = SCHED_RR;
+static constexpr int kSchedPriority = 7;
 
 static String16 binderLibTestServiceName = String16("test.binderLib");
 
@@ -75,8 +76,8 @@ enum BinderLibTestTranscationCode {
     BINDER_LIB_TEST_GET_PTR_SIZE_TRANSACTION,
     BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION,
     BINDER_LIB_TEST_GET_WORK_SOURCE_TRANSACTION,
+    BINDER_LIB_TEST_GET_SCHEDULING_POLICY,
     BINDER_LIB_TEST_ECHO_VECTOR,
-    BINDER_LIB_TEST_REJECT_BUF,
 };
 
 pid_t start_server_process(int arg2, bool usePoll = false)
@@ -1015,6 +1016,22 @@ TEST_F(BinderLibTest, WorkSourcePropagatedForAllFollowingBinderCalls)
     EXPECT_EQ(NO_ERROR, ret2);
 }
 
+TEST_F(BinderLibTest, SchedPolicySet) {
+    sp<IBinder> server = addServer();
+    ASSERT_TRUE(server != nullptr);
+
+    Parcel data, reply;
+    status_t ret = server->transact(BINDER_LIB_TEST_GET_SCHEDULING_POLICY, data, &reply);
+    EXPECT_EQ(NO_ERROR, ret);
+
+    int policy = reply.readInt32();
+    int priority = reply.readInt32();
+
+    EXPECT_EQ(kSchedPolicy, policy & (~SCHED_RESET_ON_FORK));
+    EXPECT_EQ(kSchedPriority, priority);
+}
+
+
 TEST_F(BinderLibTest, VectorSent) {
     Parcel data, reply;
     sp<IBinder> server = addServer();
@@ -1028,34 +1045,6 @@ TEST_F(BinderLibTest, VectorSent) {
     std::vector<uint64_t> readValue;
     ret = reply.readUint64Vector(&readValue);
     EXPECT_EQ(readValue, testValue);
-}
-
-TEST_F(BinderLibTest, BufRejected) {
-    Parcel data, reply;
-    uint32_t buf;
-    sp<IBinder> server = addServer();
-    ASSERT_TRUE(server != nullptr);
-
-    binder_buffer_object obj {
-        .hdr = { .type = BINDER_TYPE_PTR },
-        .flags = 0,
-        .buffer = reinterpret_cast<binder_uintptr_t>((void*)&buf),
-        .length = 4,
-    };
-    data.setDataCapacity(1024);
-    // Write a bogus object at offset 0 to get an entry in the offset table
-    data.writeFileDescriptor(0);
-    EXPECT_EQ(data.objectsCount(), 1);
-    uint8_t *parcelData = const_cast<uint8_t*>(data.data());
-    // And now, overwrite it with the buffer object
-    memcpy(parcelData, &obj, sizeof(obj));
-    data.setDataSize(sizeof(obj));
-
-    status_t ret = server->transact(BINDER_LIB_TEST_REJECT_BUF, data, &reply);
-    // Either the kernel should reject this transaction (if it's correct), but
-    // if it's not, the server implementation should return an error if it
-    // finds an object in the received Parcel.
-    EXPECT_NE(NO_ERROR, ret);
 }
 
 class BinderLibTestService : public BBinder
@@ -1332,6 +1321,16 @@ class BinderLibTestService : public BBinder
                 reply->writeInt32(IPCThreadState::self()->getCallingWorkSourceUid());
                 return NO_ERROR;
             }
+            case BINDER_LIB_TEST_GET_SCHEDULING_POLICY: {
+                int policy = 0;
+                sched_param param;
+                if (0 != pthread_getschedparam(pthread_self(), &policy, &param)) {
+                    return UNKNOWN_ERROR;
+                }
+                reply->writeInt32(policy);
+                reply->writeInt32(param.sched_priority);
+                return NO_ERROR;
+            }
             case BINDER_LIB_TEST_ECHO_VECTOR: {
                 std::vector<uint64_t> vector;
                 auto err = data.readUint64Vector(&vector);
@@ -1339,9 +1338,6 @@ class BinderLibTestService : public BBinder
                     return err;
                 reply->writeUint64Vector(vector);
                 return NO_ERROR;
-            }
-            case BINDER_LIB_TEST_REJECT_BUF: {
-                return data.objectsCount() == 0 ? BAD_VALUE : NO_ERROR;
             }
             default:
                 return UNKNOWN_TRANSACTION;
@@ -1368,14 +1364,13 @@ int run_server(int index, int readypipefd, bool usePoll)
     {
         sp<BinderLibTestService> testService = new BinderLibTestService(index);
 
+        testService->setMinSchedulerPolicy(kSchedPolicy, kSchedPriority);
+
         /*
          * Normally would also contain functionality as well, but we are only
          * testing the extension mechanism.
          */
         testService->setExtension(new BBinder());
-
-        // Required for test "BufRejected'
-        testService->setRequestingSid(true);
 
         /*
          * We need this below, but can't hold a sp<> because it prevents the
@@ -1453,8 +1448,6 @@ int run_server(int index, int readypipefd, bool usePoll)
 }
 
 int main(int argc, char **argv) {
-    ExitIfWrongAbi();
-
     if (argc == 4 && !strcmp(argv[1], "--servername")) {
         binderservername = argv[2];
     } else {

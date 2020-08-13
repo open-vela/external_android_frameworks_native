@@ -24,6 +24,7 @@
 #include <binder/IShellCallback.h>
 #include <binder/Parcel.h>
 
+#include <linux/sched.h>
 #include <stdio.h>
 
 namespace android {
@@ -81,6 +82,50 @@ status_t IBinder::shellCommand(const sp<IBinder>& target, int in, int out, int e
     return target->transact(SHELL_COMMAND_TRANSACTION, send, &reply);
 }
 
+status_t IBinder::getExtension(sp<IBinder>* out) {
+    BBinder* local = this->localBinder();
+    if (local != nullptr) {
+        *out = local->getExtension();
+        return OK;
+    }
+
+    BpBinder* proxy = this->remoteBinder();
+    LOG_ALWAYS_FATAL_IF(proxy == nullptr);
+
+    Parcel data;
+    Parcel reply;
+    status_t status = transact(EXTENSION_TRANSACTION, data, &reply);
+    if (status != OK) return status;
+
+    return reply.readNullableStrongBinder(out);
+}
+
+status_t IBinder::getDebugPid(pid_t* out) {
+    BBinder* local = this->localBinder();
+    if (local != nullptr) {
+      *out = local->getDebugPid();
+      return OK;
+    }
+
+    BpBinder* proxy = this->remoteBinder();
+    LOG_ALWAYS_FATAL_IF(proxy == nullptr);
+
+    Parcel data;
+    Parcel reply;
+    status_t status = transact(DEBUG_PID_TRANSACTION, data, &reply);
+    if (status != OK) return status;
+
+    int32_t pid;
+    status = reply.readInt32(&pid);
+    if (status != OK) return status;
+
+    if (pid < 0 || pid > std::numeric_limits<pid_t>::max()) {
+        return BAD_VALUE;
+    }
+    *out = pid;
+    return OK;
+}
+
 // ---------------------------------------------------------------------------
 
 class BBinder::Extras
@@ -88,6 +133,9 @@ class BBinder::Extras
 public:
     // unlocked objects
     bool mRequestingSid = false;
+    sp<IBinder> mExtension;
+    int mPolicy = SCHED_NORMAL;
+    int mPriority = 0;
 
     // for below objects
     Mutex mLock;
@@ -96,7 +144,7 @@ public:
 
 // ---------------------------------------------------------------------------
 
-BBinder::BBinder() : mExtras(nullptr)
+BBinder::BBinder() : mExtras(nullptr), mStability(0)
 {
 }
 
@@ -128,13 +176,20 @@ status_t BBinder::transact(
     status_t err = NO_ERROR;
     switch (code) {
         case PING_TRANSACTION:
-            reply->writeInt32(pingBinder());
+            err = pingBinder();
+            break;
+        case EXTENSION_TRANSACTION:
+            err = reply->writeStrongBinder(getExtension());
+            break;
+        case DEBUG_PID_TRANSACTION:
+            err = reply->writeInt32(getDebugPid());
             break;
         default:
             err = onTransact(code, data, reply, flags);
             break;
     }
 
+    // In case this is being transacted on in the same process.
     if (reply != nullptr) {
         reply->setDataPosition(0);
     }
@@ -219,6 +274,62 @@ void BBinder::setRequestingSid(bool requestingSid)
     }
 
     e->mRequestingSid = requestingSid;
+}
+
+sp<IBinder> BBinder::getExtension() {
+    Extras* e = mExtras.load(std::memory_order_acquire);
+    if (e == nullptr) return nullptr;
+    return e->mExtension;
+}
+
+void BBinder::setMinSchedulerPolicy(int policy, int priority) {
+    switch (policy) {
+    case SCHED_NORMAL:
+      LOG_ALWAYS_FATAL_IF(priority < -20 || priority > 19, "Invalid priority for SCHED_NORMAL: %d", priority);
+      break;
+    case SCHED_RR:
+    case SCHED_FIFO:
+      LOG_ALWAYS_FATAL_IF(priority < 1 || priority > 99, "Invalid priority for sched %d: %d", policy, priority);
+      break;
+    default:
+      LOG_ALWAYS_FATAL("Unrecognized scheduling policy: %d", policy);
+    }
+
+    Extras* e = mExtras.load(std::memory_order_acquire);
+
+    if (e == nullptr) {
+        // Avoid allocations if called with default.
+        if (policy == SCHED_NORMAL && priority == 0) {
+            return;
+        }
+
+        e = getOrCreateExtras();
+        if (!e) return; // out of memory
+    }
+
+    e->mPolicy = policy;
+    e->mPriority = priority;
+}
+
+int BBinder::getMinSchedulerPolicy() {
+    Extras* e = mExtras.load(std::memory_order_acquire);
+    if (e == nullptr) return SCHED_NORMAL;
+    return e->mPolicy;
+}
+
+int BBinder::getMinSchedulerPriority() {
+    Extras* e = mExtras.load(std::memory_order_acquire);
+    if (e == nullptr) return 0;
+    return e->mPriority;
+}
+
+pid_t BBinder::getDebugPid() {
+    return getpid();
+}
+
+void BBinder::setExtension(const sp<IBinder>& extension) {
+    Extras* e = getOrCreateExtras();
+    e->mExtension = extension;
 }
 
 BBinder::~BBinder()
@@ -352,4 +463,4 @@ bool BpRefBase::onIncStrongAttempted(uint32_t /*flags*/, const void* /*id*/)
 
 // ---------------------------------------------------------------------------
 
-}; // namespace android
+} // namespace android

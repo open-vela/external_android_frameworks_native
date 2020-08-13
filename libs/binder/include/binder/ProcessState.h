@@ -42,30 +42,24 @@ public:
      * any call to ProcessState::self(). The default is /dev/vndbinder
      * for processes built with the VNDK and /dev/binder for those
      * which are not.
+     *
+     * If this is called with nullptr, the behavior is the same as selfOrNull.
      */
     static  sp<ProcessState>    initWithDriver(const char *driver);
 
-            void                setContextObject(const sp<IBinder>& object);
             sp<IBinder>         getContextObject(const sp<IBinder>& caller);
-        
-            void                setContextObject(const sp<IBinder>& object,
-                                                 const String16& name);
-            sp<IBinder>         getContextObject(const String16& name,
-                                                 const sp<IBinder>& caller);
 
             void                startThreadPool();
                         
     typedef bool (*context_check_func)(const String16& name,
                                        const sp<IBinder>& caller,
                                        void* userData);
-        
-            bool                isContextManager(void) const;
+
             bool                becomeContextManager(
                                     context_check_func checkFunc,
                                     void* userData);
 
             sp<IBinder>         getStrongProxyForHandle(int32_t handle);
-            wp<IBinder>         getWeakProxyForHandle(int32_t handle);
             void                expungeHandle(int32_t handle, IBinder* binder);
 
             void                spawnPooledThread(bool isMain);
@@ -76,6 +70,14 @@ public:
             String8             getDriverName();
 
             ssize_t             getKernelReferences(size_t count, uintptr_t* buf);
+
+                                // Only usable by the context manager.
+                                // This refcount includes:
+                                // 1. Strong references to the node by this and other processes
+                                // 2. Temporary strong references held by the kernel during a
+                                //    transaction on the node.
+                                // It does NOT include local strong references to the node
+            ssize_t             getStrongRefCountForNodeByHandle(int32_t handle);
 
             enum class CallRestriction {
                 // all calls okay
@@ -90,6 +92,8 @@ public:
             void setCallRestriction(CallRestriction restriction);
 
 private:
+    static  sp<ProcessState>    init(const char *defaultDriver, bool requireDefault);
+
     friend class IPCThreadState;
     
             explicit            ProcessState(const char* driver);
@@ -124,13 +128,8 @@ private:
 
             Vector<handle_entry>mHandleToObject;
 
-            bool                mManagesContexts;
             context_check_func  mBinderContextCheckFunc;
             void*               mBinderContextUserData;
-
-            KeyedVector<String16, sp<IBinder> >
-                                mContexts;
-
 
             String8             mRootDir;
             bool                mThreadPoolStarted;
@@ -139,7 +138,7 @@ private:
             CallRestriction     mCallRestriction;
 };
     
-}; // namespace android
+} // namespace android
 
 // ---------------------------------------------------------------------------
 

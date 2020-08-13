@@ -89,12 +89,46 @@ LIBBINDER_NDK { # introduced=29
     AStatus_getStatus;
     AStatus_isOk;
     AStatus_newOk;
-    ABinderProcess_joinThreadPool; # apex
-    ABinderProcess_setThreadPoolMaxThreadCount; # apex
-    ABinderProcess_startThreadPool; # apex
-    AServiceManager_addService; # apex
-    AServiceManager_checkService; # apex
-    AServiceManager_getService; # apex
+    ABinderProcess_joinThreadPool; # apex llndk
+    ABinderProcess_setThreadPoolMaxThreadCount; # apex llndk
+    ABinderProcess_startThreadPool; # apex llndk
+    AServiceManager_addService; # apex llndk
+    AServiceManager_checkService; # apex llndk
+    AServiceManager_getService; # apex llndk
+};
+
+LIBBINDER_NDK30 { # introduced=30
+  global:
+    AIBinder_getExtension;
+    AIBinder_setExtension;
+    AStatus_getDescription;
+    AStatus_deleteDescription;
+    AParcel_fromJavaParcel;
+
+    AIBinder_markSystemStability; # apex
+    AIBinder_markVendorStability; # llndk
+    AIBinder_markVintfStability; # apex llndk
+    AIBinder_Class_setHandleShellCommand; # apex llndk
+};
+
+LIBBINDER_NDK31 { # introduced=31
+  global:
+    ABinderProcess_handlePolledCommands; # apex
+    ABinderProcess_setupPolling; # apex
+    AIBinder_getCallingSid; # apex
+    AIBinder_setRequestingSid; # apex
+    AServiceManager_isDeclared; # apex llndk
+    AServiceManager_registerLazyService; # llndk
+    AServiceManager_waitForService; # apex llndk
+};
+
+LIBBINDER_NDK_PLATFORM {
+  global:
+    AParcel_getAllowFds;
+    extern "C++" {
+        AIBinder_fromPlatformBinder*;
+        AIBinder_toPlatformBinder*;
+    };
   local:
     *;
 };

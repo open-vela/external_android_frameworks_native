@@ -1063,22 +1063,12 @@ status_t Parcel::writeCString(const char* str)
 
 status_t Parcel::writeString8(const String8& str)
 {
-    return writeString8(str.string(), str.size());
-}
-
-status_t Parcel::writeString8(const char* str, size_t len)
-{
-    if (str == nullptr) return writeInt32(-1);
-
-    status_t err = writeInt32(len);
-    if (err == NO_ERROR) {
-        uint8_t* data = (uint8_t*)writeInplace(len+sizeof(char));
-        if (data) {
-            memcpy(data, str, len);
-            *reinterpret_cast<char*>(data+len) = 0;
-            return NO_ERROR;
-        }
-        err = mError;
+    status_t err = writeInt32(str.bytes());
+    // only write string if its length is more than zero characters,
+    // as readString8 will only read if the length field is non-zero.
+    // this is slightly different from how writeString16 works.
+    if (str.bytes() > 0 && err == NO_ERROR) {
+        err = write(str.string(), str.bytes()+1);
     }
     return err;
 }
@@ -2033,39 +2023,37 @@ const char* Parcel::readCString() const
 
 String8 Parcel::readString8() const
 {
-    size_t len;
-    const char* str = readString8Inplace(&len);
-    if (str) return String8(str, len);
-    ALOGE("Reading a NULL string not supported here.");
-    return String8();
+    String8 retString;
+    status_t status = readString8(&retString);
+    if (status != OK) {
+        // We don't care about errors here, so just return an empty string.
+        return String8();
+    }
+    return retString;
 }
 
 status_t Parcel::readString8(String8* pArg) const
 {
-    size_t len;
-    const char* str = readString8Inplace(&len);
-    if (str) {
-        pArg->setTo(str, len);
-        return 0;
-    } else {
-        *pArg = String8();
-        return UNEXPECTED_NULL;
+    int32_t size;
+    status_t status = readInt32(&size);
+    if (status != OK) {
+        return status;
     }
-}
-
-const char* Parcel::readString8Inplace(size_t* outLen) const
-{
-    int32_t size = readInt32();
     // watch for potential int overflow from size+1
-    if (size >= 0 && size < INT32_MAX) {
-        *outLen = size;
-        const char* str = (const char*)readInplace(size+1);
-        if (str != nullptr) {
-            return str;
-        }
+    if (size < 0 || size >= INT32_MAX) {
+        return BAD_VALUE;
     }
-    *outLen = 0;
-    return nullptr;
+    // |writeString8| writes nothing for empty string.
+    if (size == 0) {
+        *pArg = String8();
+        return OK;
+    }
+    const char* str = (const char*)readInplace(size + 1);
+    if (str == nullptr) {
+        return BAD_VALUE;
+    }
+    pArg->setTo(str, size);
+    return OK;
 }
 
 String16 Parcel::readString16() const
@@ -2527,22 +2515,6 @@ void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
             mObjectsSize = 0;
             break;
         }
-        const flat_binder_object* flat
-            = reinterpret_cast<const flat_binder_object*>(mData + offset);
-        uint32_t type = flat->hdr.type;
-        if (!(type == BINDER_TYPE_BINDER || type == BINDER_TYPE_HANDLE ||
-              type == BINDER_TYPE_FD)) {
-            // We should never receive other types (eg BINDER_TYPE_FDA) as long as we don't support
-            // them in libbinder. If we do receive them, it probably means a kernel bug; try to
-            // recover gracefully by clearing out the objects, and releasing the objects we do
-            // know about.
-            android_errorWriteLog(0x534e4554, "135930648");
-            ALOGE("%s: unsupported type object (%" PRIu32 ") at offset %" PRIu64 "\n",
-                  __func__, type, (uint64_t)offset);
-            releaseObjects();
-            mObjectsSize = 0;
-            break;
-        }
         minOffset = offset + sizeof(flat_binder_object);
     }
     scanForFds();
@@ -2678,7 +2650,7 @@ status_t Parcel::restartWrite(size_t desired)
 
     releaseObjects();
 
-    if (data || desired == 0) {
+    if (data) {
         LOG_ALLOC("Parcel %p: restart from %zu to %zu capacity", this, mDataCapacity, desired);
         pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
         gParcelGlobalAllocSize += desired;

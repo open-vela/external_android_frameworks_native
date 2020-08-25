@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,5 +14,25 @@
  * limitations under the License.
  */
 
-template <typename P>
-using ParcelRead = std::function<void(const P& p, uint8_t data)>;
+//! Generated Rust bindings to libbinder_ndk
+
+#![allow(
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused,
+    improper_ctypes,
+    missing_docs
+)]
+use std::error::Error;
+use std::fmt;
+
+include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+impl Error for android_c_interface_StatusCode {}
+
+impl fmt::Display for android_c_interface_StatusCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "StatusCode::{:?}", self)
+    }
+}

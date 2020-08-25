@@ -3,24 +3,12 @@ rust_library {
     crate_name: "binder",
     srcs: ["src/lib.rs"],
     shared_libs: [
+        "libbinder_ndk",
         "libutils",
     ],
     rustlibs: [
         "liblibc",
-        "libbinder_ndk_sys",
-    ],
-    host_supported: true,
-}
-
-rust_library {
-    name: "libbinder_ndk_sys",
-    crate_name: "binder_ndk_sys",
-    srcs: [
-        "sys/lib.rs",
-        ":libbinder_ndk_bindgen",
-    ],
-    shared_libs: [
-        "libbinder_ndk",
+        "libbinder_ndk_bindgen",
     ],
     host_supported: true,
 }
@@ -28,8 +16,8 @@ rust_library {
 rust_bindgen {
     name: "libbinder_ndk_bindgen",
     crate_name: "binder_ndk_bindgen",
-    wrapper_src: "sys/BinderBindings.h",
-    source_stem: "bindings",
+    wrapper_src: "BinderBindings.h",
+    source_stem: "ndk_bindings",
     cflags: [
         "-x c++",
     ],
@@ -81,6 +69,6 @@ rust_test {
     ],
     rustlibs: [
         "liblibc",
-        "libbinder_ndk_sys",
+        "libbinder_ndk_bindgen",
     ],
 }

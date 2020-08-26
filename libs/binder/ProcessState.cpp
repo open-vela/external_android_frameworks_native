@@ -404,7 +404,7 @@ ProcessState::ProcessState(const char *driver)
     , mCallRestriction(CallRestriction::NONE)
 {
 
-// TODO(b/139016109): enforce in build system
+// TODO(b/166468760): enforce in build system
 #if defined(__ANDROID_APEX__)
     LOG_ALWAYS_FATAL("Cannot use libbinder in APEX (only system.img libbinder) since it is not stable.");
 #endif
@@ -421,9 +421,7 @@ ProcessState::ProcessState(const char *driver)
         }
     }
 
-#ifdef __ANDROID__
     LOG_ALWAYS_FATAL_IF(mDriverFD < 0, "Binder driver '%s' could not be opened.  Terminating.", driver);
-#endif
 }
 
 ProcessState::~ProcessState()

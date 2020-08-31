@@ -22,6 +22,8 @@
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 
+#include <private/binder/Static.h>
+
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -39,7 +41,7 @@ public:
         data.writeInterfaceToken(IAppOpsCallback::getInterfaceDescriptor());
         data.writeInt32(op);
         data.writeString16(packageName);
-        remote()->transact(OP_CHANGED_TRANSACTION, data, &reply, IBinder::FLAG_ONEWAY);
+        remote()->transact(OP_CHANGED_TRANSACTION, data, &reply);
     }
 };
 
@@ -58,6 +60,7 @@ status_t BnAppOpsCallback::onTransact(
             String16 packageName;
             (void)data.readString16(&packageName);
             opChanged(op, packageName);
+            reply->writeNoException();
             return NO_ERROR;
         } break;
         default:
@@ -65,4 +68,4 @@ status_t BnAppOpsCallback::onTransact(
     }
 }
 
-} // namespace android
+}; // namespace android

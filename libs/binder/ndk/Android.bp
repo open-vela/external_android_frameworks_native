@@ -14,31 +14,13 @@
  * limitations under the License.
  */
 
-// TODO(b/31559095): bionic on host should define this
-cc_defaults {
-    name: "libbinder_ndk_host_user",
-    target: {
-        host: {
-            cflags: [
-                "-D__INTRODUCED_IN(n)=",
-                "-D__assert(a,b,c)=",
-                // We want all the APIs to be available on the host.
-                "-D__ANDROID_API__=10000",
-            ],
-        },
-    },
-}
-
 cc_library {
     name: "libbinder_ndk",
-
-    defaults: ["libbinder_ndk_host_user"],
-    host_supported: true,
+    vendor_available: true,
 
     export_include_dirs: [
-        "include_cpp",
         "include_ndk",
-        "include_platform",
+        "include_apex",
     ],
 
     cflags: [
@@ -51,9 +33,7 @@ cc_library {
         "ibinder.cpp",
         "ibinder_jni.cpp",
         "parcel.cpp",
-        "parcel_jni.cpp",
         "process.cpp",
-        "stability.cpp",
         "status.cpp",
         "service_manager.cpp",
     ],
@@ -72,23 +52,10 @@ cc_library {
         "jni_headers",
     ],
 
-    target: {
-        android: {
-            // Only one copy of this library on an Android device
-            static: {
-                enabled: false,
-            },
-        },
-        linux: {
-            version_script: "libbinder_ndk.map.txt",
-        },
-    },
+    version_script: "libbinder_ndk.map.txt",
     stubs: {
         symbol_file: "libbinder_ndk.map.txt",
-        versions: [
-            "29",
-            "30",
-        ],
+        versions: ["29"],
     },
 }
 
@@ -102,29 +69,8 @@ ndk_headers {
     license: "NOTICE",
 }
 
-// TODO(b/160624671): package with the aidl compiler
-ndk_headers {
-    name: "libbinder_ndk_helper_headers",
-    from: "include_cpp/android",
-    to: "android",
-    srcs: [
-        "include_cpp/android/*.h",
-    ],
-    license: "NOTICE",
-}
-
 ndk_library {
     name: "libbinder_ndk",
     symbol_file: "libbinder_ndk.map.txt",
     first_version: "29",
-}
-
-llndk_library {
-    name: "libbinder_ndk",
-    symbol_file: "libbinder_ndk.map.txt",
-    export_include_dirs: [
-        "include_cpp",
-        "include_ndk",
-        "include_platform",
-    ],
 }

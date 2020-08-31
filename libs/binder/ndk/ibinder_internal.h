@@ -17,7 +17,6 @@
 #pragma once
 
 #include <android/binder_ibinder.h>
-#include <android/binder_shell.h>
 #include "ibinder_internal.h"
 
 #include <atomic>
@@ -116,7 +115,6 @@ struct AIBinder_Class {
 
     // optional methods for a class
     AIBinder_onDump onDump = nullptr;
-    AIBinder_handleShellCommand handleShellCommand = nullptr;
 
    private:
     // This must be a String16 since BBinder virtual getInterfaceDescriptor returns a reference to

@@ -14,25 +14,14 @@
  * limitations under the License.
  */
 
-//! Generated Rust bindings to libbinder_ndk
+// This AIDL is to test things that can't be tested in CtsNdkBinderTestCases
+// because it requires libbinder_ndk implementation details or APIs not
+// available to apps. Please prefer adding tests to CtsNdkBinderTestCases
+// over here.
 
-#![allow(
-    non_camel_case_types,
-    non_snake_case,
-    non_upper_case_globals,
-    unused,
-    improper_ctypes,
-    missing_docs
-)]
-use std::error::Error;
-use std::fmt;
+import IEmpty;
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-
-impl Error for android_c_interface_StatusCode {}
-
-impl fmt::Display for android_c_interface_StatusCode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "StatusCode::{:?}", self)
-    }
+interface IBinderNdkUnitTest {
+    void takeInterface(IEmpty test);
+    void forceFlushCommands();
 }

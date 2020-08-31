@@ -614,7 +614,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
     talkWithDriver(false);
 }
 
-status_t IPCThreadState::setupPolling(int* fd)
+int IPCThreadState::setupPolling(int* fd)
 {
     if (mProcess->mDriverFD < 0) {
         return -EBADF;

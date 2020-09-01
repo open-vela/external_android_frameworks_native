@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
     }
 
     IPCThreadState::self()->setTheContextObject(manager);
-    ps->becomeContextManager();
+    ps->becomeContextManager(nullptr, nullptr);
 
     sp<Looper> looper = Looper::prepare(false /*allowNonCallbacks*/);
 

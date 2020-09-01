@@ -84,10 +84,11 @@ int generatedService() {
 
     AIBinder_setRequestingSid(binder.get(), true);
 
-    binder_status_t status = AServiceManager_addService(binder.get(), kBinderNdkUnitTestService);
+    binder_exception_t exception =
+            AServiceManager_addService(binder.get(), kBinderNdkUnitTestService);
 
-    if (status != STATUS_OK) {
-        LOG(FATAL) << "Could not register: " << status << " " << kBinderNdkUnitTestService;
+    if (exception != EX_NONE) {
+        LOG(FATAL) << "Could not register: " << exception << " " << kBinderNdkUnitTestService;
     }
 
     ABinderProcess_joinThreadPool();
@@ -111,10 +112,10 @@ class MyFoo : public IFoo {
 
 void manualService(const char* instance) {
     // Strong reference to MyFoo kept by service manager.
-    binder_status_t status = (new MyFoo)->addService(instance);
+    binder_exception_t exception = (new MyFoo)->addService(instance);
 
-    if (status != STATUS_OK) {
-        LOG(FATAL) << "Could not register: " << status << " " << instance;
+    if (exception != EX_NONE) {
+        LOG(FATAL) << "Could not register: " << exception << " " << instance;
     }
 }
 int manualPollingService(const char* instance) {
@@ -181,26 +182,6 @@ TEST(NdkBinder, CheckServiceThatDoesExist) {
     EXPECT_EQ(STATUS_OK, AIBinder_ping(binder));
 
     AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedDump) {
-    sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
-    ASSERT_NE(foo, nullptr);
-    AIBinder* binder = foo->getBinder();
-    EXPECT_EQ(OK, AIBinder_dump(binder, STDOUT_FILENO, nullptr, 0));
-    AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedShell) {
-    // libbinder_ndk doesn't support calling shell, so we are calling from the
-    // libbinder across processes to the NDK service which doesn't implement
-    // shell
-    static const sp<android::IServiceManager> sm(android::defaultServiceManager());
-    sp<IBinder> testService = sm->getService(String16(IFoo::kSomeInstanceName));
-
-    Vector<String16> argsVec;
-    EXPECT_EQ(OK, IBinder::shellCommand(testService, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-                                        argsVec, nullptr, nullptr));
 }
 
 TEST(NdkBinder, DoubleNumber) {
@@ -322,11 +303,20 @@ class MyTestFoo : public IFoo {
     }
 };
 
+TEST(NdkBinder, AddNullService) {
+    EXPECT_EQ(EX_ILLEGAL_ARGUMENT, AServiceManager_addService(nullptr, "any-service-name"));
+}
+
+TEST(NdkBinder, AddInvalidServiceName) {
+    sp<IFoo> foo = new MyTestFoo;
+    EXPECT_EQ(EX_ILLEGAL_ARGUMENT, foo->addService("!@#$%^&"));
+}
+
 TEST(NdkBinder, GetServiceInProcess) {
     static const char* kInstanceName = "test-get-service-in-process";
 
     sp<IFoo> foo = new MyTestFoo;
-    EXPECT_EQ(STATUS_OK, foo->addService(kInstanceName));
+    EXPECT_EQ(EX_NONE, foo->addService(kInstanceName));
 
     sp<IFoo> getFoo = IFoo::getService(kInstanceName);
     EXPECT_EQ(foo.get(), getFoo.get());
@@ -373,8 +363,8 @@ TEST(NdkBinder, AddServiceMultipleTimes) {
     static const char* kInstanceName1 = "test-multi-1";
     static const char* kInstanceName2 = "test-multi-2";
     sp<IFoo> foo = new MyTestFoo;
-    EXPECT_EQ(STATUS_OK, foo->addService(kInstanceName1));
-    EXPECT_EQ(STATUS_OK, foo->addService(kInstanceName2));
+    EXPECT_EQ(EX_NONE, foo->addService(kInstanceName1));
+    EXPECT_EQ(EX_NONE, foo->addService(kInstanceName2));
     EXPECT_EQ(IFoo::getService(kInstanceName1), IFoo::getService(kInstanceName2));
 }
 

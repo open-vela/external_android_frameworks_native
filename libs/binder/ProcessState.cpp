@@ -144,9 +144,11 @@ void ProcessState::startThreadPool()
     }
 }
 
-bool ProcessState::becomeContextManager()
+bool ProcessState::becomeContextManager(context_check_func checkFunc, void* userData)
 {
     AutoMutex _l(mLock);
+    mBinderContextCheckFunc = checkFunc;
+    mBinderContextUserData = userData;
 
     flat_binder_object obj {
         .flags = FLAT_BINDER_FLAG_TXN_SECURITY_CTX,
@@ -163,6 +165,8 @@ bool ProcessState::becomeContextManager()
     }
 
     if (result == -1) {
+        mBinderContextCheckFunc = nullptr;
+        mBinderContextUserData = nullptr;
         ALOGE("Binder ioctl to become context manager failed: %s\n", strerror(errno));
     }
 
@@ -393,6 +397,8 @@ ProcessState::ProcessState(const char *driver)
     , mExecutingThreadsCount(0)
     , mMaxThreads(DEFAULT_MAX_BINDER_THREADS)
     , mStarvationStartTimeMs(0)
+    , mBinderContextCheckFunc(nullptr)
+    , mBinderContextUserData(nullptr)
     , mThreadPoolStarted(false)
     , mThreadPoolSeq(1)
     , mCallRestriction(CallRestriction::NONE)
@@ -415,9 +421,7 @@ ProcessState::ProcessState(const char *driver)
         }
     }
 
-#ifdef __ANDROID__
     LOG_ALWAYS_FATAL_IF(mDriverFD < 0, "Binder driver '%s' could not be opened.  Terminating.", driver);
-#endif
 }
 
 ProcessState::~ProcessState()

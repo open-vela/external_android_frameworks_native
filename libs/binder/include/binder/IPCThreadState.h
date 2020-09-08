@@ -47,7 +47,6 @@ public:
     // binder transactions to be processed.
     //
     // returns: 0 in case of success, a value < 0 in case of error
-    __attribute__((weak))
     static  status_t            freeze(pid_t pid, bool enabled, uint32_t timeout_ms);
 
             sp<ProcessState>    process();

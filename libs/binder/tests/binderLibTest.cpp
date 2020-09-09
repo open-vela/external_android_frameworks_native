@@ -16,7 +16,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <fstream>
 #include <poll.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -32,6 +31,8 @@
 #include <private/binder/binder_module.h>
 #include <sys/epoll.h>
 #include <sys/prctl.h>
+
+#include "binderAbiHelper.h"
 
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 
@@ -78,9 +79,8 @@ enum BinderLibTestTranscationCode {
     BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION,
     BINDER_LIB_TEST_GET_WORK_SOURCE_TRANSACTION,
     BINDER_LIB_TEST_GET_SCHEDULING_POLICY,
-    BINDER_LIB_TEST_NOP_TRANSACTION_WAIT,
-    BINDER_LIB_TEST_GETPID,
     BINDER_LIB_TEST_ECHO_VECTOR,
+    BINDER_LIB_TEST_REJECT_BUF,
 };
 
 pid_t start_server_process(int arg2, bool usePoll = false)
@@ -397,40 +397,6 @@ TEST_F(BinderLibTest, NopTransaction) {
     Parcel data, reply;
     ret = m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION, data, &reply);
     EXPECT_EQ(NO_ERROR, ret);
-}
-
-TEST_F(BinderLibTest, Freeze) {
-    status_t ret;
-    Parcel data, reply, replypid;
-    std::ifstream freezer_file("/sys/fs/cgroup/freezer/cgroup.freeze");
-
-    //Pass test on devices where the freezer is not supported
-    if (freezer_file.fail()) {
-        GTEST_SKIP();
-        return;
-    }
-
-    std::string freezer_enabled;
-    std::getline(freezer_file, freezer_enabled);
-
-    //Pass test on devices where the freezer is disabled
-    if (freezer_enabled != "1") {
-        GTEST_SKIP();
-        return;
-    }
-
-    ret = m_server->transact(BINDER_LIB_TEST_GETPID, data, &replypid);
-    int32_t pid = replypid.readInt32();
-    EXPECT_EQ(NO_ERROR, ret);
-    for (int i = 0; i < 10; i++) {
-        EXPECT_EQ(NO_ERROR, m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION_WAIT, data, &reply, TF_ONE_WAY));
-    }
-    EXPECT_EQ(-EAGAIN, IPCThreadState::self()->freeze(pid, 1, 0));
-    EXPECT_EQ(-EAGAIN, IPCThreadState::self()->freeze(pid, 1, 0));
-    EXPECT_EQ(NO_ERROR, IPCThreadState::self()->freeze(pid, 1, 1000));
-    EXPECT_EQ(FAILED_TRANSACTION, m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION, data, &reply));
-    EXPECT_EQ(NO_ERROR, IPCThreadState::self()->freeze(pid, 0, 0));
-    EXPECT_EQ(NO_ERROR, m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION, data, &reply));
 }
 
 TEST_F(BinderLibTest, SetError) {
@@ -1084,6 +1050,34 @@ TEST_F(BinderLibTest, VectorSent) {
     EXPECT_EQ(readValue, testValue);
 }
 
+TEST_F(BinderLibTest, BufRejected) {
+    Parcel data, reply;
+    uint32_t buf;
+    sp<IBinder> server = addServer();
+    ASSERT_TRUE(server != nullptr);
+
+    binder_buffer_object obj {
+        .hdr = { .type = BINDER_TYPE_PTR },
+        .flags = 0,
+        .buffer = reinterpret_cast<binder_uintptr_t>((void*)&buf),
+        .length = 4,
+    };
+    data.setDataCapacity(1024);
+    // Write a bogus object at offset 0 to get an entry in the offset table
+    data.writeFileDescriptor(0);
+    EXPECT_EQ(data.objectsCount(), 1);
+    uint8_t *parcelData = const_cast<uint8_t*>(data.data());
+    // And now, overwrite it with the buffer object
+    memcpy(parcelData, &obj, sizeof(obj));
+    data.setDataSize(sizeof(obj));
+
+    status_t ret = server->transact(BINDER_LIB_TEST_REJECT_BUF, data, &reply);
+    // Either the kernel should reject this transaction (if it's correct), but
+    // if it's not, the server implementation should return an error if it
+    // finds an object in the received Parcel.
+    EXPECT_NE(NO_ERROR, ret);
+}
+
 class BinderLibTestService : public BBinder
 {
     public:
@@ -1184,12 +1178,6 @@ class BinderLibTestService : public BBinder
                 pthread_mutex_unlock(&m_serverWaitMutex);
                 return ret;
             }
-            case BINDER_LIB_TEST_GETPID:
-                reply->writeInt32(getpid());
-                return NO_ERROR;
-            case BINDER_LIB_TEST_NOP_TRANSACTION_WAIT:
-                usleep(5000);
-                return NO_ERROR;
             case BINDER_LIB_TEST_NOP_TRANSACTION:
                 return NO_ERROR;
             case BINDER_LIB_TEST_DELAYED_CALL_BACK: {
@@ -1382,6 +1370,9 @@ class BinderLibTestService : public BBinder
                 reply->writeUint64Vector(vector);
                 return NO_ERROR;
             }
+            case BINDER_LIB_TEST_REJECT_BUF: {
+                return data.objectsCount() == 0 ? BAD_VALUE : NO_ERROR;
+            }
             default:
                 return UNKNOWN_TRANSACTION;
             };
@@ -1414,6 +1405,9 @@ int run_server(int index, int readypipefd, bool usePoll)
          * testing the extension mechanism.
          */
         testService->setExtension(new BBinder());
+
+        // Required for test "BufRejected'
+        testService->setRequestingSid(true);
 
         /*
          * We need this below, but can't hold a sp<> because it prevents the
@@ -1491,6 +1485,8 @@ int run_server(int index, int readypipefd, bool usePoll)
 }
 
 int main(int argc, char **argv) {
+    ExitIfWrongAbi();
+
     if (argc == 4 && !strcmp(argv[1], "--servername")) {
         binderservername = argv[2];
     } else {

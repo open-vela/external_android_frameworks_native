@@ -581,11 +581,5 @@ macro_rules! declare_binder_interface {
                 parcel.write(&this.map($crate::Interface::as_binder))
             }
         }
-
-        impl std::fmt::Debug for dyn $interface {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.pad(stringify!($interface))
-            }
-        }
     };
 }

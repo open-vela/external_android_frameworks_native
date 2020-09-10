@@ -28,7 +28,6 @@ use crate::sys;
 
 use std::convert::TryInto;
 use std::ffi::{c_void, CString};
-use std::fmt;
 use std::os::unix::io::AsRawFd;
 use std::ptr;
 
@@ -37,12 +36,6 @@ use std::ptr;
 /// This struct encapsulates the generic C++ `sp<IBinder>` class. This wrapper
 /// is untyped; typed interface access is implemented by the AIDL compiler.
 pub struct SpIBinder(*mut sys::AIBinder);
-
-impl fmt::Debug for SpIBinder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad("SpIBinder")
-    }
-}
 
 /// # Safety
 ///

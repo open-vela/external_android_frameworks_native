@@ -529,17 +529,7 @@ macro_rules! declare_binder_interface {
             }
 
             fn on_transact(&self, code: $crate::TransactionCode, data: &$crate::Parcel, reply: &mut $crate::Parcel) -> $crate::Result<()> {
-                match $on_transact(&*self.0, code, data, reply) {
-                    // The C++ backend converts UNEXPECTED_NULL into an exception
-                    Err($crate::StatusCode::UNEXPECTED_NULL) => {
-                        let status = $crate::Status::new_exception(
-                            $crate::ExceptionCode::NULL_POINTER,
-                            None,
-                        );
-                        reply.write(&status)
-                    },
-                    result => result
-                }
+                $on_transact(&*self.0, code, data, reply)
             }
 
             fn get_class() -> $crate::InterfaceClass {
@@ -589,66 +579,6 @@ macro_rules! declare_binder_interface {
         impl $crate::parcel::SerializeOption for dyn $interface + '_ {
             fn serialize_option(this: Option<&Self>, parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
                 parcel.write(&this.map($crate::Interface::as_binder))
-            }
-        }
-
-        impl std::fmt::Debug for dyn $interface {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.pad(stringify!($interface))
-            }
-        }
-
-        // Convert a &dyn $interface to Box<dyn $interface>
-        impl std::borrow::ToOwned for dyn $interface {
-            type Owned = Box<dyn $interface>;
-            fn to_owned(&self) -> Self::Owned {
-                self.as_binder().into_interface()
-                    .expect(concat!("Error cloning interface ", stringify!($interface)))
-            }
-        }
-    };
-}
-
-/// Declare an AIDL enumeration.
-///
-/// This is mainly used internally by the AIDL compiler.
-#[macro_export]
-macro_rules! declare_binder_enum {
-    {
-        $enum:ident : $backing:ty {
-            $( $name:ident = $value:expr, )*
-        }
-    } => {
-        #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-        pub struct $enum(pub $backing);
-        impl $enum {
-            $( pub const $name: Self = Self($value); )*
-        }
-
-        impl $crate::parcel::Serialize for $enum {
-            fn serialize(&self, parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
-                parcel.write(&self.0)
-            }
-        }
-
-        impl $crate::parcel::SerializeArray for $enum {
-            fn serialize_array(slice: &[Self], parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
-                let v: Vec<$backing> = slice.iter().map(|x| x.0).collect();
-                <$backing as binder::parcel::SerializeArray>::serialize_array(&v[..], parcel)
-            }
-        }
-
-        impl $crate::parcel::Deserialize for $enum {
-            fn deserialize(parcel: &$crate::parcel::Parcel) -> $crate::Result<Self> {
-                parcel.read().map(Self)
-            }
-        }
-
-        impl $crate::parcel::DeserializeArray for $enum {
-            fn deserialize_array(parcel: &$crate::parcel::Parcel) -> $crate::Result<Option<Vec<Self>>> {
-                let v: Option<Vec<$backing>> =
-                    <$backing as binder::parcel::DeserializeArray>::deserialize_array(parcel)?;
-                Ok(v.map(|v| v.into_iter().map(Self).collect()))
             }
         }
     };

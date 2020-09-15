@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#include <android/binder_context.h>
 #include <android/binder_ibinder.h>
 #include <android/binder_manager.h>
 #include <android/binder_parcel.h>

@@ -78,7 +78,7 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
-        // TODO(b/139016109) remove these three
+        // TODO(b/166468760) remove these three
         "com.android.media.swcodec",
         "test_com.android.media.swcodec",
     ],
@@ -99,6 +99,7 @@ cc_library {
         "MemoryDealer.cpp",
         "MemoryHeapBase.cpp",
         "Parcel.cpp",
+        "ParcelableHolder.cpp",
         "ParcelFileDescriptor.cpp",
         "PersistableBundle.cpp",
         "ProcessState.cpp",
@@ -126,6 +127,10 @@ cc_library {
     aidl: {
         export_aidl_headers: true,
     },
+
+    // TODO(b/142684679): for com.android.media which is compiled
+    // as vendor and used as system code.
+    use_apex_name_macro: true,
 
     cflags: [
         "-Wall",

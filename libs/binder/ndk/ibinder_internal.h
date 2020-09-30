@@ -22,6 +22,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 #include <binder/Binder.h>
@@ -52,10 +53,14 @@ struct AIBinder : public virtual ::android::RefBase {
     }
 
    private:
+    std::optional<bool> associateClassInternal(const AIBinder_Class* clazz,
+                                               const ::android::String8& newDescriptor, bool set);
+
     // AIBinder instance is instance of this class for a local object. In order to transact on a
     // remote object, this also must be set for simplicity (although right now, only the
     // interfaceDescriptor from it is used).
     const AIBinder_Class* mClazz;
+    std::mutex mClazzMutex;
 };
 
 // This is a local AIBinder object with a known class.
@@ -110,13 +115,13 @@ struct AIBinder_Class {
     const ::android::String16& getInterfaceDescriptor() const { return mInterfaceDescriptor; }
 
     // required to be non-null, implemented for every class
-    const AIBinder_Class_onCreate onCreate = nullptr;
-    const AIBinder_Class_onDestroy onDestroy = nullptr;
-    const AIBinder_Class_onTransact onTransact = nullptr;
+    const AIBinder_Class_onCreate onCreate;
+    const AIBinder_Class_onDestroy onDestroy;
+    const AIBinder_Class_onTransact onTransact;
 
     // optional methods for a class
-    AIBinder_onDump onDump = nullptr;
-    AIBinder_handleShellCommand handleShellCommand = nullptr;
+    AIBinder_onDump onDump;
+    AIBinder_handleShellCommand handleShellCommand;
 
    private:
     // This must be a String16 since BBinder virtual getInterfaceDescriptor returns a reference to

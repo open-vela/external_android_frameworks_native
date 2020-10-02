@@ -77,8 +77,9 @@ namespace android {
 // many things compile this into prebuilts on the stack
 static_assert(sizeof(Parcel) == 60 || sizeof(Parcel) == 120);
 
-static std::atomic<size_t> gParcelGlobalAllocCount;
-static std::atomic<size_t> gParcelGlobalAllocSize;
+static pthread_mutex_t gParcelGlobalAllocSizeLock = PTHREAD_MUTEX_INITIALIZER;
+static size_t gParcelGlobalAllocSize = 0;
+static size_t gParcelGlobalAllocCount = 0;
 
 static size_t gMaxFds = 0;
 
@@ -274,11 +275,17 @@ Parcel::~Parcel()
 }
 
 size_t Parcel::getGlobalAllocSize() {
-    return gParcelGlobalAllocSize.load();
+    pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
+    size_t size = gParcelGlobalAllocSize;
+    pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
+    return size;
 }
 
 size_t Parcel::getGlobalAllocCount() {
-    return gParcelGlobalAllocCount.load();
+    pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
+    size_t count = gParcelGlobalAllocCount;
+    pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
+    return count;
 }
 
 const uint8_t* Parcel::data() const
@@ -520,19 +527,14 @@ constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');
 // Write RPC headers.  (previously just the interface token)
 status_t Parcel::writeInterfaceToken(const String16& interface)
 {
-    return writeInterfaceToken(interface.string(), interface.size());
-}
-
-status_t Parcel::writeInterfaceToken(const char16_t* str, size_t len) {
     const IPCThreadState* threadState = IPCThreadState::self();
     writeInt32(threadState->getStrictModePolicy() | STRICT_MODE_PENALTY_GATHER);
     updateWorkSourceRequestHeaderPosition();
     writeInt32(threadState->shouldPropagateWorkSource() ?
             threadState->getCallingWorkSourceUid() : IPCThreadState::kUnsetWorkSource);
     writeInt32(kHeader);
-
     // currently the interface identification token is just its name as a string
-    return writeString16(str, len);
+    return writeString16(interface);
 }
 
 bool Parcel::replaceCallingWorkSourceUid(uid_t uid)
@@ -2623,8 +2625,16 @@ void Parcel::freeDataNoInit()
         releaseObjects();
         if (mData) {
             LOG_ALLOC("Parcel %p: freeing with %zu capacity", this, mDataCapacity);
-            gParcelGlobalAllocSize -= mDataCapacity;
-            gParcelGlobalAllocCount--;
+            pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
+            if (mDataCapacity <= gParcelGlobalAllocSize) {
+              gParcelGlobalAllocSize = gParcelGlobalAllocSize - mDataCapacity;
+            } else {
+              gParcelGlobalAllocSize = 0;
+            }
+            if (gParcelGlobalAllocCount > 0) {
+              gParcelGlobalAllocCount--;
+            }
+            pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
             free(mData);
         }
         if (mObjects) free(mObjects);
@@ -2668,17 +2678,15 @@ status_t Parcel::restartWrite(size_t desired)
 
     releaseObjects();
 
-    if (data || desired == 0) {
+    if (data) {
         LOG_ALLOC("Parcel %p: restart from %zu to %zu capacity", this, mDataCapacity, desired);
-        if (mDataCapacity > desired) {
-            gParcelGlobalAllocSize -= (mDataCapacity - desired);
-        } else {
-            gParcelGlobalAllocSize += (desired - mDataCapacity);
-        }
-
+        pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
+        gParcelGlobalAllocSize += desired;
+        gParcelGlobalAllocSize -= mDataCapacity;
         if (!mData) {
             gParcelGlobalAllocCount++;
         }
+        pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
         mData = data;
         mDataCapacity = desired;
     }
@@ -2766,8 +2774,10 @@ status_t Parcel::continueWrite(size_t desired)
         mOwner = nullptr;
 
         LOG_ALLOC("Parcel %p: taking ownership of %zu capacity", this, desired);
+        pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
         gParcelGlobalAllocSize += desired;
         gParcelGlobalAllocCount++;
+        pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
 
         mData = data;
         mObjects = objects;
@@ -2815,8 +2825,10 @@ status_t Parcel::continueWrite(size_t desired)
             if (data) {
                 LOG_ALLOC("Parcel %p: continue from %zu to %zu capacity", this, mDataCapacity,
                         desired);
+                pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
                 gParcelGlobalAllocSize += desired;
                 gParcelGlobalAllocSize -= mDataCapacity;
+                pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
                 mData = data;
                 mDataCapacity = desired;
             } else {
@@ -2848,8 +2860,10 @@ status_t Parcel::continueWrite(size_t desired)
         }
 
         LOG_ALLOC("Parcel %p: allocating with %zu capacity", this, desired);
+        pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
         gParcelGlobalAllocSize += desired;
         gParcelGlobalAllocCount++;
+        pthread_mutex_unlock(&gParcelGlobalAllocSizeLock);
 
         mData = data;
         mDataSize = mDataPos = 0;

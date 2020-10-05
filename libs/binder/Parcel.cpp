@@ -527,19 +527,14 @@ constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');
 // Write RPC headers.  (previously just the interface token)
 status_t Parcel::writeInterfaceToken(const String16& interface)
 {
-    return writeInterfaceToken(interface.string(), interface.size());
-}
-
-status_t Parcel::writeInterfaceToken(const char16_t* str, size_t len) {
     const IPCThreadState* threadState = IPCThreadState::self();
     writeInt32(threadState->getStrictModePolicy() | STRICT_MODE_PENALTY_GATHER);
     updateWorkSourceRequestHeaderPosition();
     writeInt32(threadState->shouldPropagateWorkSource() ?
             threadState->getCallingWorkSourceUid() : IPCThreadState::kUnsetWorkSource);
     writeInt32(kHeader);
-
     // currently the interface identification token is just its name as a string
-    return writeString16(str, len);
+    return writeString16(interface);
 }
 
 bool Parcel::replaceCallingWorkSourceUid(uid_t uid)
@@ -2683,7 +2678,7 @@ status_t Parcel::restartWrite(size_t desired)
 
     releaseObjects();
 
-    if (data) {
+    if (data || desired == 0) {
         LOG_ALLOC("Parcel %p: restart from %zu to %zu capacity", this, mDataCapacity, desired);
         pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
         gParcelGlobalAllocSize += desired;

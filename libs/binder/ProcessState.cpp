@@ -32,7 +32,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <mutex>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -74,49 +73,38 @@ protected:
 
 sp<ProcessState> ProcessState::self()
 {
-    return init(kDefaultDriver, false /*requireDefault*/);
+    Mutex::Autolock _l(gProcessMutex);
+    if (gProcess != nullptr) {
+        return gProcess;
+    }
+    gProcess = new ProcessState(kDefaultDriver);
+    return gProcess;
 }
 
 sp<ProcessState> ProcessState::initWithDriver(const char* driver)
 {
-    return init(driver, true /*requireDefault*/);
+    Mutex::Autolock _l(gProcessMutex);
+    if (gProcess != nullptr) {
+        // Allow for initWithDriver to be called repeatedly with the same
+        // driver.
+        if (!strcmp(gProcess->getDriverName().c_str(), driver)) {
+            return gProcess;
+        }
+        LOG_ALWAYS_FATAL("ProcessState was already initialized.");
+    }
+
+    if (access(driver, R_OK) == -1) {
+        ALOGE("Binder driver %s is unavailable. Using /dev/binder instead.", driver);
+        driver = "/dev/binder";
+    }
+
+    gProcess = new ProcessState(driver);
+    return gProcess;
 }
 
 sp<ProcessState> ProcessState::selfOrNull()
 {
-    return init(nullptr, false /*requireDefault*/);
-}
-
-sp<ProcessState> ProcessState::init(const char *driver, bool requireDefault)
-{
-    [[clang::no_destroy]] static sp<ProcessState> gProcess;
-    [[clang::no_destroy]] static std::mutex gProcessMutex;
-
-    if (driver == nullptr) {
-        std::lock_guard<std::mutex> l(gProcessMutex);
-        return gProcess;
-    }
-
-    [[clang::no_destroy]] static std::once_flag gProcessOnce;
-    std::call_once(gProcessOnce, [&](){
-        if (access(driver, R_OK) == -1) {
-            ALOGE("Binder driver %s is unavailable. Using /dev/binder instead.", driver);
-            driver = "/dev/binder";
-        }
-
-        std::lock_guard<std::mutex> l(gProcessMutex);
-        gProcess = new ProcessState(driver);
-    });
-
-    if (requireDefault) {
-        // Detect if we are trying to initialize with a different driver, and
-        // consider that an error. ProcessState will only be initialized once above.
-        LOG_ALWAYS_FATAL_IF(gProcess->getDriverName() != driver,
-                            "ProcessState was already initialized with %s,"
-                            " can't initialize with %s.",
-                            gProcess->getDriverName().c_str(), driver);
-    }
-
+    Mutex::Autolock _l(gProcessMutex);
     return gProcess;
 }
 
@@ -144,9 +132,11 @@ void ProcessState::startThreadPool()
     }
 }
 
-bool ProcessState::becomeContextManager()
+bool ProcessState::becomeContextManager(context_check_func checkFunc, void* userData)
 {
     AutoMutex _l(mLock);
+    mBinderContextCheckFunc = checkFunc;
+    mBinderContextUserData = userData;
 
     flat_binder_object obj {
         .flags = FLAT_BINDER_FLAG_TXN_SECURITY_CTX,
@@ -158,11 +148,13 @@ bool ProcessState::becomeContextManager()
     if (result != 0) {
         android_errorWriteLog(0x534e4554, "121035042");
 
-        int unused = 0;
-        result = ioctl(mDriverFD, BINDER_SET_CONTEXT_MGR, &unused);
+        int dummy = 0;
+        result = ioctl(mDriverFD, BINDER_SET_CONTEXT_MGR, &dummy);
     }
 
     if (result == -1) {
+        mBinderContextCheckFunc = nullptr;
+        mBinderContextUserData = nullptr;
         ALOGE("Binder ioctl to become context manager failed: %s\n", strerror(errno));
     }
 
@@ -282,17 +274,9 @@ sp<IBinder> ProcessState::getStrongProxyForHandle(int32_t handle)
                 // a driver API to get a handle to the context manager with
                 // proper reference counting.
 
-                IPCThreadState* ipc = IPCThreadState::self();
-
-                CallRestriction originalCallRestriction = ipc->getCallRestriction();
-                ipc->setCallRestriction(CallRestriction::NONE);
-
                 Parcel data;
-                status_t status = ipc->transact(
+                status_t status = IPCThreadState::self()->transact(
                         0, IBinder::PING_TRANSACTION, data, nullptr, 0);
-
-                ipc->setCallRestriction(originalCallRestriction);
-
                 if (status == DEAD_OBJECT)
                    return nullptr;
             }
@@ -344,8 +328,6 @@ void ProcessState::spawnPooledThread(bool isMain)
 }
 
 status_t ProcessState::setThreadPoolMaxThreadCount(size_t maxThreads) {
-    LOG_ALWAYS_FATAL_IF(mThreadPoolStarted && maxThreads < mMaxThreads,
-           "Binder threadpool cannot be shrunk after starting");
     status_t result = NO_ERROR;
     if (ioctl(mDriverFD, BINDER_SET_MAX_THREADS, &maxThreads) != -1) {
         mMaxThreads = maxThreads;
@@ -401,12 +383,14 @@ ProcessState::ProcessState(const char *driver)
     , mExecutingThreadsCount(0)
     , mMaxThreads(DEFAULT_MAX_BINDER_THREADS)
     , mStarvationStartTimeMs(0)
+    , mBinderContextCheckFunc(nullptr)
+    , mBinderContextUserData(nullptr)
     , mThreadPoolStarted(false)
     , mThreadPoolSeq(1)
     , mCallRestriction(CallRestriction::NONE)
 {
 
-// TODO(b/166468760): enforce in build system
+// TODO(b/139016109): enforce in build system
 #if defined(__ANDROID_APEX__)
     LOG_ALWAYS_FATAL("Cannot use libbinder in APEX (only system.img libbinder) since it is not stable.");
 #endif

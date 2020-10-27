@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_IACTIVITY_MANAGER_H
+#define ANDROID_IACTIVITY_MANAGER_H
 
 #ifndef __ANDROID_VNDK__
 
@@ -38,18 +39,13 @@ public:
     virtual void unregisterUidObserver(const sp<IUidObserver>& observer) = 0;
     virtual bool isUidActive(const uid_t uid, const String16& callingPackage) = 0;
     virtual int32_t getUidProcessState(const uid_t uid, const String16& callingPackage) = 0;
-    virtual status_t checkPermission(const String16& permission,
-                                    const pid_t pid,
-                                    const uid_t uid,
-                                    int32_t* outResult) = 0;
 
     enum {
         OPEN_CONTENT_URI_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
         REGISTER_UID_OBSERVER_TRANSACTION,
         UNREGISTER_UID_OBSERVER_TRANSACTION,
         IS_UID_ACTIVE_TRANSACTION,
-        GET_UID_PROCESS_STATE_TRANSACTION,
-        CHECK_PERMISSION_TRANSACTION,
+        GET_UID_PROCESS_STATE_TRANSACTION
     };
 };
 
@@ -60,3 +56,5 @@ public:
 #else // __ANDROID_VNDK__
 #error "This header is not visible to vendors"
 #endif // __ANDROID_VNDK__
+
+#endif // ANDROID_IACTIVITY_MANAGER_H

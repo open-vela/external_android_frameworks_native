@@ -55,7 +55,6 @@ class ServiceManagerMock : public IServiceManager {
     MOCK_METHOD1(listServices, Vector<String16>(int));
     MOCK_METHOD1(waitForService, sp<IBinder>(const String16&));
     MOCK_METHOD1(isDeclared, bool(const String16&));
-    MOCK_METHOD1(getDeclaredInstances, Vector<String16>(const String16&));
   protected:
     MOCK_METHOD0(onAsBinder, IBinder*());
 };
@@ -207,7 +206,10 @@ class DumpsysTest : public Test {
     }
 
     void AssertRunningServices(const std::vector<std::string>& services) {
-        std::string expected = "Currently running services:\n";
+        std::string expected;
+        if (services.size() > 1) {
+            expected.append("Currently running services:\n");
+        }
         for (const std::string& service : services) {
             expected.append("  ").append(service).append("\n");
         }
@@ -259,21 +261,6 @@ TEST_F(DumpsysTest, ListAllServices) {
     CallMain({"-l"});
 
     AssertRunningServices({"Locksmith", "Valet"});
-}
-
-TEST_F(DumpsysTest, ListServicesOneRegistered) {
-    ExpectListServices({"Locksmith"});
-    ExpectCheckService("Locksmith");
-
-    CallMain({"-l"});
-
-    AssertRunningServices({"Locksmith"});
-}
-
-TEST_F(DumpsysTest, ListServicesEmpty) {
-    CallMain({"-l"});
-
-    AssertRunningServices({});
 }
 
 // Tests 'dumpsys -l' when a service is not running

@@ -20,6 +20,7 @@
 #include "status_internal.h"
 
 #include <binder/IServiceManager.h>
+#include <binder/LazyServiceRegistrar.h>
 
 using ::android::defaultServiceManager;
 using ::android::IBinder;
@@ -28,14 +29,14 @@ using ::android::sp;
 using ::android::status_t;
 using ::android::String16;
 
-binder_status_t AServiceManager_addService(AIBinder* binder, const char* instance) {
+binder_exception_t AServiceManager_addService(AIBinder* binder, const char* instance) {
     if (binder == nullptr || instance == nullptr) {
-        return STATUS_UNEXPECTED_NULL;
+        return EX_ILLEGAL_ARGUMENT;
     }
 
     sp<IServiceManager> sm = defaultServiceManager();
-    status_t status = sm->addService(String16(instance), binder->getBinder());
-    return PruneStatusT(status);
+    status_t exception = sm->addService(String16(instance), binder->getBinder());
+    return PruneException(exception);
 }
 AIBinder* AServiceManager_checkService(const char* instance) {
     if (instance == nullptr) {
@@ -60,4 +61,34 @@ AIBinder* AServiceManager_getService(const char* instance) {
     sp<AIBinder> ret = ABpBinder::lookupOrCreateFromBinder(binder);
     AIBinder_incStrong(ret.get());
     return ret.get();
+}
+binder_status_t AServiceManager_registerLazyService(AIBinder* binder, const char* instance) {
+    if (binder == nullptr || instance == nullptr) {
+        return STATUS_UNEXPECTED_NULL;
+    }
+
+    auto serviceRegistrar = android::binder::LazyServiceRegistrar::getInstance();
+    status_t status = serviceRegistrar.registerService(binder->getBinder(), instance);
+
+    return PruneStatusT(status);
+}
+AIBinder* AServiceManager_waitForService(const char* instance) {
+    if (instance == nullptr) {
+        return nullptr;
+    }
+
+    sp<IServiceManager> sm = defaultServiceManager();
+    sp<IBinder> binder = sm->waitForService(String16(instance));
+
+    sp<AIBinder> ret = ABpBinder::lookupOrCreateFromBinder(binder);
+    AIBinder_incStrong(ret.get());
+    return ret.get();
+}
+bool AServiceManager_isDeclared(const char* instance) {
+    if (instance == nullptr) {
+        return false;
+    }
+
+    sp<IServiceManager> sm = defaultServiceManager();
+    return sm->isDeclared(String16(instance));
 }

@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_BPBINDER_H
+#define ANDROID_BPBINDER_H
 
 #include <binder/IBinder.h>
 #include <utils/KeyedVector.h>
@@ -136,6 +137,7 @@ private:
             volatile int32_t    mObitsSent;
             Vector<Obituary>*   mObituaries;
             ObjectManager       mObjects;
+            Parcel*             mConstantData;
     mutable String16            mDescriptorCache;
             int32_t             mTrackedUid;
 
@@ -152,3 +154,5 @@ private:
 } // namespace android
 
 // ---------------------------------------------------------------------------
+
+#endif // ANDROID_BPBINDER_H

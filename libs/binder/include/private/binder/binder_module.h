@@ -17,6 +17,10 @@
 #ifndef _BINDER_MODULE_H_
 #define _BINDER_MODULE_H_
 
+#ifdef __cplusplus
+namespace android {
+#endif
+
 /* obtain structures and constants from the kernel header */
 
 // TODO(b/31559095): bionic on host
@@ -31,10 +35,6 @@
 
 #include <sys/ioctl.h>
 #include <linux/android/binder.h>
-
-#ifdef __cplusplus
-namespace android {
-#endif
 
 #ifndef BR_FROZEN_REPLY
 // Temporary definition of BR_FROZEN_REPLY. For production
@@ -88,9 +88,7 @@ struct binder_frozen_status_info {
 };
 #endif //BINDER_GET_FROZEN_INFO
 
-enum transaction_flags_ext {
-    TF_CLEAR_BUF = 0x20, /* clear buffer on txn complete */
-};
+
 
 #ifdef __cplusplus
 }   // namespace android

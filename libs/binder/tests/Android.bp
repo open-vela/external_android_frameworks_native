@@ -155,6 +155,7 @@ cc_test {
         "binderStabilityTest.cpp",
     ],
 
+    // critical that libbinder/libbinder_ndk are shared for VTS
     shared_libs: [
         "libbinder_ndk",
         "libbinder",
@@ -166,6 +167,21 @@ cc_test {
         "binderStabilityTestIface-ndk_platform",
     ],
 
+    test_suites: ["device-tests", "vts"],
+    require_root: true,
+}
+
+cc_test {
+    name: "binderAllocationLimits",
+    defaults: ["binder_test_defaults"],
+    srcs: ["binderAllocationLimits.cpp"],
+    shared_libs: [
+        "libbinder",
+        "liblog",
+        "libutils",
+        "libutilscallstack",
+        "libbase",
+    ],
     test_suites: ["device-tests"],
     require_root: true,
 }

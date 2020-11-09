@@ -1244,9 +1244,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             if ((tr.flags & TF_ONE_WAY) == 0) {
                 LOG_ONEWAY("Sending reply to %d!", mCallingPid);
                 if (error < NO_ERROR) reply.setError(error);
-
-                constexpr uint32_t kForwardReplyFlags = TF_CLEAR_BUF;
-                sendReply(reply, (tr.flags & kForwardReplyFlags));
+                sendReply(reply, 0);
             } else {
                 if (error != OK || reply.dataSize() != 0) {
                     alog << "oneway function results will be dropped but finished with status "

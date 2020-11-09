@@ -84,13 +84,6 @@ public:
 
     bool                hasFileDescriptors() const;
 
-    // Zeros data when reallocating. Other mitigations may be added
-    // in the future.
-    //
-    // WARNING: some read methods may make additional copies of data.
-    // In order to verify this, heap dumps should be used.
-    void                markSensitive() const;
-
     // Writes the RPC header.
     status_t            writeInterfaceToken(const String16& interface);
     status_t            writeInterfaceToken(const char16_t* str, size_t len);
@@ -606,10 +599,6 @@ private:
     mutable bool        mFdsKnown;
     mutable bool        mHasFds;
     bool                mAllowFds;
-
-    // if this parcelable is involved in a secure transaction, force the
-    // data to be overridden with zero when deallocated
-    mutable bool        mDeallocZero;
 
     release_func        mOwner;
     void*               mOwnerCookie;

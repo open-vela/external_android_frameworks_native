@@ -112,7 +112,6 @@ cc_library {
         "Stability.cpp",
         "Status.cpp",
         "TextOutput.cpp",
-        "Utils.cpp",
         ":libbinder_aidl",
     ],
 

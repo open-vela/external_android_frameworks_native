@@ -43,6 +43,7 @@ __BEGIN_DECLS
 
 #if __ANDROID_API__ >= 29
 
+// Also see TF_* in kernel's binder.h
 typedef uint32_t binder_flags_t;
 enum {
     /**

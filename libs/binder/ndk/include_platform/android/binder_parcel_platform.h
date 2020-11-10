@@ -20,10 +20,6 @@
 
 __BEGIN_DECLS
 
-#if defined(__ANDROID_APEX__) || defined(__ANDROID_VNDK__)
-#error this is only for platform code
-#endif
-
 /**
  * Gets whether or not FDs are allowed by this AParcel
  *

@@ -32,54 +32,19 @@ namespace android {
 class IPCThreadState
 {
 public:
-    using CallRestriction = ProcessState::CallRestriction;
-
     static  IPCThreadState*     self();
     static  IPCThreadState*     selfOrNull();  // self(), but won't instantiate
-
-    // Freeze or unfreeze the binder interface to a specific process. When freezing, this method
-    // will block up to timeout_ms to process pending transactions directed to pid. Unfreeze
-    // is immediate. Transactions to processes frozen via this method won't be delivered and the
-    // driver will return BR_FROZEN_REPLY to the client sending them. After unfreeze,
-    // transactions will be delivered normally.
-    //
-    // pid: id for the process for which the binder interface is to be frozen
-    // enable: freeze (true) or unfreeze (false)
-    // timeout_ms: maximum time this function is allowed to block the caller waiting for pending
-    // binder transactions to be processed.
-    //
-    // returns: 0 in case of success, a value < 0 in case of error
-    static  status_t            freeze(pid_t pid, bool enabled, uint32_t timeout_ms);
-
-    // Provide information about the state of a frozen process
-    static  status_t            getProcessFreezeInfo(pid_t pid, bool *sync_received,
-                                                    bool *async_received);
+    
             sp<ProcessState>    process();
             
             status_t            clearLastError();
 
-            /**
-             * Returns the PID of the process which has made the current binder
-             * call. If not in a binder call, this will return getpid. If the
-             * call is oneway, this will return 0.
-             */
             pid_t               getCallingPid() const;
-
-            /**
-             * Returns the SELinux security identifier of the process which has
-             * made the current binder call. If not in a binder call this will
-             * return nullptr. If this isn't requested with
-             * Binder::setRequestingSid, it will also return nullptr.
-             *
-             * This can't be restored once it's cleared, and it does not return the
-             * context of the current process when not in a binder call.
-             */
+            // nullptr if unavailable
+            //
+            // this can't be restored once it's cleared, and it does not return the
+            // context of the current process when not in a binder call.
             const char*         getCallingSid() const;
-
-            /**
-             * Returns the UID of the process which has made the current binder
-             * call. If not in a binder call, this will return 0.
-             */
             uid_t               getCallingUid() const;
 
             void                setStrictModePolicy(int32_t policy);
@@ -101,14 +66,11 @@ public:
             void                setLastTransactionBinderFlags(int32_t flags);
             int32_t             getLastTransactionBinderFlags() const;
 
-            void                setCallRestriction(CallRestriction restriction);
-            CallRestriction     getCallRestriction() const;
-
             int64_t             clearCallingIdentity();
             // Restores PID/UID (not SID)
             void                restoreCallingIdentity(int64_t token);
-
-            status_t            setupPolling(int* fd);
+            
+            int                 setupPolling(int* fd);
             status_t            handlePolledCommands();
             void                flushCommands();
 
@@ -162,6 +124,7 @@ public:
             // This constant needs to be kept in sync with Binder.UNSET_WORKSOURCE from the Java
             // side.
             static const int32_t kUnsetWorkSource = -1;
+
 private:
                                 IPCThreadState();
                                 ~IPCThreadState();
@@ -208,7 +171,8 @@ private:
             bool                mPropagateWorkSource;
             int32_t             mStrictModePolicy;
             int32_t             mLastTransactionBinderFlags;
-            CallRestriction     mCallRestriction;
+
+            ProcessState::CallRestriction mCallRestriction;
 };
 
 } // namespace android

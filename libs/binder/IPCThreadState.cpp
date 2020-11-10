@@ -448,14 +448,6 @@ int32_t IPCThreadState::getLastTransactionBinderFlags() const
     return mLastTransactionBinderFlags;
 }
 
-void IPCThreadState::setCallRestriction(ProcessState::CallRestriction restriction) {
-    mCallRestriction = restriction;
-}
-
-ProcessState::CallRestriction IPCThreadState::getCallRestriction() const {
-    return mCallRestriction;
-}
-
 void IPCThreadState::restoreCallingIdentity(int64_t token)
 {
     mCallingUid = (int)(token>>32);
@@ -622,7 +614,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
     talkWithDriver(false);
 }
 
-status_t IPCThreadState::setupPolling(int* fd)
+int IPCThreadState::setupPolling(int* fd)
 {
     if (mProcess->mDriverFD < 0) {
         return -EBADF;
@@ -687,7 +679,7 @@ status_t IPCThreadState::transact(int32_t handle,
                 CallStack::logStack("non-oneway call", CallStack::getCurrent(10).get(),
                     ANDROID_LOG_ERROR);
             } else /* FATAL_IF_NOT_ONEWAY */ {
-                LOG_ALWAYS_FATAL("Process may not make non-oneway calls (code: %u).", code);
+                LOG_ALWAYS_FATAL("Process may not make oneway calls (code: %u).", code);
             }
         }
 
@@ -865,10 +857,6 @@ status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
             goto finish;
 
         case BR_FAILED_REPLY:
-            err = FAILED_TRANSACTION;
-            goto finish;
-
-        case BR_FROZEN_REPLY:
             err = FAILED_TRANSACTION;
             goto finish;
 
@@ -1328,42 +1316,6 @@ void IPCThreadState::threadDestructor(void *st)
         }
 }
 
-status_t IPCThreadState::getProcessFreezeInfo(pid_t pid, bool *sync_received, bool *async_received)
-{
-    int ret = 0;
-    binder_frozen_status_info info;
-    info.pid = pid;
-
-#if defined(__ANDROID__)
-    if (ioctl(self()->mProcess->mDriverFD, BINDER_GET_FROZEN_INFO, &info) < 0)
-        ret = -errno;
-#endif
-    *sync_received = info.sync_recv;
-    *async_received = info.async_recv;
-
-    return ret;
-}
-
-status_t IPCThreadState::freeze(pid_t pid, bool enable, uint32_t timeout_ms) {
-    struct binder_freeze_info info;
-    int ret = 0;
-
-    info.pid = pid;
-    info.enable = enable;
-    info.timeout_ms = timeout_ms;
-
-
-#if defined(__ANDROID__)
-    if (ioctl(self()->mProcess->mDriverFD, BINDER_FREEZE, &info) < 0)
-        ret = -errno;
-#endif
-
-    //
-    // ret==-EAGAIN indicates that transactions have not drained.
-    // Call again to poll for completion.
-    //
-    return ret;
-}
 
 void IPCThreadState::freeBuffer(Parcel* parcel, const uint8_t* data,
                                 size_t /*dataSize*/,

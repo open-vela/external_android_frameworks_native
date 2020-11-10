@@ -448,6 +448,14 @@ int32_t IPCThreadState::getLastTransactionBinderFlags() const
     return mLastTransactionBinderFlags;
 }
 
+void IPCThreadState::setCallRestriction(ProcessState::CallRestriction restriction) {
+    mCallRestriction = restriction;
+}
+
+ProcessState::CallRestriction IPCThreadState::getCallRestriction() const {
+    return mCallRestriction;
+}
+
 void IPCThreadState::restoreCallingIdentity(int64_t token)
 {
     mCallingUid = (int)(token>>32);
@@ -614,7 +622,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
     talkWithDriver(false);
 }
 
-int IPCThreadState::setupPolling(int* fd)
+status_t IPCThreadState::setupPolling(int* fd)
 {
     if (mProcess->mDriverFD < 0) {
         return -EBADF;
@@ -679,7 +687,7 @@ status_t IPCThreadState::transact(int32_t handle,
                 CallStack::logStack("non-oneway call", CallStack::getCurrent(10).get(),
                     ANDROID_LOG_ERROR);
             } else /* FATAL_IF_NOT_ONEWAY */ {
-                LOG_ALWAYS_FATAL("Process may not make oneway calls (code: %u).", code);
+                LOG_ALWAYS_FATAL("Process may not make non-oneway calls (code: %u).", code);
             }
         }
 

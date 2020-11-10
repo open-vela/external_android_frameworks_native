@@ -21,6 +21,8 @@
 
 #include <utils/threads.h>
 
+#include <optional>
+
 #ifdef __ANDROID_VNDK__
 #error "This header is not visible to vendors"
 #endif
@@ -131,11 +133,7 @@ public:
         OP_DEPRECATED_1 = 96,
         OP_AUTO_REVOKE_PERMISSIONS_IF_UNUSED = 97,
         OP_AUTO_REVOKE_MANAGED_BY_INSTALLER = 98,
-        OP_NO_ISOLATED_STORAGE = 99,
-        OP_PHONE_CALL_MICROPHONE = 100,
-        OP_PHONE_CALL_CAMERA = 101,
-        OP_RECORD_AUDIO_HOTWORD = 102,
-        _NUM_OP = 103
+        _NUM_OP = 99
     };
 
     AppOpsManager();
@@ -147,18 +145,18 @@ public:
     //              const String16&) instead
     int32_t noteOp(int32_t op, int32_t uid, const String16& callingPackage);
     int32_t noteOp(int32_t op, int32_t uid, const String16& callingPackage,
-            const std::unique_ptr<String16>& attributionTag, const String16& message);
+            const std::optional<String16>& attributionTag, const String16& message);
     // @Deprecated, use startOpNoThrow(int32_t, int32_t, const String16&, bool, const String16&,
     //              const String16&) instead
     int32_t startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
             bool startIfModeDefault);
     int32_t startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
-            bool startIfModeDefault, const std::unique_ptr<String16>& attributionTag,
+            bool startIfModeDefault, const std::optional<String16>& attributionTag,
             const String16& message);
     // @Deprecated, use finishOp(int32_t, int32_t, const String16&, bool, const String16&) instead
     void finishOp(int32_t op, int32_t uid, const String16& callingPackage);
     void finishOp(int32_t op, int32_t uid, const String16& callingPackage,
-            const std::unique_ptr<String16>& attributionTag);
+            const std::optional<String16>& attributionTag);
     void startWatchingMode(int32_t op, const String16& packageName,
             const sp<IAppOpsCallback>& callback);
     void stopWatchingMode(const sp<IAppOpsCallback>& callback);

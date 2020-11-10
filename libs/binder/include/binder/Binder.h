@@ -84,11 +84,8 @@ public:
     // Appropriate values are:
     // SCHED_NORMAL: -20 <= priority <= 19
     // SCHED_RR/SCHED_FIFO: 1 <= priority <= 99
-    __attribute__((weak))
     void                setMinSchedulerPolicy(int policy, int priority);
-    __attribute__((weak))
     int                 getMinSchedulerPolicy();
-    __attribute__((weak))
     int                 getMinSchedulerPriority();
 
     pid_t               getDebugPid();

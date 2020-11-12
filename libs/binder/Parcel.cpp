@@ -1914,17 +1914,6 @@ double Parcel::readDouble() const
 
 #endif
 
-status_t Parcel::readIntPtr(intptr_t *pArg) const
-{
-    return readAligned(pArg);
-}
-
-
-intptr_t Parcel::readIntPtr() const
-{
-    return readAligned<intptr_t>();
-}
-
 status_t Parcel::readBool(bool *pArg) const
 {
     int32_t tmp = 0;
@@ -2694,7 +2683,7 @@ status_t Parcel::restartWrite(size_t desired)
 
     releaseObjects();
 
-    if (data || desired == 0) {
+    if (data) {
         LOG_ALLOC("Parcel %p: restart from %zu to %zu capacity", this, mDataCapacity, desired);
         if (mDataCapacity > desired) {
             gParcelGlobalAllocSize -= (mDataCapacity - desired);

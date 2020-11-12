@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_IPC_THREAD_STATE_H
+#define ANDROID_IPC_THREAD_STATE_H
 
 #include <utils/Errors.h>
 #include <binder/Parcel.h>
@@ -213,3 +214,5 @@ private:
 } // namespace android
 
 // ---------------------------------------------------------------------------
+
+#endif // ANDROID_IPC_THREAD_STATE_H

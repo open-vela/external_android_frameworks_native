@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-#pragma once
+//
+#ifndef ANDROID_ISERVICE_MANAGER_H
+#define ANDROID_ISERVICE_MANAGER_H
 
 #include <binder/IInterface.h>
 #include <utils/Vector.h>
@@ -162,3 +164,6 @@ bool checkCallingPermission(const String16& permission,
 bool checkPermission(const String16& permission, pid_t pid, uid_t uid);
 
 } // namespace android
+
+#endif // ANDROID_ISERVICE_MANAGER_H
+

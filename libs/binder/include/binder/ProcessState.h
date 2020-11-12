@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_PROCESS_STATE_H
+#define ANDROID_PROCESS_STATE_H
 
 #include <binder/IBinder.h>
 #include <utils/KeyedVector.h>
@@ -131,3 +132,5 @@ private:
 } // namespace android
 
 // ---------------------------------------------------------------------------
+
+#endif // ANDROID_PROCESS_STATE_H

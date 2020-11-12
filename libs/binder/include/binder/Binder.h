@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_BINDER_H
+#define ANDROID_BINDER_H
 
 #include <atomic>
 #include <stdint.h>
@@ -141,3 +142,5 @@ private:
 } // namespace android
 
 // ---------------------------------------------------------------------------
+
+#endif // ANDROID_BINDER_H

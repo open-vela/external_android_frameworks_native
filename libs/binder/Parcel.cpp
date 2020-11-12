@@ -2683,7 +2683,7 @@ status_t Parcel::restartWrite(size_t desired)
 
     releaseObjects();
 
-    if (data || desired == 0) {
+    if (data) {
         LOG_ALLOC("Parcel %p: restart from %zu to %zu capacity", this, mDataCapacity, desired);
         if (mDataCapacity > desired) {
             gParcelGlobalAllocSize -= (mDataCapacity - desired);

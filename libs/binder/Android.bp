@@ -114,7 +114,6 @@ cc_library {
         "TextOutput.cpp",
         "Utils.cpp",
         ":libbinder_aidl",
-        ":activity_manager_procstate_aidl",
     ],
 
     target: {
@@ -181,8 +180,6 @@ cc_library {
     ],
     tidy_checks_as_errors: [
         "*",
-        "-google-default-arguments",
-        "-google-runtime-int",
     ],
 }
 

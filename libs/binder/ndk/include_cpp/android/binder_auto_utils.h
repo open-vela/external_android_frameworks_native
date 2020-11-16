@@ -74,9 +74,6 @@ class SpAIBinder {
      * ownership of that other object.
      */
     SpAIBinder& operator=(const SpAIBinder& other) {
-        if (this == &other) {
-            return *this;
-        }
         AIBinder_incStrong(other.mBinder);
         set(other.mBinder);
         return *this;
@@ -173,10 +170,8 @@ class ScopedAResource {
     ScopedAResource& operator=(const ScopedAResource&) = delete;
 
     // move-constructing/assignment is okay
-    ScopedAResource(ScopedAResource&& other) noexcept : mT(std::move(other.mT)) {
-        other.mT = DEFAULT;
-    }
-    ScopedAResource& operator=(ScopedAResource&& other) noexcept {
+    ScopedAResource(ScopedAResource&& other) : mT(std::move(other.mT)) { other.mT = DEFAULT; }
+    ScopedAResource& operator=(ScopedAResource&& other) {
         set(other.mT);
         other.mT = DEFAULT;
         return *this;

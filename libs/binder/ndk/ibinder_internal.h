@@ -115,13 +115,13 @@ struct AIBinder_Class {
     const ::android::String16& getInterfaceDescriptor() const { return mInterfaceDescriptor; }
 
     // required to be non-null, implemented for every class
-    const AIBinder_Class_onCreate onCreate;
-    const AIBinder_Class_onDestroy onDestroy;
-    const AIBinder_Class_onTransact onTransact;
+    const AIBinder_Class_onCreate onCreate = nullptr;
+    const AIBinder_Class_onDestroy onDestroy = nullptr;
+    const AIBinder_Class_onTransact onTransact = nullptr;
 
     // optional methods for a class
-    AIBinder_onDump onDump;
-    AIBinder_handleShellCommand handleShellCommand;
+    AIBinder_onDump onDump = nullptr;
+    AIBinder_handleShellCommand handleShellCommand = nullptr;
 
    private:
     // This must be a String16 since BBinder virtual getInterfaceDescriptor returns a reference to
@@ -161,8 +161,8 @@ struct AIBinder_DeathRecipient : ::android::RefBase {
     };
 
     explicit AIBinder_DeathRecipient(AIBinder_DeathRecipient_onBinderDied onDied);
-    binder_status_t linkToDeath(const ::android::sp<::android::IBinder>&, void* cookie);
-    binder_status_t unlinkToDeath(const ::android::sp<::android::IBinder>& binder, void* cookie);
+    binder_status_t linkToDeath(::android::sp<::android::IBinder>, void* cookie);
+    binder_status_t unlinkToDeath(::android::sp<::android::IBinder> binder, void* cookie);
 
    private:
     // When the user of this API deletes a Bp object but not the death recipient, the

@@ -114,6 +114,7 @@ cc_library {
         "TextOutput.cpp",
         "Utils.cpp",
         ":libbinder_aidl",
+        ":activity_manager_procstate_aidl",
     ],
 
     target: {
@@ -146,7 +147,6 @@ cc_library {
         "-Wextra",
         "-Werror",
         "-Wzero-as-null-pointer-constant",
-        "-DANDROID_BASE_UNIQUE_FD_DISABLE_IMPLICIT_CONVERSION",
     ],
     product_variables: {
         binder32bit: {

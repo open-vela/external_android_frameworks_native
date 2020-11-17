@@ -22,7 +22,6 @@
 #include <utils/SystemClock.h>
 
 #include <sys/types.h>
-#include <private/android_filesystem_config.h>
 
 #ifdef LOG_TAG
 #undef LOG_TAG
@@ -92,16 +91,16 @@ int32_t AppOpsManager::checkAudioOpNoThrow(int32_t op, int32_t usage, int32_t ui
 }
 
 int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPackage) {
-    return noteOp(op, uid, callingPackage, {},
+    return noteOp(op, uid, callingPackage, std::unique_ptr<String16>(),
             String16("Legacy AppOpsManager.noteOp call"));
 }
 
 int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPackage,
-        const std::optional<String16>& attributionTag, const String16& message) {
+        const std::unique_ptr<String16>& attributionTag, const String16& message) {
     sp<IAppOpsService> service = getService();
     int32_t mode = service != nullptr
             ? service->noteOperation(op, uid, callingPackage, attributionTag,
-                    shouldCollectNotes(op), message, uid == AID_SYSTEM)
+                    shouldCollectNotes(op), message)
             : AppOpsManager::MODE_IGNORED;
 
     return mode;
@@ -109,29 +108,28 @@ int32_t AppOpsManager::noteOp(int32_t op, int32_t uid, const String16& callingPa
 
 int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
         bool startIfModeDefault) {
-    return startOpNoThrow(op, uid, callingPackage, startIfModeDefault, {},
+    return startOpNoThrow(op, uid, callingPackage, startIfModeDefault, std::unique_ptr<String16>(),
             String16("Legacy AppOpsManager.startOpNoThrow call"));
 }
 
 int32_t AppOpsManager::startOpNoThrow(int32_t op, int32_t uid, const String16& callingPackage,
-        bool startIfModeDefault, const std::optional<String16>& attributionTag,
+        bool startIfModeDefault, const std::unique_ptr<String16>& attributionTag,
         const String16& message) {
     sp<IAppOpsService> service = getService();
     int32_t mode = service != nullptr
             ? service->startOperation(getClientId(), op, uid, callingPackage,
-                    attributionTag, startIfModeDefault, shouldCollectNotes(op), message,
-                    uid == AID_SYSTEM)
+                    attributionTag, startIfModeDefault, shouldCollectNotes(op), message)
             : AppOpsManager::MODE_IGNORED;
 
     return mode;
 }
 
 void AppOpsManager::finishOp(int32_t op, int32_t uid, const String16& callingPackage) {
-    finishOp(op, uid, callingPackage, {});
+    finishOp(op, uid, callingPackage, std::unique_ptr<String16>());
 }
 
 void AppOpsManager::finishOp(int32_t op, int32_t uid, const String16& callingPackage,
-        const std::optional<String16>& attributionTag) {
+        const std::unique_ptr<String16>& attributionTag) {
     sp<IAppOpsService> service = getService();
     if (service != nullptr) {
         service->finishOperation(getClientId(), op, uid, callingPackage, attributionTag);

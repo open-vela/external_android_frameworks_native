@@ -26,9 +26,6 @@ cc_defaults {
                 "-D__ANDROID_API__=10000",
             ],
         },
-        darwin: {
-            enabled: false,
-        },
     },
 }
 
@@ -38,10 +35,7 @@ cc_library {
     defaults: ["libbinder_ndk_host_user"],
     host_supported: true,
 
-    llndk_stubs: "libbinder_ndk.llndk",
-
     export_include_dirs: [
-        "include_cpp",
         "include_ndk",
         "include_platform",
     ],
@@ -87,9 +81,6 @@ cc_library {
         linux: {
             version_script: "libbinder_ndk.map.txt",
         },
-        darwin: {
-            enabled: false,
-        },
     },
     stubs: {
         symbol_file: "libbinder_ndk.map.txt",
@@ -98,14 +89,6 @@ cc_library {
             "30",
         ],
     },
-    tidy: true,
-    tidy_flags: [
-        // Only check our headers
-        "--header-filter=^.*frameworks/native/libs/binder/.*.h$",
-    ],
-    tidy_checks_as_errors: [
-        "*",
-    ],
 }
 
 ndk_headers {
@@ -118,17 +101,6 @@ ndk_headers {
     license: "NOTICE",
 }
 
-// TODO(b/160624671): package with the aidl compiler
-ndk_headers {
-    name: "libbinder_ndk_helper_headers",
-    from: "include_cpp/android",
-    to: "android",
-    srcs: [
-        "include_cpp/android/*.h",
-    ],
-    license: "NOTICE",
-}
-
 ndk_library {
     name: "libbinder_ndk",
     symbol_file: "libbinder_ndk.map.txt",
@@ -136,10 +108,9 @@ ndk_library {
 }
 
 llndk_library {
-    name: "libbinder_ndk.llndk",
+    name: "libbinder_ndk",
     symbol_file: "libbinder_ndk.map.txt",
     export_include_dirs: [
-        "include_cpp",
         "include_ndk",
         "include_platform",
     ],

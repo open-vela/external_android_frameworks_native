@@ -20,6 +20,10 @@
 
 __BEGIN_DECLS
 
+#if defined(__ANDROID_APEX__) || defined(__ANDROID_VNDK__)
+#error this is only for platform code
+#endif
+
 /**
  * Gets whether or not FDs are allowed by this AParcel
  *
@@ -28,5 +32,16 @@ __BEGIN_DECLS
  * return STATUS_FDS_NOT_ALLOWED.
  */
 bool AParcel_getAllowFds(const AParcel*);
+
+/**
+ * Data written to the parcel will be zero'd before being deleted or realloced.
+ *
+ * The main use of this is marking a parcel that will be used in a transaction
+ * with FLAG_CLEAR_BUF. When FLAG_CLEAR_BUF is used, the reply parcel will
+ * automatically be marked as sensitive when it is created.
+ *
+ * \param parcel The parcel to clear associated data from.
+ */
+void AParcel_markSensitive(const AParcel* parcel);
 
 __END_DECLS

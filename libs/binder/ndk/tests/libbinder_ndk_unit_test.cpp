@@ -39,7 +39,6 @@
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
-#include "android/binder_ibinder.h"
 
 using namespace android;
 
@@ -184,26 +183,6 @@ TEST(NdkBinder, CheckServiceThatDoesExist) {
     EXPECT_EQ(STATUS_OK, AIBinder_ping(binder));
 
     AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedDump) {
-    sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
-    ASSERT_NE(foo, nullptr);
-    AIBinder* binder = foo->getBinder();
-    EXPECT_EQ(OK, AIBinder_dump(binder, STDOUT_FILENO, nullptr, 0));
-    AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedShell) {
-    // libbinder_ndk doesn't support calling shell, so we are calling from the
-    // libbinder across processes to the NDK service which doesn't implement
-    // shell
-    static const sp<android::IServiceManager> sm(android::defaultServiceManager());
-    sp<IBinder> testService = sm->getService(String16(IFoo::kSomeInstanceName));
-
-    Vector<String16> argsVec;
-    EXPECT_EQ(OK, IBinder::shellCommand(testService, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-                                        argsVec, nullptr, nullptr));
 }
 
 TEST(NdkBinder, DoubleNumber) {
@@ -542,10 +521,6 @@ TEST(NdkBinder, UseHandleShellCommand) {
     EXPECT_EQ("", shellCmdToString(testService, {"", ""}));
     EXPECT_EQ("Hello world!", shellCmdToString(testService, {"Hello ", "world!"}));
     EXPECT_EQ("CMD", shellCmdToString(testService, {"C", "M", "D"}));
-}
-
-TEST(NdkBinder, GetClassInterfaceDescriptor) {
-    ASSERT_STREQ(IFoo::kIFooDescriptor, AIBinder_Class_getDescriptor(IFoo::kClass));
 }
 
 int main(int argc, char* argv[]) {

@@ -181,7 +181,7 @@ status_t ABBinder::onTransact(transaction_code_t code, const Parcel& data, Parce
 
         binder_status_t status = getClass()->onTransact(this, code, &in, &out);
         return PruneStatusT(status);
-    } else if (code == SHELL_COMMAND_TRANSACTION && getClass()->handleShellCommand != nullptr) {
+    } else if (code == SHELL_COMMAND_TRANSACTION) {
         int in = data.readFileDescriptor();
         int out = data.readFileDescriptor();
         int err = data.readFileDescriptor();
@@ -307,8 +307,7 @@ AIBinder_Class::AIBinder_Class(const char* interfaceDescriptor, AIBinder_Class_o
     : onCreate(onCreate),
       onDestroy(onDestroy),
       onTransact(onTransact),
-      mInterfaceDescriptor(interfaceDescriptor),
-      mWideInterfaceDescriptor(interfaceDescriptor) {}
+      mInterfaceDescriptor(interfaceDescriptor) {}
 
 AIBinder_Class* AIBinder_Class_define(const char* interfaceDescriptor,
                                       AIBinder_Class_onCreate onCreate,
@@ -334,12 +333,6 @@ void AIBinder_Class_setHandleShellCommand(AIBinder_Class* clazz,
     CHECK(clazz != nullptr) << "setHandleShellCommand requires non-null clazz";
 
     clazz->handleShellCommand = handleShellCommand;
-}
-
-const char* AIBinder_Class_getDescriptor(const AIBinder_Class* clazz) {
-    CHECK(clazz != nullptr) << "getDescriptor requires non-null clazz";
-
-    return clazz->getInterfaceDescriptorUtf8();
 }
 
 void AIBinder_DeathRecipient::TransferDeathRecipient::binderDied(const wp<IBinder>& who) {

@@ -130,7 +130,7 @@ sp<IBinder> ProcessState::getContextObject(const sp<IBinder>& /*caller*/)
 
     // The root object is special since we get it directly from the driver, it is never
     // written by Parcell::writeStrongBinder.
-    internal::Stability::markCompilationUnit(context.get());
+    internal::Stability::tryMarkCompilationUnit(context.get());
 
     return context;
 }

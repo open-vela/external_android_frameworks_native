@@ -2055,7 +2055,7 @@ const char* Parcel::readString8Inplace(size_t* outLen) const
     if (size >= 0 && size < INT32_MAX) {
         *outLen = size;
         const char* str = (const char*)readInplace(size+1);
-        if (str != nullptr && str[size] == '\0') {
+        if (str != nullptr) {
             return str;
         }
     }
@@ -2138,7 +2138,7 @@ const char16_t* Parcel::readString16Inplace(size_t* outLen) const
     if (size >= 0 && size < INT32_MAX) {
         *outLen = size;
         const char16_t* str = (const char16_t*)readInplace((size+1)*sizeof(char16_t));
-        if (str != nullptr && str[size] == u'\0') {
+        if (str != nullptr) {
             return str;
         }
     }
@@ -2682,7 +2682,7 @@ status_t Parcel::restartWrite(size_t desired)
 
     releaseObjects();
 
-    if (data || desired == 0) {
+    if (data) {
         LOG_ALLOC("Parcel %p: restart from %zu to %zu capacity", this, mDataCapacity, desired);
         if (mDataCapacity > desired) {
             gParcelGlobalAllocSize -= (mDataCapacity - desired);

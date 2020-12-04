@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_BINDER_SERVICE_H
+#define ANDROID_BINDER_SERVICE_H
 
 #include <stdint.h>
 
@@ -63,3 +64,4 @@ private:
 
 } // namespace android
 // ---------------------------------------------------------------------------
+#endif // ANDROID_BINDER_SERVICE_H

@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_PERSISTABLE_BUNDLE_H
+#define ANDROID_PERSISTABLE_BUNDLE_H
 
 #include <map>
 #include <set>
@@ -127,3 +128,5 @@ private:
 }  // namespace os
 
 }  // namespace android
+
+#endif  // ANDROID_PERSISTABLE_BUNDLE_H

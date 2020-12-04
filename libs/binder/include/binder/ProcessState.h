@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_PROCESS_STATE_H
+#define ANDROID_PROCESS_STATE_H
 
 #include <binder/IBinder.h>
 #include <utils/KeyedVector.h>
@@ -41,16 +42,20 @@ public:
      * any call to ProcessState::self(). The default is /dev/vndbinder
      * for processes built with the VNDK and /dev/binder for those
      * which are not.
-     *
-     * If this is called with nullptr, the behavior is the same as selfOrNull.
      */
     static  sp<ProcessState>    initWithDriver(const char *driver);
 
             sp<IBinder>         getContextObject(const sp<IBinder>& caller);
 
             void                startThreadPool();
+                        
+    typedef bool (*context_check_func)(const String16& name,
+                                       const sp<IBinder>& caller,
+                                       void* userData);
 
-            bool                becomeContextManager();
+            bool                becomeContextManager(
+                                    context_check_func checkFunc,
+                                    void* userData);
 
             sp<IBinder>         getStrongProxyForHandle(int32_t handle);
             void                expungeHandle(int32_t handle, IBinder* binder);
@@ -85,8 +90,6 @@ public:
             void setCallRestriction(CallRestriction restriction);
 
 private:
-    static  sp<ProcessState>    init(const char *defaultDriver, bool requireDefault);
-
     friend class IPCThreadState;
     
             explicit            ProcessState(const char* driver);
@@ -121,6 +124,9 @@ private:
 
             Vector<handle_entry>mHandleToObject;
 
+            context_check_func  mBinderContextCheckFunc;
+            void*               mBinderContextUserData;
+
             String8             mRootDir;
             bool                mThreadPoolStarted;
     volatile int32_t            mThreadPoolSeq;
@@ -131,3 +137,5 @@ private:
 } // namespace android
 
 // ---------------------------------------------------------------------------
+
+#endif // ANDROID_PROCESS_STATE_H

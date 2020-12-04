@@ -59,9 +59,6 @@
     },
     {
       "name": "rustBinderTest"
-    },
-    {
-      "name": "binderRustNdkInteropTest"
     }
   ]
 }

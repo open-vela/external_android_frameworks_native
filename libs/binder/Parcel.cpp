@@ -222,9 +222,6 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder)
             if (local->isRequestingSid()) {
                 obj.flags |= FLAT_BINDER_FLAG_TXN_SECURITY_CTX;
             }
-            if (local->isInheritRt()) {
-                obj.flags |= FLAT_BINDER_FLAG_INHERIT_RT;
-            }
             obj.hdr.type = BINDER_TYPE_BINDER;
             obj.binder = reinterpret_cast<uintptr_t>(local->getWeakRefs());
             obj.cookie = reinterpret_cast<uintptr_t>(local);
@@ -2058,7 +2055,7 @@ const char* Parcel::readString8Inplace(size_t* outLen) const
     if (size >= 0 && size < INT32_MAX) {
         *outLen = size;
         const char* str = (const char*)readInplace(size+1);
-        if (str != nullptr) {
+        if (str != nullptr && str[size] == '\0') {
             return str;
         }
     }
@@ -2141,7 +2138,7 @@ const char16_t* Parcel::readString16Inplace(size_t* outLen) const
     if (size >= 0 && size < INT32_MAX) {
         *outLen = size;
         const char16_t* str = (const char16_t*)readInplace((size+1)*sizeof(char16_t));
-        if (str != nullptr) {
+        if (str != nullptr && str[size] == u'\0') {
             return str;
         }
     }

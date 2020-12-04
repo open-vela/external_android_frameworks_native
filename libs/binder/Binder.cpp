@@ -133,7 +133,6 @@ class BBinder::Extras
 public:
     // unlocked objects
     bool mRequestingSid = false;
-    bool mInheritRt = false;
     sp<IBinder> mExtension;
     int mPolicy = SCHED_NORMAL;
     int mPriority = 0;
@@ -326,27 +325,6 @@ int BBinder::getMinSchedulerPriority() {
     Extras* e = mExtras.load(std::memory_order_acquire);
     if (e == nullptr) return 0;
     return e->mPriority;
-}
-
-bool BBinder::isInheritRt() {
-    Extras* e = mExtras.load(std::memory_order_acquire);
-
-    return e && e->mInheritRt;
-}
-
-void BBinder::setInheritRt(bool inheritRt) {
-    Extras* e = mExtras.load(std::memory_order_acquire);
-
-    if (!e) {
-        if (!inheritRt) {
-            return;
-        }
-
-        e = getOrCreateExtras();
-        if (!e) return; // out of memory
-    }
-
-    e->mInheritRt = inheritRt;
 }
 
 pid_t BBinder::getDebugPid() {

@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-//
-#ifndef ANDROID_IINTERFACE_H
-#define ANDROID_IINTERFACE_H
+#pragma once
 
 #include <binder/Binder.h>
 
@@ -234,6 +232,7 @@ constexpr const char* const kManualInterfaces[] = {
   "android.gui.IGraphicBufferConsumer",
   "android.gui.IRegionSamplingListener",
   "android.gui.ITransactionComposerListener",
+  "android.gui.IScreenCaptureListener",
   "android.gui.SensorEventConnection",
   "android.gui.SensorServer",
   "android.hardware.ICamera",
@@ -247,8 +246,6 @@ constexpr const char* const kManualInterfaces[] = {
   "android.hardware.ISoundTriggerHwService",
   "android.hardware.IStreamListener",
   "android.hardware.IStreamSource",
-  "android.input.IInputFlinger",
-  "android.input.ISetInputWindowsListener",
   "android.media.IAudioFlinger",
   "android.media.IAudioFlingerClient",
   "android.media.IAudioPolicyService",
@@ -257,8 +254,6 @@ constexpr const char* const kManualInterfaces[] = {
   "android.media.IAudioTrack",
   "android.media.IDataSource",
   "android.media.IDrmClient",
-  "android.media.IEffect",
-  "android.media.IEffectClient",
   "android.media.IMediaCodecList",
   "android.media.IMediaDrmService",
   "android.media.IMediaExtractor",
@@ -282,7 +277,6 @@ constexpr const char* const kManualInterfaces[] = {
   "android.os.IComplexTypeInterface",
   "android.os.IPermissionController",
   "android.os.IPingResponder",
-  "android.os.IPowerManager",
   "android.os.IProcessInfoService",
   "android.os.ISchedulingPolicyService",
   "android.os.IStringConstants",
@@ -335,5 +329,3 @@ constexpr bool allowedManualInterface(const char* name) {
 
 } // namespace internal
 } // namespace android
-
-#endif // ANDROID_IINTERFACE_H

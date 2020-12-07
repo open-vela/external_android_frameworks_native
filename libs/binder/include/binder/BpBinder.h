@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_BPBINDER_H
-#define ANDROID_BPBINDER_H
+#pragma once
 
 #include <binder/IBinder.h>
 #include <utils/KeyedVector.h>
@@ -29,7 +28,7 @@ namespace android {
 
 namespace internal {
 class Stability;
-};
+}
 
 using binder_proxy_limit_callback = void(*)(int);
 
@@ -110,18 +109,17 @@ public:
         KeyedVector<const void*, entry_t> mObjects;
     };
 
-protected:
+private:
                         BpBinder(int32_t handle,int32_t trackedUid);
     virtual             ~BpBinder();
     virtual void        onFirstRef();
     virtual void        onLastStrongRef(const void* id);
     virtual bool        onIncStrongAttempted(uint32_t flags, const void* id);
 
-private:
-    const   int32_t             mHandle;
-
     friend ::android::internal::Stability;
             int32_t             mStability;
+
+    const   int32_t             mHandle;
 
     struct Obituary {
         wp<DeathRecipient> recipient;
@@ -137,7 +135,6 @@ private:
             volatile int32_t    mObitsSent;
             Vector<Obituary>*   mObituaries;
             ObjectManager       mObjects;
-            Parcel*             mConstantData;
     mutable String16            mDescriptorCache;
             int32_t             mTrackedUid;
 
@@ -154,5 +151,3 @@ private:
 } // namespace android
 
 // ---------------------------------------------------------------------------
-
-#endif // ANDROID_BPBINDER_H

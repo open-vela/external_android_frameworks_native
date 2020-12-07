@@ -1,0 +1,81 @@
+rust_test {
+    name: "rustBinderTest",
+    srcs: ["integration.rs"],
+    rustlibs: [
+        "libbinder_rs",
+        "libselinux_bindgen",
+    ],
+    shared_libs: [
+        "libselinux",
+    ],
+    // For the binaries to be pushed properly as specified in AndroidTest.xml,
+    // this cannot be the same as the module name.
+    stem: "rustBinderTestClientBinary",
+    test_suites: ["general-tests"],
+}
+
+rust_test {
+    name: "rustBinderTestService",
+    srcs: ["integration.rs"],
+    rustlibs: [
+        "libbinder_rs",
+        "liblibc",
+    ],
+    // For the binaries to be pushed properly as specified in AndroidTest.xml,
+    // this cannot be the same as the module name.
+    stem: "rustBinderTestServiceBinary",
+    test_harness: false,
+    // TODO(b/164473602): Remove this setting and add the module to `data`
+    // attribute of rustBinderTest.
+    auto_gen_config: false,
+    test_suites: ["general-tests"],
+}
+
+cc_test {
+    name: "binderRustNdkInteropTest",
+    srcs: [
+        "binderRustNdkInteropTest.cpp",
+    ],
+    shared_libs: [
+        "libbinder",
+        "libbinder_ndk",
+    ],
+    static_libs: [
+        "IBinderRustNdkInteropTest-ndk_platform",
+        "libbinder_ndk_rust_interop",
+    ],
+    test_suites: ["general-tests"],
+    require_root: true,
+
+    // rustBinderTestService uses a custom config
+    auto_gen_config: true,
+}
+
+aidl_interface {
+    name: "IBinderRustNdkInteropTest",
+    unstable: true,
+    srcs: [
+        "IBinderRustNdkInteropTest.aidl",
+        "IBinderRustNdkInteropTestOther.aidl",
+    ],
+    backend: {
+        ndk: {
+            enabled: true,
+        },
+        rust: {
+            enabled: true,
+        },
+    },
+}
+
+rust_ffi_static {
+    name: "libbinder_ndk_rust_interop",
+    crate_name: "binder_ndk_rust_interop",
+    srcs: [
+        "ndk_rust_interop.rs",
+    ],
+    rustlibs: [
+        "libbinder_rs",
+        "IBinderRustNdkInteropTest-rust",
+    ],
+}

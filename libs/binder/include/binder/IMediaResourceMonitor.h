@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_I_MEDIA_RESOURCE_MONITOR_H
-#define ANDROID_I_MEDIA_RESOURCE_MONITOR_H
+#pragma once
 
 #ifndef __ANDROID_VNDK__
 
@@ -46,6 +45,7 @@ public:
 
 class BnMediaResourceMonitor : public BnInterface<IMediaResourceMonitor> {
 public:
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t onTransact(uint32_t code, const Parcel& data, Parcel* reply,
             uint32_t flags = 0);
 };
@@ -57,5 +57,3 @@ public:
 #else // __ANDROID_VNDK__
 #error "This header is not visible to vendors"
 #endif // __ANDROID_VNDK__
-
-#endif // ANDROID_I_MEDIA_RESOURCE_MONITOR_H

@@ -1881,11 +1881,8 @@ const char* Parcel::readString8Inplace(size_t* outLen) const
     if (size >= 0 && size < INT32_MAX) {
         *outLen = size;
         const char* str = (const char*)readInplace(size+1);
-        if (str != nullptr) {
-            if (str[size] == '\0') {
-                return str;
-            }
-            android_errorWriteLog(0x534e4554, "172655291");
+        if (str != nullptr && str[size] == '\0') {
+            return str;
         }
     }
     *outLen = 0;
@@ -1944,11 +1941,8 @@ const char16_t* Parcel::readString16Inplace(size_t* outLen) const
     if (size >= 0 && size < INT32_MAX) {
         *outLen = size;
         const char16_t* str = (const char16_t*)readInplace((size+1)*sizeof(char16_t));
-        if (str != nullptr) {
-            if (str[size] == u'\0') {
-                return str;
-            }
-            android_errorWriteLog(0x534e4554, "172655291");
+        if (str != nullptr && str[size] == u'\0') {
+            return str;
         }
     }
     *outLen = 0;
@@ -2478,7 +2472,7 @@ status_t Parcel::restartWrite(size_t desired)
 
     releaseObjects();
 
-    if (data) {
+    if (data || desired == 0) {
         LOG_ALLOC("Parcel %p: restart from %zu to %zu capacity", this, mDataCapacity, desired);
         pthread_mutex_lock(&gParcelGlobalAllocSizeLock);
         gParcelGlobalAllocSize += desired;

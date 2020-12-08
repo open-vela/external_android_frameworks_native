@@ -16,7 +16,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <fstream>
 #include <poll.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -30,7 +29,6 @@
 #include <binder/IServiceManager.h>
 
 #include <private/binder/binder_module.h>
-#include <linux/sched.h>
 #include <sys/epoll.h>
 #include <sys/prctl.h>
 
@@ -54,7 +52,6 @@ static char binderserverarg[] = "--binderserver";
 
 static constexpr int kSchedPolicy = SCHED_RR;
 static constexpr int kSchedPriority = 7;
-static constexpr int kSchedPriorityMore = 8;
 
 static String16 binderLibTestServiceName = String16("test.binderLib");
 
@@ -82,8 +79,6 @@ enum BinderLibTestTranscationCode {
     BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION,
     BINDER_LIB_TEST_GET_WORK_SOURCE_TRANSACTION,
     BINDER_LIB_TEST_GET_SCHEDULING_POLICY,
-    BINDER_LIB_TEST_NOP_TRANSACTION_WAIT,
-    BINDER_LIB_TEST_GETPID,
     BINDER_LIB_TEST_ECHO_VECTOR,
     BINDER_LIB_TEST_REJECT_BUF,
 };
@@ -402,57 +397,6 @@ TEST_F(BinderLibTest, NopTransaction) {
     Parcel data, reply;
     ret = m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION, data, &reply);
     EXPECT_EQ(NO_ERROR, ret);
-}
-
-TEST_F(BinderLibTest, NopTransactionClear) {
-    status_t ret;
-    Parcel data, reply;
-    // make sure it accepts the transaction flag
-    ret = m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION, data, &reply, TF_CLEAR_BUF);
-    EXPECT_EQ(NO_ERROR, ret);
-}
-
-TEST_F(BinderLibTest, Freeze) {
-    status_t ret;
-    Parcel data, reply, replypid;
-    std::ifstream freezer_file("/sys/fs/cgroup/freezer/cgroup.freeze");
-
-    //Pass test on devices where the freezer is not supported
-    if (freezer_file.fail()) {
-        GTEST_SKIP();
-        return;
-    }
-
-    std::string freezer_enabled;
-    std::getline(freezer_file, freezer_enabled);
-
-    //Pass test on devices where the freezer is disabled
-    if (freezer_enabled != "1") {
-        GTEST_SKIP();
-        return;
-    }
-
-    ret = m_server->transact(BINDER_LIB_TEST_GETPID, data, &replypid);
-    int32_t pid = replypid.readInt32();
-    EXPECT_EQ(NO_ERROR, ret);
-    for (int i = 0; i < 10; i++) {
-        EXPECT_EQ(NO_ERROR, m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION_WAIT, data, &reply, TF_ONE_WAY));
-    }
-    EXPECT_EQ(-EAGAIN, IPCThreadState::self()->freeze(pid, 1, 0));
-    EXPECT_EQ(-EAGAIN, IPCThreadState::self()->freeze(pid, 1, 0));
-    EXPECT_EQ(NO_ERROR, IPCThreadState::self()->freeze(pid, 1, 1000));
-    EXPECT_EQ(FAILED_TRANSACTION, m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION, data, &reply));
-
-    bool sync_received, async_received;
-
-    EXPECT_EQ(NO_ERROR, IPCThreadState::self()->getProcessFreezeInfo(pid, &sync_received,
-                &async_received));
-
-    EXPECT_EQ(sync_received, 1);
-    EXPECT_EQ(async_received, 0);
-
-    EXPECT_EQ(NO_ERROR, IPCThreadState::self()->freeze(pid, 0, 0));
-    EXPECT_EQ(NO_ERROR, m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION, data, &reply));
 }
 
 TEST_F(BinderLibTest, SetError) {
@@ -1090,25 +1034,6 @@ TEST_F(BinderLibTest, SchedPolicySet) {
     EXPECT_EQ(kSchedPriority, priority);
 }
 
-TEST_F(BinderLibTest, InheritRt) {
-    sp<IBinder> server = addServer();
-    ASSERT_TRUE(server != nullptr);
-
-    const struct sched_param param {
-        .sched_priority = kSchedPriorityMore,
-    };
-    EXPECT_EQ(0, sched_setscheduler(getpid(), SCHED_RR, &param));
-
-    Parcel data, reply;
-    status_t ret = server->transact(BINDER_LIB_TEST_GET_SCHEDULING_POLICY, data, &reply);
-    EXPECT_EQ(NO_ERROR, ret);
-
-    int policy = reply.readInt32();
-    int priority = reply.readInt32();
-
-    EXPECT_EQ(kSchedPolicy, policy & (~SCHED_RESET_ON_FORK));
-    EXPECT_EQ(kSchedPriorityMore, priority);
-}
 
 TEST_F(BinderLibTest, VectorSent) {
     Parcel data, reply;
@@ -1253,12 +1178,6 @@ class BinderLibTestService : public BBinder
                 pthread_mutex_unlock(&m_serverWaitMutex);
                 return ret;
             }
-            case BINDER_LIB_TEST_GETPID:
-                reply->writeInt32(getpid());
-                return NO_ERROR;
-            case BINDER_LIB_TEST_NOP_TRANSACTION_WAIT:
-                usleep(5000);
-                return NO_ERROR;
             case BINDER_LIB_TEST_NOP_TRANSACTION:
                 return NO_ERROR;
             case BINDER_LIB_TEST_DELAYED_CALL_BACK: {
@@ -1480,8 +1399,6 @@ int run_server(int index, int readypipefd, bool usePoll)
         sp<BinderLibTestService> testService = new BinderLibTestService(index);
 
         testService->setMinSchedulerPolicy(kSchedPolicy, kSchedPriority);
-
-        testService->setInheritRt(true);
 
         /*
          * Normally would also contain functionality as well, but we are only

@@ -137,8 +137,8 @@ BpBinder* BpBinder::create(int32_t handle) {
 }
 
 BpBinder::BpBinder(int32_t handle, int32_t trackedUid)
-    : mHandle(handle)
-    , mStability(0)
+    : mStability(0)
+    , mHandle(handle)
     , mAlive(1)
     , mObitsSent(0)
     , mObituaries(nullptr)
@@ -223,13 +223,14 @@ status_t BpBinder::transact(
         if (code >= FIRST_CALL_TRANSACTION && code <= LAST_CALL_TRANSACTION) {
             using android::internal::Stability;
 
-            auto stability = Stability::get(this);
-            auto required = privateVendor ? Stability::VENDOR : Stability::kLocalStability;
+            auto category = Stability::getCategory(this);
+            Stability::Level required = privateVendor ? Stability::VENDOR
+                : Stability::getLocalLevel();
 
-            if (CC_UNLIKELY(!Stability::check(stability, required))) {
+            if (CC_UNLIKELY(!Stability::check(category, required))) {
                 ALOGE("Cannot do a user transaction on a %s binder in a %s context.",
-                    Stability::stabilityString(stability).c_str(),
-                    Stability::stabilityString(required).c_str());
+                    category.debugString().c_str(),
+                    Stability::levelString(required).c_str());
                 return BAD_TYPE;
             }
         }

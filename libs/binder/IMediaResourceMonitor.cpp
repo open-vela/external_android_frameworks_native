@@ -38,10 +38,11 @@ public:
     }
 };
 
-IMPLEMENT_META_INTERFACE(MediaResourceMonitor, "android.media.IMediaResourceMonitor");
+IMPLEMENT_META_INTERFACE(MediaResourceMonitor, "android.media.IMediaResourceMonitor")
 
 // ----------------------------------------------------------------------
 
+// NOLINTNEXTLINE(google-default-arguments)
 status_t BnMediaResourceMonitor::onTransact( uint32_t code, const Parcel& data, Parcel* reply,
         uint32_t flags) {
     switch(code) {

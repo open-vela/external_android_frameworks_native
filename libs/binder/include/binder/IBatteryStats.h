@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_IBATTERYSTATS_H
+#define ANDROID_IBATTERYSTATS_H
 
 #ifndef __ANDROID_VNDK__
 
@@ -81,3 +82,5 @@ public:
 #else // __ANDROID_VNDK__
 #error "This header is not visible to vendors"
 #endif // __ANDROID_VNDK__
+
+#endif // ANDROID_IBATTERYSTATS_H

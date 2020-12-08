@@ -18,9 +18,6 @@
 
 #include <binder/IServiceManager.h>
 
-#include <inttypes.h>
-#include <unistd.h>
-
 #include <android/os/BnServiceCallback.h>
 #include <android/os/IServiceManager.h>
 #include <binder/IPCThreadState.h>
@@ -38,6 +35,8 @@
 #endif
 
 #include "Static.h"
+
+#include <unistd.h>
 
 namespace android {
 
@@ -74,7 +73,6 @@ public:
     Vector<String16> listServices(int dumpsysPriority) override;
     sp<IBinder> waitForService(const String16& name16) override;
     bool isDeclared(const String16& name) override;
-    Vector<String16> getDeclaredInstances(const String16& interface) override;
 
     // for legacy ABI
     const String16& getInterfaceDescriptor() const override {
@@ -208,10 +206,6 @@ ServiceManagerShim::ServiceManagerShim(const sp<AidlServiceManager>& impl)
  : mTheRealServiceManager(impl)
 {}
 
-// This implementation could be simplified and made more efficient by delegating
-// to waitForService. However, this changes the threading structure in some
-// cases and could potentially break prebuilts. Once we have higher logistical
-// complexity, this could be attempted.
 sp<IBinder> ServiceManagerShim::getService(const String16& name) const
 {
     static bool gSystemBootCompleted = false;
@@ -221,8 +215,7 @@ sp<IBinder> ServiceManagerShim::getService(const String16& name) const
 
     const bool isVendorService =
         strcmp(ProcessState::self()->getDriverName().c_str(), "/dev/vndbinder") == 0;
-    constexpr int64_t timeout = 5000;
-    int64_t startTime = uptimeMillis();
+    const long timeout = uptimeMillis() + 5000;
     // Vendor code can't access system properties
     if (!gSystemBootCompleted && !isVendorService) {
 #ifdef __ANDROID__
@@ -234,23 +227,17 @@ sp<IBinder> ServiceManagerShim::getService(const String16& name) const
 #endif
     }
     // retry interval in millisecond; note that vendor services stay at 100ms
-    const useconds_t sleepTime = gSystemBootCompleted ? 1000 : 100;
-
-    ALOGI("Waiting for service '%s' on '%s'...", String8(name).string(),
-          ProcessState::self()->getDriverName().c_str());
+    const long sleepTime = gSystemBootCompleted ? 1000 : 100;
 
     int n = 0;
-    while (uptimeMillis() - startTime < timeout) {
+    while (uptimeMillis() < timeout) {
         n++;
+        ALOGI("Waiting for service '%s' on '%s'...", String8(name).string(),
+            ProcessState::self()->getDriverName().c_str());
         usleep(1000*sleepTime);
 
         sp<IBinder> svc = checkService(name);
-        if (svc != nullptr) {
-            ALOGI("Waiting for service '%s' on '%s' successful after waiting %" PRIi64 "ms",
-                  String8(name).string(), ProcessState::self()->getDriverName().c_str(),
-                  uptimeMillis() - startTime);
-            return svc;
-        }
+        if (svc != nullptr) return svc;
     }
     ALOGW("Service %s didn't start. Returning NULL", String8(name).string());
     return nullptr;
@@ -310,7 +297,7 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
     // Simple RAII object to ensure a function call immediately before going out of scope
     class Defer {
     public:
-        explicit Defer(std::function<void()>&& f) : mF(std::move(f)) {}
+        Defer(std::function<void()>&& f) : mF(std::move(f)) {}
         ~Defer() { mF(); }
     private:
         std::function<void()> mF;
@@ -335,11 +322,6 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
 
     while(true) {
         {
-            // It would be really nice if we could read binder commands on this
-            // thread instead of needing a threadpool to be started, but for
-            // instance, if we call getAndExecuteCommand, it might be the case
-            // that another thread serves the callback, and we never get a
-            // command, so we hang indefinitely.
             std::unique_lock<std::mutex> lock(waiter->mMutex);
             using std::literals::chrono_literals::operator""s;
             waiter->mCv.wait_for(lock, 1s, [&] {
@@ -347,8 +329,6 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
             });
             if (waiter->mBinder != nullptr) return waiter->mBinder;
         }
-
-        ALOGW("Waited one second for %s (is service started? are binder threads started and available?)", name.c_str());
 
         // Handle race condition for lazy services. Here is what can happen:
         // - the service dies (not processed by init yet).
@@ -363,6 +343,8 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
             return nullptr;
         }
         if (out != nullptr) return out;
+
+        ALOGW("Waited one second for %s", name.c_str());
     }
 }
 
@@ -372,20 +354,6 @@ bool ServiceManagerShim::isDeclared(const String16& name) {
         return false;
     }
     return declared;
-}
-
-Vector<String16> ServiceManagerShim::getDeclaredInstances(const String16& interface) {
-    std::vector<std::string> out;
-    if (!mTheRealServiceManager->getDeclaredInstances(String8(interface).c_str(), &out).isOk()) {
-        return {};
-    }
-
-    Vector<String16> res;
-    res.setCapacity(out.size());
-    for (const std::string& instance : out) {
-        res.push(String16(instance.c_str()));
-    }
-    return res;
 }
 
 } // namespace android

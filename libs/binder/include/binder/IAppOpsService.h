@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#pragma once
+//
+#ifndef ANDROID_IAPP_OPS_SERVICE_H
+#define ANDROID_IAPP_OPS_SERVICE_H
 
 #include <binder/IAppOpsCallback.h>
 #include <binder/IInterface.h>
-
-#include <optional>
 
 #ifdef __ANDROID_VNDK__
 #error "This header is not visible to vendors"
@@ -36,13 +36,13 @@ public:
 
     virtual int32_t checkOperation(int32_t code, int32_t uid, const String16& packageName) = 0;
     virtual int32_t noteOperation(int32_t code, int32_t uid, const String16& packageName,
-            const std::optional<String16>& attributionTag, bool shouldCollectAsyncNotedOp,
+            const std::unique_ptr<String16>& attributionTag, bool shouldCollectAsyncNotedOp,
             const String16& message) = 0;
     virtual int32_t startOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-            const String16& packageName, const std::optional<String16>& attributionTag,
+            const String16& packageName, const std::unique_ptr<String16>& attributionTag,
             bool startIfModeDefault, bool shouldCollectAsyncNotedOp, const String16& message) = 0;
     virtual void finishOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-            const String16& packageName, const std::optional<String16>& attributionTag) = 0;
+            const String16& packageName, const std::unique_ptr<String16>& attributionTag) = 0;
     virtual void startWatchingMode(int32_t op, const String16& packageName,
             const sp<IAppOpsCallback>& callback) = 0;
     virtual void stopWatchingMode(const sp<IAppOpsCallback>& callback) = 0;
@@ -87,3 +87,5 @@ public:
 // ----------------------------------------------------------------------
 
 } // namespace android
+
+#endif // ANDROID_IAPP_OPS_SERVICE_H

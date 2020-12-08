@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_BINDER_H
+#define ANDROID_BINDER_H
 
 #include <atomic>
 #include <stdint.h>
@@ -83,14 +84,12 @@ public:
     // Appropriate values are:
     // SCHED_NORMAL: -20 <= priority <= 19
     // SCHED_RR/SCHED_FIFO: 1 <= priority <= 99
+    __attribute__((weak))
     void                setMinSchedulerPolicy(int policy, int priority);
+    __attribute__((weak))
     int                 getMinSchedulerPolicy();
+    __attribute__((weak))
     int                 getMinSchedulerPriority();
-
-    // Whether realtime scheduling policies are inherited.
-    bool                isInheritRt();
-    // This must be called before the object is sent to another process. Not thread safe.
-    void                setInheritRt(bool inheritRt);
 
     pid_t               getDebugPid();
 
@@ -146,3 +145,5 @@ private:
 } // namespace android
 
 // ---------------------------------------------------------------------------
+
+#endif // ANDROID_BINDER_H

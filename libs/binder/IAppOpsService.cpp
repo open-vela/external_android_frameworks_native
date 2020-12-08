@@ -22,6 +22,8 @@
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 
+#include <optional>
+
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -47,16 +49,17 @@ public:
     }
 
     virtual int32_t noteOperation(int32_t code, int32_t uid, const String16& packageName,
-                const std::unique_ptr<String16>& attributionTag, bool shouldCollectAsyncNotedOp,
-                const String16& message) {
+                const std::optional<String16>& attributionTag, bool shouldCollectAsyncNotedOp,
+                const String16& message, bool shouldCollectMessage) {
         Parcel data, reply;
         data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
         data.writeInt32(code);
         data.writeInt32(uid);
         data.writeString16(packageName);
         data.writeString16(attributionTag);
-        data.writeInt32(shouldCollectAsyncNotedOp ? 1 : 0);
+        data.writeBool(shouldCollectAsyncNotedOp);
         data.writeString16(message);
+        data.writeBool(shouldCollectMessage);
         remote()->transact(NOTE_OPERATION_TRANSACTION, data, &reply);
         // fail on exception
         if (reply.readExceptionCode() != 0) return MODE_ERRORED;
@@ -64,8 +67,9 @@ public:
     }
 
     virtual int32_t startOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-                const String16& packageName, const std::unique_ptr<String16>& attributionTag,
-                bool startIfModeDefault, bool shouldCollectAsyncNotedOp, const String16& message) {
+                const String16& packageName, const std::optional<String16>& attributionTag,
+                bool startIfModeDefault, bool shouldCollectAsyncNotedOp, const String16& message,
+                bool shouldCollectMessage) {
         Parcel data, reply;
         data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
         data.writeStrongBinder(token);
@@ -73,9 +77,10 @@ public:
         data.writeInt32(uid);
         data.writeString16(packageName);
         data.writeString16(attributionTag);
-        data.writeInt32(startIfModeDefault ? 1 : 0);
-        data.writeInt32(shouldCollectAsyncNotedOp ? 1 : 0);
+        data.writeBool(startIfModeDefault);
+        data.writeBool(shouldCollectAsyncNotedOp);
         data.writeString16(message);
+        data.writeBool(shouldCollectMessage);
         remote()->transact(START_OPERATION_TRANSACTION, data, &reply);
         // fail on exception
         if (reply.readExceptionCode() != 0) return MODE_ERRORED;
@@ -83,7 +88,7 @@ public:
     }
 
     virtual void finishOperation(const sp<IBinder>& token, int32_t code, int32_t uid,
-            const String16& packageName, const std::unique_ptr<String16>& attributionTag) {
+            const String16& packageName, const std::optional<String16>& attributionTag) {
         Parcel data, reply;
         data.writeInterfaceToken(IAppOpsService::getInterfaceDescriptor());
         data.writeStrongBinder(token);
@@ -157,7 +162,7 @@ public:
     }
 };
 
-IMPLEMENT_META_INTERFACE(AppOpsService, "com.android.internal.app.IAppOpsService");
+IMPLEMENT_META_INTERFACE(AppOpsService, "com.android.internal.app.IAppOpsService")
 
 // ----------------------------------------------------------------------
 
@@ -182,12 +187,13 @@ status_t BnAppOpsService::onTransact(
             int32_t code = data.readInt32();
             int32_t uid = data.readInt32();
             String16 packageName = data.readString16();
-            std::unique_ptr<String16> attributionTag;
+            std::optional<String16> attributionTag;
             data.readString16(&attributionTag);
-            bool shouldCollectAsyncNotedOp = data.readInt32() == 1;
+            bool shouldCollectAsyncNotedOp = data.readBool();
             String16 message = data.readString16();
+            bool shouldCollectMessage = data.readBool();
             int32_t res = noteOperation(code, uid, packageName, attributionTag,
-                    shouldCollectAsyncNotedOp, message);
+                    shouldCollectAsyncNotedOp, message, shouldCollectMessage);
             reply->writeNoException();
             reply->writeInt32(res);
             return NO_ERROR;
@@ -198,13 +204,14 @@ status_t BnAppOpsService::onTransact(
             int32_t code = data.readInt32();
             int32_t uid = data.readInt32();
             String16 packageName = data.readString16();
-            std::unique_ptr<String16> attributionTag;
+            std::optional<String16> attributionTag;
             data.readString16(&attributionTag);
-            bool startIfModeDefault = data.readInt32() == 1;
-            bool shouldCollectAsyncNotedOp = data.readInt32() == 1;
+            bool startIfModeDefault = data.readBool();
+            bool shouldCollectAsyncNotedOp = data.readBool();
             String16 message = data.readString16();
+            bool shouldCollectMessage = data.readBool();
             int32_t res = startOperation(token, code, uid, packageName, attributionTag,
-                    startIfModeDefault, shouldCollectAsyncNotedOp, message);
+                    startIfModeDefault, shouldCollectAsyncNotedOp, message, shouldCollectMessage);
             reply->writeNoException();
             reply->writeInt32(res);
             return NO_ERROR;
@@ -215,7 +222,7 @@ status_t BnAppOpsService::onTransact(
             int32_t code = data.readInt32();
             int32_t uid = data.readInt32();
             String16 packageName = data.readString16();
-            std::unique_ptr<String16> attributionTag;
+            std::optional<String16> attributionTag;
             data.readString16(&attributionTag);
             finishOperation(token, code, uid, packageName, attributionTag);
             reply->writeNoException();

@@ -2059,10 +2059,7 @@ const char* Parcel::readString8Inplace(size_t* outLen) const
         *outLen = size;
         const char* str = (const char*)readInplace(size+1);
         if (str != nullptr) {
-            if (str[size] == '\0') {
-                return str;
-            }
-            android_errorWriteLog(0x534e4554, "172655291");
+            return str;
         }
     }
     *outLen = 0;
@@ -2145,10 +2142,7 @@ const char16_t* Parcel::readString16Inplace(size_t* outLen) const
         *outLen = size;
         const char16_t* str = (const char16_t*)readInplace((size+1)*sizeof(char16_t));
         if (str != nullptr) {
-            if (str[size] == u'\0') {
-                return str;
-            }
-            android_errorWriteLog(0x534e4554, "172655291");
+            return str;
         }
     }
     *outLen = 0;
@@ -2509,15 +2503,19 @@ size_t Parcel::ipcObjectsCount() const
 void Parcel::ipcSetDataReference(const uint8_t* data, size_t dataSize,
     const binder_size_t* objects, size_t objectsCount, release_func relFunc)
 {
-    freeData();
-
+    binder_size_t minOffset = 0;
+    freeDataNoInit();
+    mError = NO_ERROR;
     mData = const_cast<uint8_t*>(data);
     mDataSize = mDataCapacity = dataSize;
+    //ALOGI("setDataReference Setting data size of %p to %lu (pid=%d)", this, mDataSize, getpid());
+    mDataPos = 0;
+    ALOGV("setDataReference Setting data pos of %p to %zu", this, mDataPos);
     mObjects = const_cast<binder_size_t*>(objects);
     mObjectsSize = mObjectsCapacity = objectsCount;
+    mNextObjectHint = 0;
+    mObjectsSorted = false;
     mOwner = relFunc;
-
-    binder_size_t minOffset = 0;
     for (size_t i = 0; i < mObjectsSize; i++) {
         binder_size_t offset = mObjects[i];
         if (offset < minOffset) {

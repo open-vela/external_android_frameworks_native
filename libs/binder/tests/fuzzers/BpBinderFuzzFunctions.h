@@ -48,7 +48,9 @@ static int8_t kBpBinderCookie = 0;
 static const std::vector<std::function<void(FuzzedDataProvider*, const sp<BpBinder>&,
                                             const sp<IBinder::DeathRecipient>&)>>
         gBPBinderOperations =
-                {[](FuzzedDataProvider* fdp, const sp<BpBinder>& bpbinder,
+                {[](FuzzedDataProvider*, const sp<BpBinder>& bpbinder,
+                    const sp<IBinder::DeathRecipient>&) -> void { bpbinder->handle(); },
+                 [](FuzzedDataProvider* fdp, const sp<BpBinder>& bpbinder,
                     const sp<IBinder::DeathRecipient>& s_recipient) -> void {
                      // Clean up possible leftover memory.
                      wp<IBinder::DeathRecipient> outRecipient(nullptr);

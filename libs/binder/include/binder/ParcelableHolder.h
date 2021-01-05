@@ -52,59 +52,53 @@ public:
     }
 
     template <typename T>
-    status_t setParcelable(T&& p) {
+    bool setParcelable(T&& p) {
         using Tt = typename std::decay<T>::type;
         return setParcelable<Tt>(std::make_shared<Tt>(std::forward<T>(p)));
     }
 
     template <typename T>
-    status_t setParcelable(std::shared_ptr<T> p) {
+    bool setParcelable(std::shared_ptr<T> p) {
         static_assert(std::is_base_of<Parcelable, T>::value, "T must be derived from Parcelable");
         if (p && this->getStability() > p->getStability()) {
-            return android::BAD_VALUE;
+            return false;
         }
         this->mParcelable = p;
         this->mParcelableName = T::getParcelableDescriptor();
         this->mParcelPtr = nullptr;
-        return android::OK;
+        return true;
     }
 
     template <typename T>
-    status_t getParcelable(std::shared_ptr<T>* ret) const {
+    std::shared_ptr<T> getParcelable() const {
         static_assert(std::is_base_of<Parcelable, T>::value, "T must be derived from Parcelable");
         const std::string& parcelableDesc = T::getParcelableDescriptor();
         if (!this->mParcelPtr) {
             if (!this->mParcelable || !this->mParcelableName) {
                 ALOGD("empty ParcelableHolder");
-                *ret = nullptr;
-                return android::OK;
+                return nullptr;
             } else if (parcelableDesc != *mParcelableName) {
                 ALOGD("extension class name mismatch expected:%s actual:%s",
                       mParcelableName->c_str(), parcelableDesc.c_str());
-                *ret = nullptr;
-                return android::BAD_VALUE;
+                return nullptr;
             }
-            *ret = std::shared_ptr<T>(mParcelable, reinterpret_cast<T*>(mParcelable.get()));
-            return android::OK;
+            return std::shared_ptr<T>(mParcelable, reinterpret_cast<T*>(mParcelable.get()));
         }
         this->mParcelPtr->setDataPosition(0);
         status_t status = this->mParcelPtr->readUtf8FromUtf16(&this->mParcelableName);
         if (status != android::OK || parcelableDesc != this->mParcelableName) {
             this->mParcelableName = std::nullopt;
-            *ret = nullptr;
-            return status;
+            return nullptr;
         }
         this->mParcelable = std::make_shared<T>();
         status = mParcelable.get()->readFromParcel(this->mParcelPtr.get());
         if (status != android::OK) {
             this->mParcelableName = std::nullopt;
             this->mParcelable = nullptr;
-            *ret = nullptr;
-            return status;
+            return nullptr;
         }
         this->mParcelPtr = nullptr;
-        *ret = std::shared_ptr<T>(mParcelable, reinterpret_cast<T*>(mParcelable.get()));
-        return android::OK;
+        return std::shared_ptr<T>(mParcelable, reinterpret_cast<T*>(mParcelable.get()));
     }
 
     Stability getStability() const override { return mStability; }

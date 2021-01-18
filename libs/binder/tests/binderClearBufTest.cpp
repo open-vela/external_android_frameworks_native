@@ -83,6 +83,7 @@ class FooBar : public BBinder {
             lastReply = reply.data();
             lastReplySize = reply.dataSize();
         }
+        IPCThreadState::self()->flushCommands();
         *outBuffer = hexString(lastReply, lastReplySize);
         return result;
     }

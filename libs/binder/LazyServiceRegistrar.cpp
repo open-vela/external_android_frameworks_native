@@ -30,15 +30,20 @@ namespace internal {
 
 using AidlServiceManager = android::os::IServiceManager;
 
-class ClientCounterCallbackImpl : public ::android::os::BnClientCallback {
+class ClientCounterCallback : public ::android::os::BnClientCallback {
 public:
-    ClientCounterCallbackImpl() : mNumConnectedServices(0), mForcePersist(false) {}
+    ClientCounterCallback() : mNumConnectedServices(0), mForcePersist(false) {}
 
     bool registerService(const sp<IBinder>& service, const std::string& name,
                          bool allowIsolated, int dumpFlags);
+
+    /**
+     * Set a flag to prevent services from automatically shutting down
+     */
     void forcePersist(bool persist);
 
-    void setActiveServicesCallback(const std::function<bool(bool)>& activeServicesCallback);
+    void setActiveServicesCountCallback(const std::function<bool(int)>&
+                                        activeServicesCountCallback);
 
     bool tryUnregister();
 
@@ -81,41 +86,16 @@ private:
     // count of services with clients
     size_t mNumConnectedServices;
 
-    // previous value passed to the active services callback
-    std::optional<bool> mPreviousHasClients;
-
     // map of registered names and services
     std::map<std::string, Service> mRegisteredServices;
 
     bool mForcePersist;
 
-    // Callback used to report if there are services with clients
-    std::function<bool(bool)> mActiveServicesCallback;
+    // Callback used to report the number of services with clients
+    std::function<bool(int)> mActiveServicesCountCallback;
 };
 
-class ClientCounterCallback {
-public:
-    ClientCounterCallback();
-
-    bool registerService(const sp<IBinder>& service, const std::string& name,
-                                            bool allowIsolated, int dumpFlags);
-
-    /**
-     * Set a flag to prevent services from automatically shutting down
-     */
-    void forcePersist(bool persist);
-
-    void setActiveServicesCallback(const std::function<bool(bool)>& activeServicesCallback);
-
-    bool tryUnregister();
-
-    void reRegister();
-
-private:
-    sp<ClientCounterCallbackImpl> mImpl;
-};
-
-bool ClientCounterCallbackImpl::registerService(const sp<IBinder>& service, const std::string& name,
+bool ClientCounterCallback::registerService(const sp<IBinder>& service, const std::string& name,
                                             bool allowIsolated, int dumpFlags) {
     auto manager = interface_cast<AidlServiceManager>(asBinder(defaultServiceManager()));
 
@@ -129,7 +109,7 @@ bool ClientCounterCallbackImpl::registerService(const sp<IBinder>& service, cons
     }
 
     if (!reRegister) {
-        if(!manager->registerClientCallback(name, service, this).isOk()) {
+        if (!manager->registerClientCallback(name, service, this).isOk()) {
             ALOGE("Failed to add client callback for service %s", name.c_str());
             return false;
         }
@@ -145,7 +125,7 @@ bool ClientCounterCallbackImpl::registerService(const sp<IBinder>& service, cons
     return true;
 }
 
-std::map<std::string, ClientCounterCallbackImpl::Service>::iterator ClientCounterCallbackImpl::assertRegisteredService(const sp<IBinder>& service) {
+std::map<std::string, ClientCounterCallback::Service>::iterator ClientCounterCallback::assertRegisteredService(const sp<IBinder>& service) {
     LOG_ALWAYS_FATAL_IF(service == nullptr, "Got onClients callback for null service");
     for (auto it = mRegisteredServices.begin(); it != mRegisteredServices.end(); ++it) {
         auto const& [name, registered] = *it;
@@ -157,15 +137,15 @@ std::map<std::string, ClientCounterCallbackImpl::Service>::iterator ClientCounte
     __builtin_unreachable();
 }
 
-void ClientCounterCallbackImpl::forcePersist(bool persist) {
+void ClientCounterCallback::forcePersist(bool persist) {
     mForcePersist = persist;
-    if (!mForcePersist) {
+    if (!mForcePersist && mNumConnectedServices == 0) {
         // Attempt a shutdown in case the number of clients hit 0 while the flag was on
         maybeTryShutdown();
     }
 }
 
-bool ClientCounterCallbackImpl::tryUnregister() {
+bool ClientCounterCallback::tryUnregister() {
     auto manager = interface_cast<AidlServiceManager>(asBinder(defaultServiceManager()));
 
     for (auto& [name, entry] : mRegisteredServices) {
@@ -181,7 +161,7 @@ bool ClientCounterCallbackImpl::tryUnregister() {
     return true;
 }
 
-void ClientCounterCallbackImpl::reRegister() {
+void ClientCounterCallback::reRegister() {
     for (auto& [name, entry] : mRegisteredServices) {
         // re-register entry if not already registered
         if (entry.registered) {
@@ -198,19 +178,15 @@ void ClientCounterCallbackImpl::reRegister() {
     }
 }
 
-void ClientCounterCallbackImpl::maybeTryShutdown() {
+void ClientCounterCallback::maybeTryShutdown() {
     if (mForcePersist) {
         ALOGI("Shutdown prevented by forcePersist override flag.");
         return;
     }
 
     bool handledInCallback = false;
-    if (mActiveServicesCallback != nullptr) {
-        bool hasClients = mNumConnectedServices != 0;
-        if (hasClients != mPreviousHasClients) {
-            handledInCallback = mActiveServicesCallback(hasClients);
-            mPreviousHasClients = hasClients;
-        }
+    if (mActiveServicesCountCallback != nullptr) {
+        handledInCallback = mActiveServicesCountCallback(mNumConnectedServices);
     }
 
     // If there is no callback defined or the callback did not handle this
@@ -225,7 +201,7 @@ void ClientCounterCallbackImpl::maybeTryShutdown() {
  * onClients is oneway, so no need to worry about multi-threading. Note that this means multiple
  * invocations could occur on different threads however.
  */
-Status ClientCounterCallbackImpl::onClients(const sp<IBinder>& service, bool clients) {
+Status ClientCounterCallback::onClients(const sp<IBinder>& service, bool clients) {
     auto & [name, registered] = *assertRegisteredService(service);
     if (registered.clients == clients) {
         LOG_ALWAYS_FATAL("Process already thought %s had clients: %d but servicemanager has "
@@ -247,49 +223,24 @@ Status ClientCounterCallbackImpl::onClients(const sp<IBinder>& service, bool cli
           mNumConnectedServices, mRegisteredServices.size(), name.c_str(), clients);
 
     maybeTryShutdown();
+
     return Status::ok();
 }
 
- void ClientCounterCallbackImpl::tryShutdown() {
-     ALOGI("Trying to shut down the service. No clients in use for any service in process.");
+void ClientCounterCallback::tryShutdown() {
+    ALOGI("Trying to shut down the service. No clients in use for any service in process.");
 
     if (tryUnregister()) {
-         ALOGI("Unregistered all clients and exiting");
-         exit(EXIT_SUCCESS);
-     }
+        ALOGI("Unregistered all clients and exiting");
+        exit(EXIT_SUCCESS);
+    }
 
     reRegister();
 }
 
-void ClientCounterCallbackImpl::setActiveServicesCallback(const std::function<bool(bool)>&
-                                                          activeServicesCallback) {
-    mActiveServicesCallback = activeServicesCallback;
-}
-
-ClientCounterCallback::ClientCounterCallback() {
-      mImpl = sp<ClientCounterCallbackImpl>::make();
-}
-
-bool ClientCounterCallback::registerService(const sp<IBinder>& service, const std::string& name,
-                                            bool allowIsolated, int dumpFlags) {
-    return mImpl->registerService(service, name, allowIsolated, dumpFlags);
-}
-
-void ClientCounterCallback::forcePersist(bool persist) {
-    mImpl->forcePersist(persist);
-}
-
-void ClientCounterCallback::setActiveServicesCallback(const std::function<bool(bool)>&
-                                                      activeServicesCallback) {
-    mImpl->setActiveServicesCallback(activeServicesCallback);
-}
-
-bool ClientCounterCallback::tryUnregister() {
-    return mImpl->tryUnregister();
-}
-
-void ClientCounterCallback::reRegister() {
-    mImpl->reRegister();
+void ClientCounterCallback::setActiveServicesCountCallback(const std::function<bool(int)>&
+                                                           activeServicesCountCallback) {
+    mActiveServicesCountCallback = activeServicesCountCallback;
 }
 
 }  // namespace internal
@@ -315,9 +266,9 @@ void LazyServiceRegistrar::forcePersist(bool persist) {
     mClientCC->forcePersist(persist);
 }
 
-void LazyServiceRegistrar::setActiveServicesCallback(const std::function<bool(bool)>&
-                                                     activeServicesCallback) {
-    mClientCC->setActiveServicesCallback(activeServicesCallback);
+void LazyServiceRegistrar::setActiveServicesCountCallback(const std::function<bool(int)>&
+                                                          activeServicesCountCallback) {
+    mClientCC->setActiveServicesCountCallback(activeServicesCountCallback);
 }
 
 bool LazyServiceRegistrar::tryUnregister() {

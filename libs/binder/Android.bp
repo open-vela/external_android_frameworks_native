@@ -22,13 +22,11 @@ cc_library_headers {
 
     header_libs: [
         "libbase_headers",
-        "libbinder_headers_platform_shared",
         "libcutils_headers",
         "libutils_headers",
     ],
     export_header_lib_headers: [
         "libbase_headers",
-        "libbinder_headers_platform_shared",
         "libcutils_headers",
         "libutils_headers",
     ],
@@ -85,6 +83,9 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
+        // TODO(b/166468760) remove these three
+        "com.android.media.swcodec",
+        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -113,7 +114,6 @@ cc_library {
         "TextOutput.cpp",
         "Utils.cpp",
         ":libbinder_aidl",
-        ":activity_manager_procstate_aidl",
     ],
 
     target: {

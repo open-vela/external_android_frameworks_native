@@ -31,8 +31,7 @@ __BEGIN_DECLS
  *
  * \return EX_NONE on success.
  */
-__attribute__((warn_unused_result)) binder_exception_t AServiceManager_addService(
-        AIBinder* binder, const char* instance);
+binder_exception_t AServiceManager_addService(AIBinder* binder, const char* instance);
 
 /**
  * Gets a binder object with this specific instance name. Will return nullptr immediately if the

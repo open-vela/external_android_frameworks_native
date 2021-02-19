@@ -101,4 +101,17 @@ interface IPackageManagerNative {
      * This does nothing if this observer was not already registered.
      */
     void unregisterPackageChangeObserver(in IPackageChangeObserver observer);
+
+    /**
+     * Returns true if the package has the SHA 256 version of the signing certificate.
+     * @see PackageManager#hasSigningCertificate(String, byte[], int), where type
+     * has been set to {@link PackageManager#CERT_INPUT_SHA256}.
+     */
+    boolean hasSha256SigningCertificate(in @utf8InCpp String packageName, in byte[] certificate);
+
+    /**
+     * Returns the debug flag for the given package.
+     * Unknown packages will cause the call to fail.
+     */
+     boolean isPackageDebuggable(in String packageName);
 }

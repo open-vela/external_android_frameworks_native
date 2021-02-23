@@ -22,6 +22,10 @@
       "name": "binderParcelTest"
     },
     {
+      "name": "binderParcelTest",
+      "host": true
+    },
+    {
       "name": "binderLibTest"
     },
     {

@@ -241,26 +241,6 @@ TEST(NdkBinder, CheckServiceThatDoesExist) {
     AIBinder_decStrong(binder);
 }
 
-TEST(NdkBinder, UnimplementedDump) {
-    sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
-    ASSERT_NE(foo, nullptr);
-    AIBinder* binder = foo->getBinder();
-    EXPECT_EQ(OK, AIBinder_dump(binder, STDOUT_FILENO, nullptr, 0));
-    AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedShell) {
-    // libbinder_ndk doesn't support calling shell, so we are calling from the
-    // libbinder across processes to the NDK service which doesn't implement
-    // shell
-    static const sp<android::IServiceManager> sm(android::defaultServiceManager());
-    sp<IBinder> testService = sm->getService(String16(IFoo::kSomeInstanceName));
-
-    Vector<String16> argsVec;
-    EXPECT_EQ(OK, IBinder::shellCommand(testService, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-                                        argsVec, nullptr, nullptr));
-}
-
 TEST(NdkBinder, DoubleNumber) {
     sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
     ASSERT_NE(foo, nullptr);
@@ -268,25 +248,6 @@ TEST(NdkBinder, DoubleNumber) {
     int32_t out;
     EXPECT_EQ(STATUS_OK, foo->doubleNumber(1, &out));
     EXPECT_EQ(2, out);
-}
-
-void defaultInstanceCounter(const char* instance, void* context) {
-    if (strcmp(instance, "default") == 0) {
-        ++*(size_t*)(context);
-    }
-}
-
-TEST(NdkBinder, GetDeclaredInstances) {
-    bool hasLight = AServiceManager_isDeclared("android.hardware.light.ILights/default");
-
-    size_t count;
-    AServiceManager_forEachDeclaredInstance("android.hardware.light.ILights", &count,
-                                            defaultInstanceCounter);
-
-    // At the time of writing this test, there is no good interface guaranteed
-    // to be on all devices. Cuttlefish has light, so this will generally test
-    // things.
-    EXPECT_EQ(count, hasLight ? 1 : 0);
 }
 
 TEST(NdkBinder, GetLazyService) {

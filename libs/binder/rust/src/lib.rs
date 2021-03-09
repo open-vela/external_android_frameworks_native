@@ -107,9 +107,8 @@ use binder_ndk_sys as sys;
 pub mod parcel;
 
 pub use crate::binder::{
-    FromIBinder, IBinder, IBinderInternal, Interface, InterfaceClass, Remotable, Strong,
-    TransactionCode, TransactionFlags, Weak, FIRST_CALL_TRANSACTION, FLAG_CLEAR_BUF, FLAG_ONEWAY,
-    LAST_CALL_TRANSACTION,
+    FromIBinder, IBinder, Interface, InterfaceClass, Remotable, Strong, TransactionCode,
+    TransactionFlags, Weak,
 };
 pub use error::{status_t, ExceptionCode, Result, Status, StatusCode};
 pub use native::add_service;
@@ -124,8 +123,8 @@ pub mod public_api {
     pub use super::parcel::ParcelFileDescriptor;
     pub use super::{add_service, get_interface};
     pub use super::{
-        DeathRecipient, ExceptionCode, IBinder, Interface, ProcessState, SpIBinder, Status,
-        StatusCode, Strong, ThreadState, Weak, WpIBinder,
+        ExceptionCode, Interface, ProcessState, SpIBinder, Status, StatusCode, Strong, ThreadState,
+        Weak, WpIBinder,
     };
 
     /// Binder result containing a [`Status`] on error.

@@ -107,9 +107,8 @@ use binder_ndk_sys as sys;
 pub mod parcel;
 
 pub use crate::binder::{
-    FromIBinder, IBinder, IBinderInternal, Interface, InterfaceClass, Remotable,
-    Stability, Strong, TransactionCode, TransactionFlags, Weak,
-    FIRST_CALL_TRANSACTION, FLAG_CLEAR_BUF, FLAG_ONEWAY, FLAG_PRIVATE_LOCAL,
+    FromIBinder, IBinder, IBinderInternal, Interface, InterfaceClass, Remotable, Strong,
+    TransactionCode, TransactionFlags, Weak, FIRST_CALL_TRANSACTION, FLAG_CLEAR_BUF, FLAG_ONEWAY,
     LAST_CALL_TRANSACTION,
 };
 pub use error::{status_t, ExceptionCode, Result, Status, StatusCode};

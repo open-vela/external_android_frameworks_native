@@ -52,14 +52,13 @@ class Dumpsys {
     static void setServiceArgs(Vector<String16>& args, bool asProto, int priorityFlags);
 
     enum class Type {
-        DUMP,    // dump using `dump` function
-        PID,     // dump pid of server only
-        THREAD,  // dump thread usage of server only
+        DUMP,  // dump using `dump` function
+        PID,   // dump pid of server only
     };
 
     /**
      * Starts a thread to connect to a service and get its dump output. The thread redirects
-     * the output to a pipe. Thread must be stopped by a subsequent call to {@code
+     * the output to a pipe. Thread must be stopped by a subsequent callto {@code
      * stopDumpThread}.
      * @param serviceName
      * @param args list of arguments to pass to service dump method.

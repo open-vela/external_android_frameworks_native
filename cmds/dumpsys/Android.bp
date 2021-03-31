@@ -32,7 +32,6 @@ cc_defaults {
         "libutils",
         "liblog",
         "libbinder",
-        "libbinderdebug",
     ],
 
     static_libs: [

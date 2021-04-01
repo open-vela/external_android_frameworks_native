@@ -73,7 +73,6 @@ libbinder_device_interface_sources = [
     "PermissionController.cpp",
     "ProcessInfoService.cpp",
     "IpPrefix.cpp",
-    ":activity_manager_procstate_aidl",
 ]
 
 cc_library {

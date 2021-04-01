@@ -143,8 +143,7 @@ public:
         OP_COARSE_LOCATION_SOURCE = 109,
         OP_MANAGE_MEDIA = 110,
         OP_BLUETOOTH_CONNECT = 111,
-        OP_UWB_RANGING = 112,
-        _NUM_OP = 113
+        _NUM_OP = 112
     };
 
     AppOpsManager();

@@ -62,6 +62,7 @@ public:
         remote()->transact(NOTE_OPERATION_TRANSACTION, data, &reply);
         // fail on exception
         if (reply.readExceptionCode() != 0) return MODE_ERRORED;
+        reply.readByte();
         return reply.readInt32();
     }
 
@@ -81,6 +82,7 @@ public:
         remote()->transact(START_OPERATION_TRANSACTION, data, &reply);
         // fail on exception
         if (reply.readExceptionCode() != 0) return MODE_ERRORED;
+        reply.readByte();
         return reply.readInt32();
     }
 

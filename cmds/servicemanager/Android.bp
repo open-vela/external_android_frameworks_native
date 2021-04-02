@@ -14,7 +14,6 @@ cc_defaults {
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-DANDROID_UTILS_REF_BASE_DISABLE_IMPLICIT_CONSTRUCTION",
     ],
 
     srcs: [

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <processinfo/ProcessInfoService.h>
+#include <binder/ProcessInfoService.h>
 #include <binder/IServiceManager.h>
 
 #include <utils/Log.h>

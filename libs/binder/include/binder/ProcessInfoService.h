@@ -18,7 +18,7 @@
 
 #ifndef __ANDROID_VNDK__
 
-#include <processinfo/IProcessInfoService.h>
+#include <binder/IProcessInfoService.h>
 #include <utils/Errors.h>
 #include <utils/Singleton.h>
 #include <sys/types.h>

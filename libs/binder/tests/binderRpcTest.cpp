@@ -16,10 +16,7 @@
 
 #include <BnBinderRpcSession.h>
 #include <BnBinderRpcTest.h>
-#include <aidl/IBinderRpcTest.h>
 #include <android-base/logging.h>
-#include <android/binder_auto_utils.h>
-#include <android/binder_libbinder.h>
 #include <binder/Binder.h>
 #include <binder/BpBinder.h>
 #include <binder/IServiceManager.h>
@@ -384,12 +381,6 @@ TEST_P(BinderRpc, Ping) {
     auto proc = createRpcTestSocketServerProcess(1);
     ASSERT_NE(proc.rootBinder, nullptr);
     EXPECT_EQ(OK, proc.rootBinder->pingBinder());
-}
-
-TEST_P(BinderRpc, GetInterfaceDescriptor) {
-    auto proc = createRpcTestSocketServerProcess(1);
-    ASSERT_NE(proc.rootBinder, nullptr);
-    EXPECT_EQ(IBinderRpcTest::descriptor, proc.rootBinder->getInterfaceDescriptor());
 }
 
 TEST_P(BinderRpc, TransactionsMustBeMarkedRpc) {
@@ -774,6 +765,9 @@ TEST_P(BinderRpc, OnewayCallQueueing) {
 }
 
 TEST_P(BinderRpc, Die) {
+    // TODO(b/183141167): handle this in library
+    signal(SIGPIPE, SIG_IGN);
+
     for (bool doDeathCleanup : {true, false}) {
         auto proc = createRpcTestSocketServerProcess(1);
 
@@ -790,30 +784,6 @@ TEST_P(BinderRpc, Die) {
 
         proc.proc.expectInvalid = true;
     }
-}
-
-TEST_P(BinderRpc, WorksWithLibbinderNdkPing) {
-    auto proc = createRpcTestSocketServerProcess(1);
-
-    ndk::SpAIBinder binder = ndk::SpAIBinder(AIBinder_fromPlatformBinder(proc.rootBinder));
-    ASSERT_NE(binder, nullptr);
-
-    ASSERT_EQ(STATUS_OK, AIBinder_ping(binder.get()));
-}
-
-TEST_P(BinderRpc, WorksWithLibbinderNdkUserTransaction) {
-    auto proc = createRpcTestSocketServerProcess(1);
-
-    ndk::SpAIBinder binder = ndk::SpAIBinder(AIBinder_fromPlatformBinder(proc.rootBinder));
-    ASSERT_NE(binder, nullptr);
-
-    auto ndkBinder = aidl::IBinderRpcTest::fromBinder(binder);
-    ASSERT_NE(ndkBinder, nullptr);
-
-    std::string out;
-    ndk::ScopedAStatus status = ndkBinder->doubleString("aoeu", &out);
-    ASSERT_TRUE(status.isOk()) << status.getDescription();
-    ASSERT_EQ("aoeuaoeu", out);
 }
 
 ssize_t countFds() {

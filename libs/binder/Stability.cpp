@@ -38,28 +38,16 @@ Stability::Category Stability::Category::currentFromLevel(Level level) {
     };
 }
 
-void Stability::forceDowngradeToStability(const sp<IBinder>& binder, Level level) {
+void Stability::forceDowngradeCompilationUnit(const sp<IBinder>& binder) {
     // Downgrading a remote binder would require also copying the version from
     // the binder sent here. In practice though, we don't need to downgrade the
     // stability of a remote binder, since this would as an effect only restrict
     // what we can do to it.
     LOG_ALWAYS_FATAL_IF(!binder || !binder->localBinder(), "Can only downgrade local binder");
 
-    auto stability = Category::currentFromLevel(level);
+    auto stability = Category::currentFromLevel(getLocalLevel());
     status_t result = setRepr(binder.get(), stability.repr(), REPR_LOG | REPR_ALLOW_DOWNGRADE);
     LOG_ALWAYS_FATAL_IF(result != OK, "Should only mark known object.");
-}
-
-void Stability::forceDowngradeToLocalStability(const sp<IBinder>& binder) {
-    forceDowngradeToStability(binder, getLocalLevel());
-}
-
-void Stability::forceDowngradeToSystemStability(const sp<IBinder>& binder) {
-    forceDowngradeToStability(binder, Level::SYSTEM);
-}
-
-void Stability::forceDowngradeToVendorStability(const sp<IBinder>& binder) {
-    forceDowngradeToStability(binder, Level::VENDOR);
 }
 
 std::string Stability::Category::debugString() {
@@ -100,18 +88,12 @@ void Stability::tryMarkCompilationUnit(IBinder* binder) {
 }
 
 Stability::Level Stability::getLocalLevel() {
+#ifdef __ANDROID_APEX__
+#error APEX can't use libbinder (must use libbinder_ndk)
+#endif
+
 #ifdef __ANDROID_VNDK__
-    #ifdef __ANDROID_APEX__
-        // TODO(b/142684679) avoid use_vendor on system APEXes
-        #if !defined(__ANDROID_APEX_COM_ANDROID_MEDIA_SWCODEC__) \
-            && !defined(__ANDROID_APEX_TEST_COM_ANDROID_MEDIA_SWCODEC__)
-        #error VNDK + APEX only defined for com.android.media.swcodec
-        #endif
-        // TODO(b/142684679) avoid use_vendor on system APEXes
-        return Level::SYSTEM;
-    #else
-        return Level::VENDOR;
-    #endif
+    return Level::VENDOR;
 #else
     // TODO(b/139325195): split up stability levels for system/APEX.
     return Level::SYSTEM;

@@ -555,17 +555,12 @@ void Parcel::markSensitive() const
 }
 
 void Parcel::markForBinder(const sp<IBinder>& binder) {
-    LOG_ALWAYS_FATAL_IF(mData != nullptr, "format must be set before data is written");
-
     if (binder && binder->remoteBinder() && binder->remoteBinder()->isRpcBinder()) {
         markForRpc(binder->remoteBinder()->getPrivateAccessorForId().rpcConnection());
     }
 }
 
 void Parcel::markForRpc(const sp<RpcConnection>& connection) {
-    LOG_ALWAYS_FATAL_IF(mData != nullptr && mOwner == nullptr,
-                        "format must be set before data is written OR on IPC data");
-
     LOG_ALWAYS_FATAL_IF(connection == nullptr, "markForRpc requires connection");
     mConnection = connection;
 }
@@ -583,7 +578,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
+#if defined(__ANDROID_VNDK__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

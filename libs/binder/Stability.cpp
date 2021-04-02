@@ -38,28 +38,16 @@ Stability::Category Stability::Category::currentFromLevel(Level level) {
     };
 }
 
-void Stability::forceDowngradeToStability(const sp<IBinder>& binder, Level level) {
+void Stability::forceDowngradeCompilationUnit(const sp<IBinder>& binder) {
     // Downgrading a remote binder would require also copying the version from
     // the binder sent here. In practice though, we don't need to downgrade the
     // stability of a remote binder, since this would as an effect only restrict
     // what we can do to it.
     LOG_ALWAYS_FATAL_IF(!binder || !binder->localBinder(), "Can only downgrade local binder");
 
-    auto stability = Category::currentFromLevel(level);
+    auto stability = Category::currentFromLevel(getLocalLevel());
     status_t result = setRepr(binder.get(), stability.repr(), REPR_LOG | REPR_ALLOW_DOWNGRADE);
     LOG_ALWAYS_FATAL_IF(result != OK, "Should only mark known object.");
-}
-
-void Stability::forceDowngradeToLocalStability(const sp<IBinder>& binder) {
-    forceDowngradeToStability(binder, getLocalLevel());
-}
-
-void Stability::forceDowngradeToSystemStability(const sp<IBinder>& binder) {
-    forceDowngradeToStability(binder, Level::SYSTEM);
-}
-
-void Stability::forceDowngradeToVendorStability(const sp<IBinder>& binder) {
-    forceDowngradeToStability(binder, Level::VENDOR);
 }
 
 std::string Stability::Category::debugString() {

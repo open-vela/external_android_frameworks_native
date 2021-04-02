@@ -106,7 +106,6 @@ public:
     };
 
 private:
-    friend sp<RpcConnection>;
     RpcConnection();
 
     bool addServer(const SocketAddress& address);

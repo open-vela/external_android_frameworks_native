@@ -67,9 +67,11 @@ libbinder_device_interface_sources = [
     "IAppOpsService.cpp",
     "IMediaResourceMonitor.cpp",
     "IPermissionController.cpp",
+    "IProcessInfoService.cpp",
     "IUidObserver.cpp",
     "PermissionCache.cpp",
     "PermissionController.cpp",
+    "ProcessInfoService.cpp",
     "IpPrefix.cpp",
     ":activity_manager_procstate_aidl",
 ]
@@ -98,6 +100,9 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
+        // TODO(b/166468760) remove these three
+        "com.android.media.swcodec",
+        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -279,19 +284,5 @@ cc_library {
     shared_libs: [
         "libbinder",
         "libutils",
-    ],
-}
-
-cc_library {
-    name: "libprocessinfoservice_aidl",
-    srcs: [
-        "IProcessInfoService.cpp",
-        "ProcessInfoService.cpp",
-    ],
-    export_include_dirs: ["include_processinfo"],
-    shared_libs: [
-        "libbinder",
-        "libutils",
-        "liblog",
     ],
 }

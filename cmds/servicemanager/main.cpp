@@ -39,7 +39,7 @@ using ::android::sp;
 class BinderCallback : public LooperCallback {
 public:
     static sp<BinderCallback> setupTo(const sp<Looper>& looper) {
-        sp<BinderCallback> cb = sp<BinderCallback>::make();
+        sp<BinderCallback> cb = new BinderCallback;
 
         int binder_fd = -1;
         IPCThreadState::self()->setupPolling(&binder_fd);
@@ -65,7 +65,7 @@ public:
 class ClientCallbackCallback : public LooperCallback {
 public:
     static sp<ClientCallbackCallback> setupTo(const sp<Looper>& looper, const sp<ServiceManager>& manager) {
-        sp<ClientCallbackCallback> cb = sp<ClientCallbackCallback>::make(manager);
+        sp<ClientCallbackCallback> cb = new ClientCallbackCallback(manager);
 
         int fdTimer = timerfd_create(CLOCK_MONOTONIC, 0 /*flags*/);
         LOG_ALWAYS_FATAL_IF(fdTimer < 0, "Failed to timerfd_create: fd: %d err: %d", fdTimer, errno);
@@ -105,7 +105,6 @@ public:
         return 1;  // Continue receiving callbacks.
     }
 private:
-    friend sp<ClientCallbackCallback>;
     ClientCallbackCallback(const sp<ServiceManager>& manager) : mManager(manager) {}
     sp<ServiceManager> mManager;
 };
@@ -121,7 +120,7 @@ int main(int argc, char** argv) {
     ps->setThreadPoolMaxThreadCount(0);
     ps->setCallRestriction(ProcessState::CallRestriction::FATAL_IF_NOT_ONEWAY);
 
-    sp<ServiceManager> manager = sp<ServiceManager>::make(std::make_unique<Access>());
+    sp<ServiceManager> manager = new ServiceManager(std::make_unique<Access>());
     if (!manager->addService("manager", manager, false /*allowIsolated*/, IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT).isOk()) {
         LOG(ERROR) << "Could not self register servicemanager";
     }

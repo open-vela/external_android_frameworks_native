@@ -57,9 +57,6 @@ public:
     // can be called to use that same interface within the local partition.
     static void forceDowngradeToLocalStability(const sp<IBinder>& binder);
 
-    // WARNING: Below APIs are only ever expected to be called by auto-generated code.
-    //     Instead of calling them, you should set the stability of a .aidl interface
-
     // WARNING: The only client of
     //      - forceDowngradeToSystemStability() and;
     //      - korceDowngradeToVendorStability()
@@ -84,6 +81,9 @@ public:
     // VINTF stability binder is required to be in the VINTF manifest. This API
     // can be called to use that same interface within the system partition.
     static void forceDowngradeToSystemStability(const sp<IBinder>& binder);
+
+    // WARNING: Below APIs are only ever expected to be called by auto-generated code.
+    //     Instead of calling them, you should set the stability of a .aidl interface
 
     // WARNING: This is only ever expected to be called by auto-generated code. You likely want to
     // change or modify the stability class of the interface you are using.

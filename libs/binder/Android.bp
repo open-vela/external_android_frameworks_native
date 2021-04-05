@@ -296,14 +296,3 @@ cc_library {
         "liblog",
     ],
 }
-
-// TODO(b/183654927): initially empty lib to work around some merge conflicts
-cc_library {
-    name: "libactivitymanager_aidl",
-    srcs: [],
-    shared_libs: [
-        "libbinder",
-        "libutils",
-        "liblog",
-    ],
-}

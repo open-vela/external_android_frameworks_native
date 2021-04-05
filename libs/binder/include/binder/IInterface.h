@@ -186,7 +186,7 @@ template<typename INTERFACE>
 inline sp<IInterface> BnInterface<INTERFACE>::queryLocalInterface(
         const String16& _descriptor)
 {
-    if (_descriptor == INTERFACE::descriptor) return this;
+    if (_descriptor == INTERFACE::descriptor) return sp<IInterface>::fromExisting(this);
     return nullptr;
 }
 
@@ -240,11 +240,23 @@ constexpr const char* const kManualInterfaces[] = {
   "android.hardware.ICameraRecordingProxyListener",
   "android.hardware.ICrypto",
   "android.hardware.IOMXObserver",
+  "android.hardware.ISoundTrigger",
+  "android.hardware.ISoundTriggerClient",
+  "android.hardware.ISoundTriggerHwService",
   "android.hardware.IStreamListener",
   "android.hardware.IStreamSource",
+  "android.input.IInputFlinger",
+  "android.input.ISetInputWindowsListener",
+  "android.media.IAudioFlinger",
+  "android.media.IAudioFlingerClient",
+  "android.media.IAudioPolicyService",
+  "android.media.IAudioPolicyServiceClient",
   "android.media.IAudioService",
+  "android.media.IAudioTrack",
   "android.media.IDataSource",
   "android.media.IDrmClient",
+  "android.media.IEffect",
+  "android.media.IEffectClient",
   "android.media.IMediaCodecList",
   "android.media.IMediaDrmService",
   "android.media.IMediaExtractor",
@@ -268,6 +280,7 @@ constexpr const char* const kManualInterfaces[] = {
   "android.os.IComplexTypeInterface",
   "android.os.IPermissionController",
   "android.os.IPingResponder",
+  "android.os.IPowerManager",
   "android.os.IProcessInfoService",
   "android.os.ISchedulingPolicyService",
   "android.os.IStringConstants",

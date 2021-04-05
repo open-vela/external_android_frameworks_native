@@ -37,11 +37,7 @@ public:
         // Flag for registerUidObserver: report uid has become idle
         UID_OBSERVER_IDLE = 1<<2,
         // Flag for registerUidObserver: report uid has become active
-        UID_OBSERVER_ACTIVE = 1<<3,
-        // Flag for registerUidObserver: report uid cached state has changed
-        UID_OBSERVER_CACHED = 1<<4,
-        // Flag for registerUidObserver: report uid capability has changed
-        UID_OBSERVER_CAPABILITY = 1<<5,
+        UID_OBSERVER_ACTIVE = 1<<3
     };
 
     enum {

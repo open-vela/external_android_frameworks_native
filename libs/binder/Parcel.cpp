@@ -418,11 +418,6 @@ status_t Parcel::setData(const uint8_t* buffer, size_t len)
 
 status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
 {
-    if (parcel->isForRpc() != isForRpc()) {
-        ALOGE("Cannot append Parcel of one format to another.");
-        return BAD_TYPE;
-    }
-
     status_t err;
     const uint8_t *data = parcel->mData;
     const binder_size_t *objects = parcel->mObjects;
@@ -588,7 +583,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
+#if defined(__ANDROID_VNDK__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

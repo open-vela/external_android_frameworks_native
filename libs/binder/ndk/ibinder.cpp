@@ -181,7 +181,7 @@ status_t ABBinder::onTransact(transaction_code_t code, const Parcel& data, Parce
 
         binder_status_t status = getClass()->onTransact(this, code, &in, &out);
         return PruneStatusT(status);
-    } else if (code == SHELL_COMMAND_TRANSACTION && getClass()->handleShellCommand != nullptr) {
+    } else if (code == SHELL_COMMAND_TRANSACTION) {
         int in = data.readFileDescriptor();
         int out = data.readFileDescriptor();
         int err = data.readFileDescriptor();
@@ -363,7 +363,8 @@ const char* AIBinder_Class_getDescriptor(const AIBinder_Class* clazz) {
 }
 
 void AIBinder_DeathRecipient::TransferDeathRecipient::binderDied(const wp<IBinder>& who) {
-    CHECK(who == mWho);
+    CHECK(who == mWho) << who.unsafe_get() << "(" << who.get_refs() << ") vs " << mWho.unsafe_get()
+                       << " (" << mWho.get_refs() << ")";
 
     mOnDied(mCookie);
 

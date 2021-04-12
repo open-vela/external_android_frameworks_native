@@ -199,8 +199,13 @@ private:
 
 static std::string allocateSocketAddress() {
     static size_t id = 0;
-    std::string temp = getenv("TMPDIR") ?: "/tmp";
-    return temp + "/binderRpcTest_" + std::to_string(id++);
+    static bool gUseTmp = access("/tmp/", F_OK) != -1;
+
+    if (gUseTmp) {
+        return "/tmp/binderRpcTest_" + std::to_string(id++);
+    } else {
+        return "/dev/binderRpcTest_" + std::to_string(id++);
+    }
 };
 
 struct ProcessConnection {

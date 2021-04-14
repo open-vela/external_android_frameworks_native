@@ -19,7 +19,7 @@
 use binder::declare_binder_interface;
 use binder::parcel::Parcel;
 use binder::{
-    Binder, BinderFeatures, IBinderInternal, Interface, StatusCode, ThreadState, TransactionCode,
+    Binder, IBinderInternal, Interface, StatusCode, ThreadState, TransactionCode,
     FIRST_CALL_TRANSACTION,
 };
 use std::convert::{TryFrom, TryInto};
@@ -55,8 +55,7 @@ fn main() -> Result<(), &'static str> {
         })));
         service.set_requesting_sid(true);
         if let Some(extension_name) = extension_name {
-            let extension =
-                BnTest::new_binder(TestService { s: extension_name }, BinderFeatures::default());
+            let extension = BnTest::new_binder(TestService { s: extension_name });
             service
                 .set_extension(&mut extension.as_binder())
                 .expect("Could not add extension");
@@ -213,8 +212,8 @@ mod tests {
     use std::time::Duration;
 
     use binder::{
-        Binder, BinderFeatures, DeathRecipient, FromIBinder, IBinder, IBinderInternal, Interface,
-        SpIBinder, StatusCode, Strong,
+        Binder, DeathRecipient, FromIBinder, IBinder, IBinderInternal, Interface, SpIBinder,
+        StatusCode, Strong,
     };
 
     use super::{BnTest, ITest, ITestSameDescriptor, TestService, RUST_SERVICE_BINARY};
@@ -496,12 +495,9 @@ mod tests {
     #[test]
     fn reassociate_rust_binder() {
         let service_name = "testing_service";
-        let service_ibinder = BnTest::new_binder(
-            TestService {
-                s: service_name.to_string(),
-            },
-            BinderFeatures::default(),
-        )
+        let service_ibinder = BnTest::new_binder(TestService {
+            s: service_name.to_string(),
+        })
         .as_binder();
 
         let service: Strong<dyn ITest> = service_ibinder
@@ -514,12 +510,9 @@ mod tests {
     #[test]
     fn weak_binder_upgrade() {
         let service_name = "testing_service";
-        let service = BnTest::new_binder(
-            TestService {
-                s: service_name.to_string(),
-            },
-            BinderFeatures::default(),
-        );
+        let service = BnTest::new_binder(TestService {
+            s: service_name.to_string(),
+        });
 
         let weak = Strong::downgrade(&service);
 
@@ -532,12 +525,9 @@ mod tests {
     fn weak_binder_upgrade_dead() {
         let service_name = "testing_service";
         let weak = {
-            let service = BnTest::new_binder(
-                TestService {
-                    s: service_name.to_string(),
-                },
-                BinderFeatures::default(),
-            );
+            let service = BnTest::new_binder(TestService {
+                s: service_name.to_string(),
+            });
 
             Strong::downgrade(&service)
         };
@@ -548,12 +538,9 @@ mod tests {
     #[test]
     fn weak_binder_clone() {
         let service_name = "testing_service";
-        let service = BnTest::new_binder(
-            TestService {
-                s: service_name.to_string(),
-            },
-            BinderFeatures::default(),
-        );
+        let service = BnTest::new_binder(TestService {
+            s: service_name.to_string(),
+        });
 
         let weak = Strong::downgrade(&service);
         let cloned = weak.clone();
@@ -569,18 +556,12 @@ mod tests {
     #[test]
     #[allow(clippy::eq_op)]
     fn binder_ord() {
-        let service1 = BnTest::new_binder(
-            TestService {
-                s: "testing_service1".to_string(),
-            },
-            BinderFeatures::default(),
-        );
-        let service2 = BnTest::new_binder(
-            TestService {
-                s: "testing_service2".to_string(),
-            },
-            BinderFeatures::default(),
-        );
+        let service1 = BnTest::new_binder(TestService {
+            s: "testing_service1".to_string(),
+        });
+        let service2 = BnTest::new_binder(TestService {
+            s: "testing_service2".to_string(),
+        });
 
         assert!(!(service1 < service1));
         assert!(!(service1 > service1));

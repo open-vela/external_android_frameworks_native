@@ -173,7 +173,7 @@ typedef binder_status_t (*AIBinder_Class_onTransact)(AIBinder* binder, transacti
  * Available since API level 29.
  *
  * \param interfaceDescriptor this is a unique identifier for the class. This is used internally for
- * validity checks on transactions. This should be utf-8.
+ * sanity checks on transactions.
  * \param onCreate see AIBinder_Class_onCreate.
  * \param onDestroy see AIBinder_Class_onDestroy.
  * \param onTransact see AIBinder_Class_onTransact.
@@ -645,9 +645,7 @@ binder_status_t AIBinder_setExtension(AIBinder* binder, AIBinder* ext) __INTRODU
  *
  * \return the class descriptor string. This pointer will never be null; a
  * descriptor is required to define a class. The pointer is owned by the class
- * and will remain valid as long as the class does. For a local class, this will
- * be the same value (not necessarily pointer equal) as is passed into
- * AIBinder_Class_define. Format is utf-8.
+ * and will remain valid as long as the class does.
  */
 const char* AIBinder_Class_getDescriptor(const AIBinder_Class* clazz) __INTRODUCED_IN(31);
 

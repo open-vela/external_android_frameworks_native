@@ -155,11 +155,6 @@ cc_benchmark {
     name: "binderRpcBenchmark",
     defaults: ["binder_test_defaults"],
     host_supported: true,
-    target: {
-        darwin: {
-            enabled: false,
-        },
-    },
     srcs: [
         "binderRpcBenchmark.cpp",
         "IBinderRpcBenchmark.aidl",

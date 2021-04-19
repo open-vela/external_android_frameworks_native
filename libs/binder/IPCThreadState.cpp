@@ -90,8 +90,6 @@ static const char *kReturnStrings[] = {
     "BR_DEAD_BINDER",
     "BR_CLEAR_DEATH_NOTIFICATION_DONE",
     "BR_FAILED_REPLY",
-    "BR_FROZEN_REPLY",
-    "BR_ONEWAY_SPAM_SUSPECT",
     "BR_TRANSACTION_SEC_CTX",
 };
 
@@ -896,11 +894,6 @@ status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
         }
 
         switch (cmd) {
-        case BR_ONEWAY_SPAM_SUSPECT:
-            ALOGE("Process seems to be sending too many oneway calls.");
-            CallStack::logStack("oneway spamming", CallStack::getCurrent().get(),
-                    ANDROID_LOG_ERROR);
-            [[fallthrough]];
         case BR_TRANSACTION_COMPLETE:
             if (!reply && !acquireResult) goto finish;
             break;

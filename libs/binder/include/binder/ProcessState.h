@@ -58,7 +58,6 @@ public:
             void                spawnPooledThread(bool isMain);
             
             status_t            setThreadPoolMaxThreadCount(size_t maxThreads);
-            status_t            enableOnewaySpamDetection(bool enable);
             void                giveThreadPoolName();
 
             String8             getDriverName();

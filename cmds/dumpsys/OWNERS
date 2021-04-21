@@ -2,6 +2,3 @@ set noparent
 
 nandana@google.com
 jsharkey@android.com
-
-# for ServiceManager mock
-per-file dumpsys_test.cpp=smoreland@google.com

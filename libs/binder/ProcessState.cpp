@@ -362,7 +362,7 @@ status_t ProcessState::setThreadPoolMaxThreadCount(size_t maxThreads) {
 status_t ProcessState::enableOnewaySpamDetection(bool enable) {
     uint32_t enableDetection = enable ? 1 : 0;
     if (ioctl(mDriverFD, BINDER_ENABLE_ONEWAY_SPAM_DETECTION, &enableDetection) == -1) {
-        ALOGE("Binder ioctl to enable oneway spam detection failed: %s", strerror(errno));
+        ALOGI("Binder ioctl to enable oneway spam detection failed: %s", strerror(errno));
         return -errno;
     }
     return NO_ERROR;
@@ -401,7 +401,7 @@ static int open_driver(const char *driver)
         uint32_t enable = DEFAULT_ENABLE_ONEWAY_SPAM_DETECTION;
         result = ioctl(fd, BINDER_ENABLE_ONEWAY_SPAM_DETECTION, &enable);
         if (result == -1) {
-            ALOGE("Binder ioctl to enable oneway spam detection failed: %s", strerror(errno));
+            ALOGI("Binder ioctl to enable oneway spam detection failed: %s", strerror(errno));
         }
     } else {
         ALOGW("Opening '%s' failed: %s\n", driver, strerror(errno));
@@ -423,6 +423,12 @@ ProcessState::ProcessState(const char *driver)
     , mThreadPoolSeq(1)
     , mCallRestriction(CallRestriction::NONE)
 {
+
+// TODO(b/166468760): enforce in build system
+#if defined(__ANDROID_APEX__)
+    LOG_ALWAYS_FATAL("Cannot use libbinder in APEX (only system.img libbinder) since it is not stable.");
+#endif
+
     if (mDriverFD >= 0) {
         // mmap the binder, providing a chunk of virtual address space to receive transactions.
         mVMStart = mmap(nullptr, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, 0);

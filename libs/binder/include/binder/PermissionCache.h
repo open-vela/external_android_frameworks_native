@@ -73,8 +73,6 @@ public:
 
     static bool checkPermission(const String16& permission,
             pid_t pid, uid_t uid);
-
-    static void purgeCache();
 };
 
 // ---------------------------------------------------------------------------

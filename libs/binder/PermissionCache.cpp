@@ -109,10 +109,5 @@ bool PermissionCache::checkPermission(
     return granted;
 }
 
-void PermissionCache::purgeCache() {
-    PermissionCache& pc(PermissionCache::getInstance());
-    pc.purge();
-}
-
 // ---------------------------------------------------------------------------
 } // namespace android

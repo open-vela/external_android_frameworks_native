@@ -48,20 +48,16 @@ sp<RpcConnection> RpcServer::addClientConnection() {
 
     auto connection = RpcConnection::make();
     connection->setForServer(sp<RpcServer>::fromExisting(this));
-    {
-        std::lock_guard<std::mutex> _l(mLock);
-        mConnections.push_back(connection);
-    }
+    mConnections.push_back(connection);
     return connection;
 }
 
 void RpcServer::setRootObject(const sp<IBinder>& binder) {
-    std::lock_guard<std::mutex> _l(mLock);
+    LOG_ALWAYS_FATAL_IF(mRootObject != nullptr, "There can only be one root object");
     mRootObject = binder;
 }
 
 sp<IBinder> RpcServer::getRootObject() {
-    std::lock_guard<std::mutex> _l(mLock);
     return mRootObject;
 }
 

@@ -21,8 +21,6 @@
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
 
-#include <mutex>
-
 // WARNING: This is a feature which is still in development, and it is subject
 // to radical change. Any production use of this may subject your code to any
 // number of problems.
@@ -32,6 +30,9 @@ namespace android {
 /**
  * This represents a server of an interface, which may be connected to by any
  * number of clients over sockets.
+ *
+ * This object is not (currently) thread safe. All calls to it are expected to
+ * happen at process startup.
  */
 class RpcServer final : public virtual RefBase {
 public:
@@ -50,8 +51,16 @@ public:
     sp<RpcConnection> addClientConnection();
 
     /**
+     * Allowing a server to explicitly drop clients would be easy to add here,
+     * but it is not currently implemented, since users of this functionality
+     * could not use similar functionality if they are running under real
+     * binder.
+     */
+    // void drop(const sp<RpcConnection>& connection);
+
+    /**
      * The root object can be retrieved by any client, without any
-     * authentication. TODO(b/183988761)
+     * authentication.
      */
     void setRootObject(const sp<IBinder>& binder);
 
@@ -68,8 +77,8 @@ private:
 
     bool mAgreedExperimental = false;
 
-    std::mutex mLock;
     sp<IBinder> mRootObject;
+
     std::vector<sp<RpcConnection>> mConnections; // per-client
 };
 

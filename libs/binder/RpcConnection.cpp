@@ -130,21 +130,24 @@ bool RpcConnection::addVsockClient(unsigned int cid, unsigned int port) {
 
 #endif // __BIONIC__
 
-class InetSocketAddress : public RpcConnection::SocketAddress {
+class SocketAddressImpl : public RpcConnection::SocketAddress {
 public:
-    InetSocketAddress(const sockaddr* sockAddr, size_t size, const char* addr, unsigned int port)
-          : mSockAddr(sockAddr), mSize(size), mAddr(addr), mPort(port) {}
+    SocketAddressImpl(const sockaddr* addr, size_t size, const String8& desc)
+          : mAddr(addr), mSize(size), mDesc(desc) {}
     [[nodiscard]] std::string toString() const override {
-        return String8::format("%s:%u", mAddr, mPort).c_str();
+        return std::string(mDesc.c_str(), mDesc.size());
     }
-    [[nodiscard]] const sockaddr* addr() const override { return mSockAddr; }
+    [[nodiscard]] const sockaddr* addr() const override { return mAddr; }
     [[nodiscard]] size_t addrSize() const override { return mSize; }
+    void set(const sockaddr* addr, size_t size) {
+        mAddr = addr;
+        mSize = size;
+    }
 
 private:
-    const sockaddr* mSockAddr;
-    size_t mSize;
-    const char* mAddr;
-    unsigned int mPort;
+    const sockaddr* mAddr = nullptr;
+    size_t mSize = 0;
+    String8 mDesc;
 };
 
 AddrInfo GetAddrInfo(const char* addr, unsigned int port) {
@@ -167,15 +170,14 @@ AddrInfo GetAddrInfo(const char* addr, unsigned int port) {
 }
 
 bool RpcConnection::setupInetServer(unsigned int port) {
-    const char* kAddr = "127.0.0.1";
-
-    auto aiStart = GetAddrInfo(kAddr, port);
+    auto aiStart = GetAddrInfo("127.0.0.1", port);
     if (aiStart == nullptr) return false;
+    SocketAddressImpl socketAddress(nullptr, 0, String8::format("127.0.0.1:%u", port));
     for (auto ai = aiStart.get(); ai != nullptr; ai = ai->ai_next) {
-        InetSocketAddress socketAddress(ai->ai_addr, ai->ai_addrlen, kAddr, port);
+        socketAddress.set(ai->ai_addr, ai->ai_addrlen);
         if (setupSocketServer(socketAddress)) return true;
     }
-    ALOGE("None of the socket address resolved for %s:%u can be set up as inet server.", kAddr,
+    ALOGE("None of the socket address resolved for 127.0.0.1:%u can be set up as inet server.",
           port);
     return false;
 }
@@ -183,8 +185,9 @@ bool RpcConnection::setupInetServer(unsigned int port) {
 bool RpcConnection::addInetClient(const char* addr, unsigned int port) {
     auto aiStart = GetAddrInfo(addr, port);
     if (aiStart == nullptr) return false;
+    SocketAddressImpl socketAddress(nullptr, 0, String8::format("%s:%u", addr, port));
     for (auto ai = aiStart.get(); ai != nullptr; ai = ai->ai_next) {
-        InetSocketAddress socketAddress(ai->ai_addr, ai->ai_addrlen, addr, port);
+        socketAddress.set(ai->ai_addr, ai->ai_addrlen);
         if (addSocketClient(socketAddress)) return true;
     }
     ALOGE("None of the socket address resolved for %s:%u can be added as inet client.", addr, port);

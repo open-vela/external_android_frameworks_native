@@ -40,24 +40,6 @@ public:
     void iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
 
     /**
-     * This must be called before adding a client connection.
-     *
-     * If this is not specified, this will be a single-threaded server.
-     *
-     * TODO(b/185167543): these are currently created per client, but these
-     * should be shared.
-     */
-    void setMaxThreads(size_t threads);
-    size_t getMaxThreads();
-
-    /**
-     * The root object can be retrieved by any client, without any
-     * authentication. TODO(b/183988761)
-     */
-    void setRootObject(const sp<IBinder>& binder);
-    sp<IBinder> getRootObject();
-
-    /**
      * Setup a static connection, when the number of clients are known.
      *
      * Each call to this function corresponds to a different client, and clients
@@ -68,9 +50,15 @@ public:
     sp<RpcConnection> addClientConnection();
 
     /**
-     * You must have at least one client connection before calling this.
+     * The root object can be retrieved by any client, without any
+     * authentication. TODO(b/183988761)
      */
-    void join();
+    void setRootObject(const sp<IBinder>& binder);
+
+    /**
+     * Root object set with setRootObject
+     */
+    sp<IBinder> getRootObject();
 
     ~RpcServer();
 
@@ -79,10 +67,8 @@ private:
     RpcServer();
 
     bool mAgreedExperimental = false;
-    bool mStarted = false; // TODO(b/185167543): support dynamically added clients
-    size_t mMaxThreads = 1;
 
-    std::mutex mLock; // for below
+    std::mutex mLock;
     sp<IBinder> mRootObject;
     std::vector<sp<RpcConnection>> mConnections; // per-client
 };

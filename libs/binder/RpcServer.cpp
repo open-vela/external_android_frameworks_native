@@ -19,7 +19,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include <thread>
 #include <vector>
 
 #include <binder/Parcel.h>
@@ -42,19 +41,16 @@ void RpcServer::iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction() 
     mAgreedExperimental = true;
 }
 
-void RpcServer::setMaxThreads(size_t threads) {
-    LOG_ALWAYS_FATAL_IF(threads <= 0, "RpcServer is useless without threads");
-    {
-        // this lock should only ever be needed in the error case
-        std::lock_guard<std::mutex> _l(mLock);
-        LOG_ALWAYS_FATAL_IF(mConnections.size() > 0,
-                            "Must specify max threads before creating a connection");
-    }
-    mMaxThreads = threads;
-}
+sp<RpcConnection> RpcServer::addClientConnection() {
+    LOG_ALWAYS_FATAL_IF(!mAgreedExperimental, "no!");
 
-size_t RpcServer::getMaxThreads() {
-    return mMaxThreads;
+    auto connection = RpcConnection::make();
+    connection->setForServer(sp<RpcServer>::fromExisting(this));
+    {
+        std::lock_guard<std::mutex> _l(mLock);
+        mConnections.push_back(connection);
+    }
+    return connection;
 }
 
 void RpcServer::setRootObject(const sp<IBinder>& binder) {
@@ -65,37 +61,6 @@ void RpcServer::setRootObject(const sp<IBinder>& binder) {
 sp<IBinder> RpcServer::getRootObject() {
     std::lock_guard<std::mutex> _l(mLock);
     return mRootObject;
-}
-
-sp<RpcConnection> RpcServer::addClientConnection() {
-    LOG_ALWAYS_FATAL_IF(!mAgreedExperimental, "no!");
-
-    auto connection = RpcConnection::make();
-    connection->setForServer(sp<RpcServer>::fromExisting(this));
-    {
-        std::lock_guard<std::mutex> _l(mLock);
-        LOG_ALWAYS_FATAL_IF(mStarted,
-                            "currently only supports adding client connections at creation time");
-        mConnections.push_back(connection);
-    }
-    return connection;
-}
-
-void RpcServer::join() {
-    std::vector<std::thread> pool;
-    {
-        std::lock_guard<std::mutex> _l(mLock);
-        mStarted = true;
-        for (const sp<RpcConnection>& connection : mConnections) {
-            for (size_t i = 0; i < mMaxThreads; i++) {
-                pool.push_back(std::thread([=] { connection->join(); }));
-            }
-        }
-    }
-
-    // TODO(b/185167543): don't waste extra thread for join, and combine threads
-    // between clients
-    for (auto& t : pool) t.join();
 }
 
 } // namespace android

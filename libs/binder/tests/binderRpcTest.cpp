@@ -298,6 +298,8 @@ public:
     ProcessConnection createRpcTestSocketServerProcess(
             size_t numThreads,
             const std::function<void(const sp<RpcServer>&, const sp<RpcConnection>&)>& configure) {
+        CHECK_GT(numThreads, 0);
+
         SocketType socketType = GetParam();
 
         std::string addr = allocateSocketAddress();
@@ -310,7 +312,6 @@ public:
                     sp<RpcServer> server = RpcServer::make();
 
                     server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
-                    server->setMaxThreads(numThreads);
 
                     // server supporting one client on one socket
                     sp<RpcConnection> connection = server->addClientConnection();
@@ -338,7 +339,13 @@ public:
 
                     configure(server, connection);
 
-                    server->join();
+                    // accept 'numThreads' connections
+                    std::vector<std::thread> pool;
+                    for (size_t i = 0; i + 1 < numThreads; i++) {
+                        pool.push_back(std::thread([=] { connection->join(); }));
+                    }
+                    connection->join();
+                    for (auto& t : pool) t.join();
                 }),
                 .connection = RpcConnection::make(),
         };
@@ -351,26 +358,29 @@ public:
         }
 
         // create remainder of connections
-        for (size_t tries = 0; tries < 10; tries++) {
-            usleep(10000);
-            switch (socketType) {
-                case SocketType::UNIX:
-                    if (ret.connection->setupUnixDomainClient(addr.c_str())) goto success;
-                    break;
+        for (size_t i = 0; i < numThreads; i++) {
+            for (size_t tries = 0; tries < 5; tries++) {
+                usleep(10000);
+                switch (socketType) {
+                    case SocketType::UNIX:
+                        if (ret.connection->addUnixDomainClient(addr.c_str())) goto success;
+                        break;
 #ifdef __BIONIC__
-                case SocketType::VSOCK:
-                    if (ret.connection->setupVsockClient(VMADDR_CID_LOCAL, vsockPort)) goto success;
-                    break;
+                    case SocketType::VSOCK:
+                        if (ret.connection->addVsockClient(VMADDR_CID_LOCAL, vsockPort))
+                            goto success;
+                        break;
 #endif // __BIONIC__
-                case SocketType::INET:
-                    if (ret.connection->setupInetClient("127.0.0.1", inetPort)) goto success;
-                    break;
-                default:
-                    LOG_ALWAYS_FATAL("Unknown socket type");
+                    case SocketType::INET:
+                        if (ret.connection->addInetClient("127.0.0.1", inetPort)) goto success;
+                        break;
+                    default:
+                        LOG_ALWAYS_FATAL("Unknown socket type");
+                }
             }
+            LOG_ALWAYS_FATAL("Could not connect");
+        success:;
         }
-        LOG_ALWAYS_FATAL("Could not connect");
-    success:
 
         ret.rootBinder = ret.connection->getRootObject();
         return ret;

@@ -127,12 +127,12 @@ int main(int argc, char** argv) {
         sp<RpcConnection> connection = server->addClientConnection();
         CHECK(connection->setupUnixDomainServer(addr.c_str()));
 
-        server->join();
+        connection->join();
     }).detach();
 
     for (size_t tries = 0; tries < 5; tries++) {
         usleep(10000);
-        if (gConnection->setupUnixDomainClient(addr.c_str())) goto success;
+        if (gConnection->addUnixDomainClient(addr.c_str())) goto success;
     }
     LOG(FATAL) << "Could not connect.";
 success:

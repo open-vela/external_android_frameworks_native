@@ -50,8 +50,6 @@ rust_library {
         "//apex_available:platform",
         "com.android.virt",
     ],
-    lints: "none",
-    clippy_lints: "none",
 }
 
 rust_bindgen {

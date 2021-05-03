@@ -78,11 +78,7 @@ static size_t pad_size(size_t s) {
 namespace android {
 
 // many things compile this into prebuilts on the stack
-#ifdef __LP64__
-static_assert(sizeof(Parcel) == 120);
-#else
-static_assert(sizeof(Parcel) == 60);
-#endif
+static_assert(sizeof(Parcel) == 60 || sizeof(Parcel) == 120);
 
 static std::atomic<size_t> gParcelGlobalAllocCount;
 static std::atomic<size_t> gParcelGlobalAllocSize;

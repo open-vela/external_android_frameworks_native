@@ -78,11 +78,7 @@ static size_t pad_size(size_t s) {
 namespace android {
 
 // many things compile this into prebuilts on the stack
-#ifdef __LP64__
-static_assert(sizeof(Parcel) == 120);
-#else
-static_assert(sizeof(Parcel) == 60);
-#endif
+static_assert(sizeof(Parcel) == 60 || sizeof(Parcel) == 120);
 
 static std::atomic<size_t> gParcelGlobalAllocCount;
 static std::atomic<size_t> gParcelGlobalAllocSize;
@@ -593,7 +589,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
+#if defined(__ANDROID_VNDK__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

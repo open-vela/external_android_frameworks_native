@@ -29,16 +29,6 @@
 
 namespace android {
 
-// Service implementations inherit from BBinder and IBinder, and this is frozen
-// in prebuilts.
-#ifdef __LP64__
-static_assert(sizeof(IBinder) == 24);
-static_assert(sizeof(BBinder) == 40);
-#else
-static_assert(sizeof(IBinder) == 12);
-static_assert(sizeof(BBinder) == 20);
-#endif
-
 // ---------------------------------------------------------------------------
 
 IBinder::IBinder()

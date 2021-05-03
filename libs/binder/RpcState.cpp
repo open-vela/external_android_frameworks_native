@@ -249,7 +249,7 @@ sp<IBinder> RpcState::getRootObject(const base::unique_fd& fd,
 }
 
 status_t RpcState::getMaxThreads(const base::unique_fd& fd, const sp<RpcConnection>& connection,
-                                 size_t* maxThreadsOut) {
+                                 size_t* maxThreads) {
     Parcel data;
     data.markForRpc(connection);
     Parcel reply;
@@ -261,36 +261,15 @@ status_t RpcState::getMaxThreads(const base::unique_fd& fd, const sp<RpcConnecti
         return status;
     }
 
-    int32_t maxThreads;
-    status = reply.readInt32(&maxThreads);
+    int32_t threads;
+    status = reply.readInt32(&threads);
     if (status != OK) return status;
-    if (maxThreads <= 0) {
-        ALOGE("Error invalid max maxThreads: %d", maxThreads);
+    if (threads <= 0) {
+        ALOGE("Error invalid max threads: %d", threads);
         return BAD_VALUE;
     }
 
-    *maxThreadsOut = maxThreads;
-    return OK;
-}
-
-status_t RpcState::getConnectionId(const base::unique_fd& fd, const sp<RpcConnection>& connection,
-                                   int32_t* connectionIdOut) {
-    Parcel data;
-    data.markForRpc(connection);
-    Parcel reply;
-
-    status_t status = transact(fd, RpcAddress::zero(), RPC_SPECIAL_TRANSACT_GET_CONNECTION_ID, data,
-                               connection, &reply, 0);
-    if (status != OK) {
-        ALOGE("Error getting connection ID: %s", statusToString(status).c_str());
-        return status;
-    }
-
-    int32_t connectionId;
-    status = reply.readInt32(&connectionId);
-    if (status != OK) return status;
-
-    *connectionIdOut = connectionId;
+    *maxThreads = threads;
     return OK;
 }
 
@@ -573,16 +552,6 @@ status_t RpcState::processTransactInternal(const base::unique_fd& fd,
                     }
                     case RPC_SPECIAL_TRANSACT_GET_MAX_THREADS: {
                         replyStatus = reply.writeInt32(server->getMaxThreads());
-                        break;
-                    }
-                    case RPC_SPECIAL_TRANSACT_GET_CONNECTION_ID: {
-                        // only connections w/ services can be the source of a
-                        // connection ID (so still guarded by non-null server)
-                        //
-                        // connections associated with servers must have an ID
-                        // (hence abort)
-                        int32_t id = connection->getPrivateAccessorForId().get().value();
-                        replyStatus = reply.writeInt32(id);
                         break;
                     }
                     default: {

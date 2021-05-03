@@ -121,8 +121,12 @@ int main(int argc, char** argv) {
     std::thread([addr]() {
         sp<RpcServer> server = RpcServer::make();
         server->setRootObject(sp<MyBinderRpcBenchmark>::make());
+
         server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
-        CHECK(server->setupUnixDomainServer(addr.c_str()));
+
+        sp<RpcConnection> connection = server->addClientConnection();
+        CHECK(connection->setupUnixDomainServer(addr.c_str()));
+
         server->join();
     }).detach();
 

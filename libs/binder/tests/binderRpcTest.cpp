@@ -78,7 +78,7 @@ std::atomic<int32_t> MyBinderRpcSession::gNum;
 
 class MyBinderRpcTest : public BnBinderRpcTest {
 public:
-    wp<RpcServer> server;
+    sp<RpcConnection> connection;
 
     Status sendString(const std::string& str) override {
         (void)str;
@@ -89,23 +89,13 @@ public:
         return Status::ok();
     }
     Status countBinders(int32_t* out) override {
-        sp<RpcServer> spServer = server.promote();
-        if (spServer == nullptr) {
+        if (connection == nullptr) {
             return Status::fromExceptionCode(Status::EX_NULL_POINTER);
         }
-        size_t count = 0;
-        for (auto connection : spServer->listConnections()) {
-            count += connection->state()->countBinders();
+        *out = connection->state()->countBinders();
+        if (*out != 1) {
+            connection->state()->dump();
         }
-        // help debugging if we don't have one binder (this call is always made
-        // in this test when exactly one binder is held, which is held only to
-        // call this method - all other binders should be cleaned up)
-        if (count != 1) {
-            for (auto connection : spServer->listConnections()) {
-                connection->state()->dump();
-            }
-        }
-        *out = count;
         return Status::ok();
     }
     Status pingMe(const sp<IBinder>& binder, int32_t* out) override {
@@ -306,7 +296,8 @@ public:
     // This creates a new process serving an interface on a certain number of
     // threads.
     ProcessConnection createRpcTestSocketServerProcess(
-            size_t numThreads, const std::function<void(const sp<RpcServer>&)>& configure) {
+            size_t numThreads,
+            const std::function<void(const sp<RpcServer>&, const sp<RpcConnection>&)>& configure) {
         SocketType socketType = GetParam();
 
         std::string addr = allocateSocketAddress();
@@ -321,18 +312,21 @@ public:
                     server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
                     server->setMaxThreads(numThreads);
 
+                    // server supporting one client on one socket
+                    sp<RpcConnection> connection = server->addClientConnection();
+
                     switch (socketType) {
                         case SocketType::UNIX:
-                            CHECK(server->setupUnixDomainServer(addr.c_str())) << addr;
+                            CHECK(connection->setupUnixDomainServer(addr.c_str())) << addr;
                             break;
 #ifdef __BIONIC__
                         case SocketType::VSOCK:
-                            CHECK(server->setupVsockServer(vsockPort));
+                            CHECK(connection->setupVsockServer(vsockPort));
                             break;
 #endif // __BIONIC__
                         case SocketType::INET: {
                             unsigned int outPort = 0;
-                            CHECK(server->setupInetServer(0, &outPort));
+                            CHECK(connection->setupInetServer(0, &outPort));
                             CHECK_NE(0, outPort);
                             CHECK(android::base::WriteFully(pipe->writeEnd(), &outPort,
                                                             sizeof(outPort)));
@@ -342,7 +336,7 @@ public:
                             LOG_ALWAYS_FATAL("Unknown socket type");
                     }
 
-                    configure(server);
+                    configure(server, connection);
 
                     server->join();
                 }),
@@ -385,11 +379,13 @@ public:
     BinderRpcTestProcessConnection createRpcTestSocketServerProcess(size_t numThreads) {
         BinderRpcTestProcessConnection ret{
                 .proc = createRpcTestSocketServerProcess(numThreads,
-                                                         [&](const sp<RpcServer>& server) {
+                                                         [&](const sp<RpcServer>& server,
+                                                             const sp<RpcConnection>& connection) {
                                                              sp<MyBinderRpcTest> service =
                                                                      new MyBinderRpcTest;
                                                              server->setRootObject(service);
-                                                             service->server = server;
+                                                             service->connection =
+                                                                     connection; // for testing only
                                                          }),
         };
 
@@ -401,10 +397,12 @@ public:
 };
 
 TEST_P(BinderRpc, RootObjectIsNull) {
-    auto proc = createRpcTestSocketServerProcess(1, [](const sp<RpcServer>& server) {
-        // this is the default, but to be explicit
-        server->setRootObject(nullptr);
-    });
+    auto proc = createRpcTestSocketServerProcess(1,
+                                                 [](const sp<RpcServer>& server,
+                                                    const sp<RpcConnection>&) {
+                                                     // this is the default, but to be explicit
+                                                     server->setRootObject(nullptr);
+                                                 });
 
     // retrieved by getRootObject when process is created above
     EXPECT_EQ(nullptr, proc.rootBinder);

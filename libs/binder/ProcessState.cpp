@@ -27,8 +27,8 @@
 #include <utils/String8.h>
 #include <utils/threads.h>
 
+#include <private/binder/binder_module.h>
 #include "Static.h"
-#include "binder_module.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -423,6 +423,12 @@ ProcessState::ProcessState(const char *driver)
     , mThreadPoolSeq(1)
     , mCallRestriction(CallRestriction::NONE)
 {
+
+// TODO(b/166468760): enforce in build system
+#if defined(__ANDROID_APEX__)
+    LOG_ALWAYS_FATAL("Cannot use libbinder in APEX (only system.img libbinder) since it is not stable.");
+#endif
+
     if (mDriverFD >= 0) {
         // mmap the binder, providing a chunk of virtual address space to receive transactions.
         mVMStart = mmap(nullptr, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, 0);

@@ -29,6 +29,8 @@
 #include <utils/SystemClock.h>
 #include <utils/threads.h>
 
+#include <private/binder/binder_module.h>
+
 #include <atomic>
 #include <errno.h>
 #include <inttypes.h>
@@ -41,7 +43,6 @@
 #include <unistd.h>
 
 #include "Static.h"
-#include "binder_module.h"
 
 #if LOG_NDEBUG
 

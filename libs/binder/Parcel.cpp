@@ -202,7 +202,7 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder)
             status_t status = writeInt32(1); // non-null
             if (status != OK) return status;
             RpcAddress address = RpcAddress::zero();
-            status = mSession->state()->onBinderLeaving(mSession, binder, &address);
+            status = mConnection->state()->onBinderLeaving(mConnection, binder, &address);
             if (status != OK) return status;
             status = address.writeToParcel(this);
             if (status != OK) return status;
@@ -273,7 +273,8 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder)
 status_t Parcel::unflattenBinder(sp<IBinder>* out) const
 {
     if (isForRpc()) {
-        LOG_ALWAYS_FATAL_IF(mSession == nullptr, "RpcSession required to read from remote parcel");
+        LOG_ALWAYS_FATAL_IF(mConnection == nullptr,
+                            "RpcConnection required to read from remote parcel");
 
         int32_t isNull;
         status_t status = readInt32(&isNull);
@@ -285,7 +286,7 @@ status_t Parcel::unflattenBinder(sp<IBinder>* out) const
             auto addr = RpcAddress::zero();
             status_t status = addr.readFromParcel(*this);
             if (status != OK) return status;
-            binder = mSession->state()->onBinderEntering(mSession, addr);
+            binder = mConnection->state()->onBinderEntering(mConnection, addr);
         }
 
         return finishUnflattenBinder(binder, out);
@@ -567,20 +568,20 @@ void Parcel::markForBinder(const sp<IBinder>& binder) {
     LOG_ALWAYS_FATAL_IF(mData != nullptr, "format must be set before data is written");
 
     if (binder && binder->remoteBinder() && binder->remoteBinder()->isRpcBinder()) {
-        markForRpc(binder->remoteBinder()->getPrivateAccessorForId().rpcSession());
+        markForRpc(binder->remoteBinder()->getPrivateAccessorForId().rpcConnection());
     }
 }
 
-void Parcel::markForRpc(const sp<RpcSession>& session) {
+void Parcel::markForRpc(const sp<RpcConnection>& connection) {
     LOG_ALWAYS_FATAL_IF(mData != nullptr && mOwner == nullptr,
                         "format must be set before data is written OR on IPC data");
 
-    LOG_ALWAYS_FATAL_IF(session == nullptr, "markForRpc requires session");
-    mSession = session;
+    LOG_ALWAYS_FATAL_IF(connection == nullptr, "markForRpc requires connection");
+    mConnection = connection;
 }
 
 bool Parcel::isForRpc() const {
-    return mSession != nullptr;
+    return mConnection != nullptr;
 }
 
 void Parcel::updateWorkSourceRequestHeaderPosition() const {
@@ -592,7 +593,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__)
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');
@@ -2498,7 +2499,7 @@ void Parcel::initState()
     mDataPos = 0;
     ALOGV("initState Setting data size of %p to %zu", this, mDataSize);
     ALOGV("initState Setting data pos of %p to %zu", this, mDataPos);
-    mSession = nullptr;
+    mConnection = nullptr;
     mObjects = nullptr;
     mObjectsSize = 0;
     mObjectsCapacity = 0;

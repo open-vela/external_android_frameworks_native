@@ -18,10 +18,9 @@
 #include <android-base/unique_fd.h>
 #include <binder/IBinder.h>
 #include <binder/Parcel.h>
-#include <binder/RpcSession.h>
+#include <binder/RpcConnection.h>
 
 #include <map>
-#include <optional>
 #include <queue>
 
 namespace android {
@@ -44,7 +43,7 @@ struct RpcWireHeader;
 
 /**
  * Abstracts away management of ref counts and the wire format from
- * RpcSession
+ * RpcConnection
  */
 class RpcState {
 public:
@@ -52,83 +51,71 @@ public:
     ~RpcState();
 
     // TODO(b/182940634): combine some special transactions into one "getServerInfo" call?
-    sp<IBinder> getRootObject(const base::unique_fd& fd, const sp<RpcSession>& session);
-    status_t getMaxThreads(const base::unique_fd& fd, const sp<RpcSession>& session,
+    sp<IBinder> getRootObject(const base::unique_fd& fd, const sp<RpcConnection>& connection);
+    status_t getMaxThreads(const base::unique_fd& fd, const sp<RpcConnection>& connection,
                            size_t* maxThreadsOut);
-    status_t getSessionId(const base::unique_fd& fd, const sp<RpcSession>& session,
-                          int32_t* sessionIdOut);
+    status_t getConnectionId(const base::unique_fd& fd, const sp<RpcConnection>& connection,
+                             int32_t* connectionIdOut);
 
     [[nodiscard]] status_t transact(const base::unique_fd& fd, const RpcAddress& address,
                                     uint32_t code, const Parcel& data,
-                                    const sp<RpcSession>& session, Parcel* reply, uint32_t flags);
+                                    const sp<RpcConnection>& connection, Parcel* reply,
+                                    uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const base::unique_fd& fd, const RpcAddress& address);
     [[nodiscard]] status_t getAndExecuteCommand(const base::unique_fd& fd,
-                                                const sp<RpcSession>& session);
+                                                const sp<RpcConnection>& connection);
 
     /**
      * Called by Parcel for outgoing binders. This implies one refcount of
      * ownership to the outgoing binder.
      */
-    [[nodiscard]] status_t onBinderLeaving(const sp<RpcSession>& session, const sp<IBinder>& binder,
-                                           RpcAddress* outAddress);
+    [[nodiscard]] status_t onBinderLeaving(const sp<RpcConnection>& connection,
+                                           const sp<IBinder>& binder, RpcAddress* outAddress);
 
     /**
      * Called by Parcel for incoming binders. This either returns the refcount
      * to the process, if this process already has one, or it takes ownership of
      * that refcount
      */
-    sp<IBinder> onBinderEntering(const sp<RpcSession>& session, const RpcAddress& address);
+    sp<IBinder> onBinderEntering(const sp<RpcConnection>& connection, const RpcAddress& address);
 
     size_t countBinders();
     void dump();
 
 private:
     /**
-     * Called when reading or writing data to a session fails to clean up
-     * data associated with the session in order to cleanup binders.
+     * Called when reading or writing data to a connection fails to clean up
+     * data associated with the connection in order to cleanup binders.
      * Specifically, we have a strong dependency cycle, since BpBinder is
      * OBJECT_LIFETIME_WEAK (so that onAttemptIncStrong may return true).
      *
-     *     BpBinder -> RpcSession -> RpcState
+     *     BpBinder -> RpcConnection -> RpcState
      *      ^-----------------------------/
      *
      * In the success case, eventually all refcounts should be propagated over
-     * the session, though this could also be called to eagerly cleanup
-     * the session.
+     * the connection, though this could also be called to eagerly cleanup
+     * the connection.
      *
-     * WARNING: RpcState is responsible for calling this when the session is
+     * WARNING: RpcState is responsible for calling this when the connection is
      * no longer recoverable.
      */
     void terminate();
-
-    // alternative to std::vector<uint8_t> that doesn't abort on too big of allocations
-    struct ByteVec {
-        explicit ByteVec(size_t size)
-              : mData(size > 0 ? new (std::nothrow) uint8_t[size] : nullptr), mSize(size) {}
-        bool valid() { return mSize == 0 || mData != nullptr; }
-        size_t size() { return mSize; }
-        uint8_t* data() { return mData.get(); }
-        uint8_t* release() { return mData.release(); }
-
-    private:
-        std::unique_ptr<uint8_t[]> mData;
-        size_t mSize;
-    };
 
     [[nodiscard]] bool rpcSend(const base::unique_fd& fd, const char* what, const void* data,
                                size_t size);
     [[nodiscard]] bool rpcRec(const base::unique_fd& fd, const char* what, void* data, size_t size);
 
-    [[nodiscard]] status_t waitForReply(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                        Parcel* reply);
+    [[nodiscard]] status_t waitForReply(const base::unique_fd& fd,
+                                        const sp<RpcConnection>& connection, Parcel* reply);
     [[nodiscard]] status_t processServerCommand(const base::unique_fd& fd,
-                                                const sp<RpcSession>& session,
+                                                const sp<RpcConnection>& connection,
                                                 const RpcWireHeader& command);
-    [[nodiscard]] status_t processTransact(const base::unique_fd& fd, const sp<RpcSession>& session,
+    [[nodiscard]] status_t processTransact(const base::unique_fd& fd,
+                                           const sp<RpcConnection>& connection,
                                            const RpcWireHeader& command);
     [[nodiscard]] status_t processTransactInternal(const base::unique_fd& fd,
-                                                   const sp<RpcSession>& session,
-                                                   ByteVec transactionData);
+                                                   const sp<RpcConnection>& connection,
+                                                   std::vector<uint8_t>&& transactionData);
     [[nodiscard]] status_t processDecStrong(const base::unique_fd& fd,
                                             const RpcWireHeader& command);
 
@@ -163,7 +150,7 @@ private:
 
         // async transaction queue, _only_ for local binder
         struct AsyncTodo {
-            ByteVec data;
+            std::vector<uint8_t> data; // most convenient format, to move it here
             uint64_t asyncNumber = 0;
 
             bool operator<(const AsyncTodo& o) const {
@@ -181,7 +168,7 @@ private:
 
     std::mutex mNodeMutex;
     bool mTerminated = false;
-    // binders known by both sides of a session
+    // binders known by both sides of a connection
     std::map<RpcAddress, BinderNode> mNodeForAddress;
 };
 

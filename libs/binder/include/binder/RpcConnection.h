@@ -38,13 +38,12 @@ class RpcSocketAddress;
 class RpcState;
 
 /**
- * This represents a session (group of connections) between a client
- * and a server. Multiple connections are needed for multiple parallel "binder"
- * calls which may also have nested calls.
+ * This represents a multi-threaded/multi-socket connection between a client
+ * and a server.
  */
-class RpcSession final : public virtual RefBase {
+class RpcConnection final : public virtual RefBase {
 public:
-    static sp<RpcSession> make();
+    static sp<RpcConnection> make();
 
     /**
      * This should be called once per thread, matching 'join' in the remote
@@ -67,20 +66,20 @@ public:
     /**
      * For debugging!
      *
-     * Sets up an empty connection. All queries to this connection which require a
+     * Sets up an empty socket. All queries to this socket which require a
      * response will never be satisfied. All data sent here will be
      * unceremoniously cast down the bottomless pit, /dev/null.
      */
     [[nodiscard]] bool addNullDebuggingClient();
 
     /**
-     * Query the other side of the session for the root object hosted by that
+     * Query the other side of the connection for the root object hosted by that
      * process's RpcServer (if one exists)
      */
     sp<IBinder> getRootObject();
 
     /**
-     * Query the other side of the session for the maximum number of threads
+     * Query the other side of the connection for the maximum number of threads
      * it supports (maximum number of concurrent non-nested synchronous transactions)
      */
     status_t getMaxThreads(size_t* maxThreads);
@@ -89,7 +88,7 @@ public:
                                     Parcel* reply, uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const RpcAddress& address);
 
-    ~RpcSession();
+    ~RpcConnection();
 
     wp<RpcServer> server();
 
@@ -98,29 +97,28 @@ public:
 
     class PrivateAccessorForId {
     private:
-        friend class RpcSession;
+        friend class RpcConnection;
         friend class RpcState;
-        explicit PrivateAccessorForId(const RpcSession* session) : mSession(session) {}
+        explicit PrivateAccessorForId(const RpcConnection* connection) : mConnection(connection) {}
 
-        const std::optional<int32_t> get() { return mSession->mId; }
+        const std::optional<int32_t> get() { return mConnection->mId; }
 
-        const RpcSession* mSession;
+        const RpcConnection* mConnection;
     };
     PrivateAccessorForId getPrivateAccessorForId() const { return PrivateAccessorForId(this); }
 
 private:
     friend PrivateAccessorForId;
-    friend sp<RpcSession>;
+    friend sp<RpcConnection>;
     friend RpcServer;
-    RpcSession();
+    RpcConnection();
 
     status_t readId();
 
     void startThread(base::unique_fd client);
     void join(base::unique_fd client);
-    void terminateLocked();
 
-    struct RpcConnection : public RefBase {
+    struct ConnectionSocket : public RefBase {
         base::unique_fd fd;
 
         // whether this or another thread is currently using this fd to make
@@ -129,33 +127,32 @@ private:
     };
 
     bool setupSocketClient(const RpcSocketAddress& address);
-    bool setupOneSocketClient(const RpcSocketAddress& address, int32_t sessionId);
+    bool setupOneSocketClient(const RpcSocketAddress& address, int32_t connectionId);
     void addClient(base::unique_fd fd);
-    void setForServer(const wp<RpcServer>& server, int32_t sessionId);
-    sp<RpcConnection> assignServerToThisThread(base::unique_fd fd);
-    bool removeServerConnection(const sp<RpcConnection>& connection);
+    void setForServer(const wp<RpcServer>& server, int32_t connectionId);
+    sp<ConnectionSocket> assignServerToThisThread(base::unique_fd fd);
+    bool removeServerSocket(const sp<ConnectionSocket>& socket);
 
-    enum class ConnectionUse {
+    enum class SocketUse {
         CLIENT,
         CLIENT_ASYNC,
         CLIENT_REFCOUNT,
     };
 
-    // RAII object for session connection
-    class ExclusiveConnection {
+    // RAII object for connection socket
+    class ExclusiveSocket {
     public:
-        explicit ExclusiveConnection(const sp<RpcSession>& session, ConnectionUse use);
-        ~ExclusiveConnection();
-        const base::unique_fd& fd() { return mConnection->fd; }
+        explicit ExclusiveSocket(const sp<RpcConnection>& connection, SocketUse use);
+        ~ExclusiveSocket();
+        const base::unique_fd& fd() { return mSocket->fd; }
 
     private:
-        static void findConnection(pid_t tid, sp<RpcConnection>* exclusive,
-                                   sp<RpcConnection>* available,
-                                   std::vector<sp<RpcConnection>>& sockets,
-                                   size_t socketsIndexHint);
+        static void findSocket(pid_t tid, sp<ConnectionSocket>* exclusive,
+                               sp<ConnectionSocket>* available,
+                               std::vector<sp<ConnectionSocket>>& sockets, size_t socketsIndexHint);
 
-        sp<RpcSession> mSession; // avoid deallocation
-        sp<RpcConnection> mConnection;
+        sp<RpcConnection> mConnection; // avoid deallocation
+        sp<ConnectionSocket> mSocket;
 
         // whether this is being used for a nested transaction (being on the same
         // thread guarantees we won't write in the middle of a message, the way
@@ -163,10 +160,10 @@ private:
         bool mReentrant = false;
     };
 
-    // On the other side of a session, for each of mClients here, there should
+    // On the other side of a connection, for each of mClients here, there should
     // be one of mServers on the other side (and vice versa).
     //
-    // For the simplest session, a single server with one client, you would
+    // For the simplest connection, a single server with one client, you would
     // have:
     //  - the server has a single 'mServers' and a thread listening on this
     //  - the client has a single 'mClients' and makes calls to this
@@ -177,27 +174,26 @@ private:
     // For a more complicated case, the client might itself open up a thread to
     // serve calls to the server at all times (e.g. if it hosts a callback)
 
-    wp<RpcServer> mForServer; // maybe null, for client sessions
+    wp<RpcServer> mForServer; // maybe null, for client connections
 
     // TODO(b/183988761): this shouldn't be guessable
     std::optional<int32_t> mId;
 
     std::unique_ptr<RpcState> mState;
 
-    std::mutex mMutex; // for all below
+    std::mutex mSocketMutex;           // for all below
 
-    std::condition_variable mAvailableConnectionCv; // for mWaitingThreads
+    std::condition_variable mSocketCv; // for mWaitingThreads
     size_t mWaitingThreads = 0;
     size_t mClientsOffset = 0; // hint index into clients, ++ when sending an async transaction
-    std::vector<sp<RpcConnection>> mClients;
-    std::vector<sp<RpcConnection>> mServers;
+    std::vector<sp<ConnectionSocket>> mClients;
+    std::vector<sp<ConnectionSocket>> mServers;
 
-    // TODO(b/185167543): use for reverse sessions (allow client to also
-    // serve calls on a session).
-    // TODO(b/185167543): allow sharing between different sessions in a
+    // TODO(b/185167543): use for reverse connections (allow client to also
+    // serve calls on a connection).
+    // TODO(b/185167543): allow sharing between different connections in a
     // process? (or combine with mServers)
     std::map<std::thread::id, std::thread> mThreads;
-    bool mTerminated = false;
 };
 
 } // namespace android

@@ -50,7 +50,7 @@ template <typename T> class LightFlattenable;
 class IBinder;
 class IPCThreadState;
 class ProcessState;
-class RpcSession;
+class RpcConnection;
 class String8;
 class TextOutput;
 
@@ -103,7 +103,7 @@ public:
 
     // Whenever possible, markForBinder should be preferred. This method is
     // called automatically on reply Parcels for RPC transactions.
-    void markForRpc(const sp<RpcSession>& session);
+    void markForRpc(const sp<RpcConnection>& connection);
 
     // Whether this Parcel is written for RPC transactions (after calls to
     // markForBinder or markForRpc).
@@ -1136,7 +1136,7 @@ private:
 
     release_func        mOwner;
 
-    sp<RpcSession> mSession;
+    sp<RpcConnection> mConnection;
 
     class Blob {
     public:

@@ -149,38 +149,38 @@ void RpcServer::join() {
         {
             std::lock_guard<std::mutex> _l(mLock);
 
-            sp<RpcSession> session;
-            if (id == RPC_SESSION_ID_NEW) {
+            sp<RpcConnection> connection;
+            if (id == RPC_CONNECTION_ID_NEW) {
                 // new client!
-                LOG_ALWAYS_FATAL_IF(mSessionIdCounter >= INT32_MAX, "Out of session IDs");
-                mSessionIdCounter++;
+                LOG_ALWAYS_FATAL_IF(mConnectionIdCounter >= INT32_MAX, "Out of connection IDs");
+                mConnectionIdCounter++;
 
-                session = RpcSession::make();
-                session->setForServer(wp<RpcServer>::fromExisting(this), mSessionIdCounter);
+                connection = RpcConnection::make();
+                connection->setForServer(wp<RpcServer>::fromExisting(this), mConnectionIdCounter);
 
-                mSessions[mSessionIdCounter] = session;
+                mConnections[mConnectionIdCounter] = connection;
             } else {
-                auto it = mSessions.find(id);
-                if (it == mSessions.end()) {
-                    ALOGE("Cannot add thread, no record of session with ID %d", id);
+                auto it = mConnections.find(id);
+                if (it == mConnections.end()) {
+                    ALOGE("Cannot add thread, no record of connection with ID %d", id);
                     continue;
                 }
-                session = it->second;
+                connection = it->second;
             }
 
-            session->startThread(std::move(clientFd));
+            connection->startThread(std::move(clientFd));
         }
     }
 }
 
-std::vector<sp<RpcSession>> RpcServer::listSessions() {
+std::vector<sp<RpcConnection>> RpcServer::listConnections() {
     std::lock_guard<std::mutex> _l(mLock);
-    std::vector<sp<RpcSession>> sessions;
-    for (auto& [id, session] : mSessions) {
+    std::vector<sp<RpcConnection>> connections;
+    for (auto& [id, connection] : mConnections) {
         (void)id;
-        sessions.push_back(session);
+        connections.push_back(connection);
     }
-    return sessions;
+    return connections;
 }
 
 bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
@@ -214,18 +214,6 @@ bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
 
     mServer = std::move(serverFd);
     return true;
-}
-
-void RpcServer::onSessionTerminating(const sp<RpcSession>& session) {
-    auto id = session->mId;
-    LOG_ALWAYS_FATAL_IF(id == std::nullopt, "Server sessions must be initialized with ID");
-    LOG_RPC_DETAIL("Dropping session %d", *id);
-
-    std::lock_guard<std::mutex> _l(mLock);
-    auto it = mSessions.find(*id);
-    LOG_ALWAYS_FATAL_IF(it == mSessions.end(), "Bad state, unknown session id %d", *id);
-    LOG_ALWAYS_FATAL_IF(it->second != session, "Bad state, session has id mismatch %d", *id);
-    (void)mSessions.erase(it);
 }
 
 } // namespace android

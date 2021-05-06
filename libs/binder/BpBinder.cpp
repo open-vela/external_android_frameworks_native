@@ -21,7 +21,7 @@
 
 #include <binder/IPCThreadState.h>
 #include <binder/IResultReceiver.h>
-#include <binder/RpcSession.h>
+#include <binder/RpcConnection.h>
 #include <binder/Stability.h>
 #include <cutils/compiler.h>
 #include <utils/Log.h>
@@ -136,15 +136,15 @@ sp<BpBinder> BpBinder::create(int32_t handle) {
     return sp<BpBinder>::make(BinderHandle{handle}, trackedUid);
 }
 
-sp<BpBinder> BpBinder::create(const sp<RpcSession>& session, const RpcAddress& address) {
-    LOG_ALWAYS_FATAL_IF(session == nullptr, "BpBinder::create null session");
+sp<BpBinder> BpBinder::create(const sp<RpcConnection>& connection, const RpcAddress& address) {
+    LOG_ALWAYS_FATAL_IF(connection == nullptr, "BpBinder::create null connection");
 
     // These are not currently tracked, since there is no UID or other
     // identifier to track them with. However, if similar functionality is
-    // needed, session objects keep track of all BpBinder objects on a
-    // per-session basis.
+    // needed, connection objects keep track of all BpBinder objects on a
+    // per-connection basis.
 
-    return sp<BpBinder>::make(RpcHandle{session, address});
+    return sp<BpBinder>::make(SocketHandle{connection, address});
 }
 
 BpBinder::BpBinder(Handle&& handle)
@@ -165,20 +165,20 @@ BpBinder::BpBinder(BinderHandle&& handle, int32_t trackedUid) : BpBinder(Handle(
     IPCThreadState::self()->incWeakHandle(this->binderHandle(), this);
 }
 
-BpBinder::BpBinder(RpcHandle&& handle) : BpBinder(Handle(handle)) {
-    LOG_ALWAYS_FATAL_IF(rpcSession() == nullptr, "BpBinder created w/o session object");
+BpBinder::BpBinder(SocketHandle&& handle) : BpBinder(Handle(handle)) {
+    LOG_ALWAYS_FATAL_IF(rpcConnection() == nullptr, "BpBinder created w/o connection object");
 }
 
 bool BpBinder::isRpcBinder() const {
-    return std::holds_alternative<RpcHandle>(mHandle);
+    return std::holds_alternative<SocketHandle>(mHandle);
 }
 
 const RpcAddress& BpBinder::rpcAddress() const {
-    return std::get<RpcHandle>(mHandle).address;
+    return std::get<SocketHandle>(mHandle).address;
 }
 
-const sp<RpcSession>& BpBinder::rpcSession() const {
-    return std::get<RpcHandle>(mHandle).session;
+const sp<RpcConnection>& BpBinder::rpcConnection() const {
+    return std::get<SocketHandle>(mHandle).connection;
 }
 
 int32_t BpBinder::binderHandle() const {
@@ -273,7 +273,7 @@ status_t BpBinder::transact(
 
         status_t status;
         if (CC_UNLIKELY(isRpcBinder())) {
-            status = rpcSession()->transact(rpcAddress(), code, data, reply, flags);
+            status = rpcConnection()->transact(rpcAddress(), code, data, reply, flags);
         } else {
             status = IPCThreadState::self()->transact(binderHandle(), code, data, reply, flags);
         }
@@ -479,7 +479,7 @@ void BpBinder::onLastStrongRef(const void* /*id*/)
 {
     ALOGV("onLastStrongRef BpBinder %p handle %d\n", this, binderHandle());
     if (CC_UNLIKELY(isRpcBinder())) {
-        (void)rpcSession()->sendDecStrong(rpcAddress());
+        (void)rpcConnection()->sendDecStrong(rpcAddress());
         return;
     }
     IF_ALOGV() {

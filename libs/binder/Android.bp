@@ -112,7 +112,7 @@ cc_library {
         "PersistableBundle.cpp",
         "ProcessState.cpp",
         "RpcAddress.cpp",
-        "RpcSession.cpp",
+        "RpcConnection.cpp",
         "RpcServer.cpp",
         "RpcState.cpp",
         "Static.cpp",

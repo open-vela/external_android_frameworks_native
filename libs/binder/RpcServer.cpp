@@ -49,12 +49,16 @@ bool RpcServer::setupUnixDomainServer(const char* path) {
     return setupSocketServer(UnixSocketAddress(path));
 }
 
+#ifdef __BIONIC__
+
 bool RpcServer::setupVsockServer(unsigned int port) {
     // realizing value w/ this type at compile time to avoid ubsan abort
     constexpr unsigned int kAnyCid = VMADDR_CID_ANY;
 
     return setupSocketServer(VsockSocketAddress(kAnyCid, port));
 }
+
+#endif // __BIONIC__
 
 bool RpcServer::setupInetServer(unsigned int port, unsigned int* assignedPort) {
     const char* kAddr = "127.0.0.1";
@@ -134,8 +138,7 @@ void RpcServer::join() {
         }
         LOG_RPC_DETAIL("accept4 on fd %d yields fd %d", mServer.get(), clientFd.get());
 
-        // TODO(b/183988761): cannot trust this simple ID, should not block this
-        // thread
+        // TODO(b/183988761): cannot trust this simple ID
         LOG_ALWAYS_FATAL_IF(!mAgreedExperimental, "no!");
         int32_t id;
         if (sizeof(id) != read(clientFd.get(), &id, sizeof(id))) {

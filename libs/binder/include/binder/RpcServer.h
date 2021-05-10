@@ -109,10 +109,6 @@ public:
 
     ~RpcServer();
 
-    // internal use only
-
-    void onSessionTerminating(const sp<RpcSession>& session);
-
 private:
     friend sp<RpcServer>;
     RpcServer();

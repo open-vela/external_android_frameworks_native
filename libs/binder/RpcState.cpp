@@ -326,11 +326,7 @@ status_t RpcState::transact(const base::unique_fd& fd, const RpcAddress& address
             .asyncNumber = asyncNumber,
     };
 
-    ByteVec transactionData(sizeof(RpcWireTransaction) + data.dataSize());
-    if (!transactionData.valid()) {
-        return NO_MEMORY;
-    }
-
+    std::vector<uint8_t> transactionData(sizeof(RpcWireTransaction) + data.dataSize());
     memcpy(transactionData.data() + 0, &transaction, sizeof(RpcWireTransaction));
     memcpy(transactionData.data() + sizeof(RpcWireTransaction), data.data(), data.dataSize());
 
@@ -383,12 +379,9 @@ status_t RpcState::waitForReply(const base::unique_fd& fd, const sp<RpcSession>&
         if (status != OK) return status;
     }
 
-    ByteVec data(command.bodySize);
-    if (!data.valid()) {
-        return NO_MEMORY;
-    }
+    uint8_t* data = new uint8_t[command.bodySize];
 
-    if (!rpcRec(fd, "reply body", data.data(), command.bodySize)) {
+    if (!rpcRec(fd, "reply body", data, command.bodySize)) {
         return DEAD_OBJECT;
     }
 
@@ -398,10 +391,9 @@ status_t RpcState::waitForReply(const base::unique_fd& fd, const sp<RpcSession>&
         terminate();
         return BAD_VALUE;
     }
-    RpcWireReply* rpcReply = reinterpret_cast<RpcWireReply*>(data.data());
+    RpcWireReply* rpcReply = reinterpret_cast<RpcWireReply*>(data);
     if (rpcReply->status != OK) return rpcReply->status;
 
-    data.release();
     reply->ipcSetDataReference(rpcReply->data, command.bodySize - offsetof(RpcWireReply, data),
                                nullptr, 0, cleanup_reply_data);
 
@@ -469,10 +461,7 @@ status_t RpcState::processTransact(const base::unique_fd& fd, const sp<RpcSessio
                                    const RpcWireHeader& command) {
     LOG_ALWAYS_FATAL_IF(command.command != RPC_COMMAND_TRANSACT, "command: %d", command.command);
 
-    ByteVec transactionData(command.bodySize);
-    if (!transactionData.valid()) {
-        return NO_MEMORY;
-    }
+    std::vector<uint8_t> transactionData(command.bodySize);
     if (!rpcRec(fd, "transaction body", transactionData.data(), transactionData.size())) {
         return DEAD_OBJECT;
     }
@@ -490,7 +479,7 @@ static void do_nothing_to_transact_data(Parcel* p, const uint8_t* data, size_t d
 }
 
 status_t RpcState::processTransactInternal(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                           ByteVec transactionData) {
+                                           std::vector<uint8_t>&& transactionData) {
     if (transactionData.size() < sizeof(RpcWireTransaction)) {
         ALOGE("Expecting %zu but got %zu bytes for RpcWireTransaction. Terminating!",
               sizeof(RpcWireTransaction), transactionData.size());
@@ -511,6 +500,7 @@ status_t RpcState::processTransactInternal(const base::unique_fd& fd, const sp<R
         auto it = mNodeForAddress.find(addr);
         if (it == mNodeForAddress.end()) {
             ALOGE("Unknown binder address %s.", addr.toString().c_str());
+            dump();
             replyStatus = BAD_VALUE;
         } else {
             target = it->second.binder.promote();
@@ -640,7 +630,7 @@ status_t RpcState::processTransactInternal(const base::unique_fd& fd, const sp<R
                 // justification for const_cast (consider avoiding priority_queue):
                 // - AsyncTodo operator< doesn't depend on 'data' object
                 // - gotta go fast
-                ByteVec data = std::move(
+                std::vector<uint8_t> data = std::move(
                         const_cast<BinderNode::AsyncTodo&>(it->second.asyncTodo.top()).data);
                 it->second.asyncTodo.pop();
                 _l.unlock();
@@ -654,10 +644,7 @@ status_t RpcState::processTransactInternal(const base::unique_fd& fd, const sp<R
             .status = replyStatus,
     };
 
-    ByteVec replyData(sizeof(RpcWireReply) + reply.dataSize());
-    if (!replyData.valid()) {
-        return NO_MEMORY;
-    }
+    std::vector<uint8_t> replyData(sizeof(RpcWireReply) + reply.dataSize());
     memcpy(replyData.data() + 0, &rpcReply, sizeof(RpcWireReply));
     memcpy(replyData.data() + sizeof(RpcWireReply), reply.data(), reply.dataSize());
 
@@ -684,10 +671,7 @@ status_t RpcState::processTransactInternal(const base::unique_fd& fd, const sp<R
 status_t RpcState::processDecStrong(const base::unique_fd& fd, const RpcWireHeader& command) {
     LOG_ALWAYS_FATAL_IF(command.command != RPC_COMMAND_DEC_STRONG, "command: %d", command.command);
 
-    ByteVec commandData(command.bodySize);
-    if (!commandData.valid()) {
-        return NO_MEMORY;
-    }
+    std::vector<uint8_t> commandData(command.bodySize);
     if (!rpcRec(fd, "dec ref body", commandData.data(), commandData.size())) {
         return DEAD_OBJECT;
     }
@@ -706,6 +690,7 @@ status_t RpcState::processDecStrong(const base::unique_fd& fd, const RpcWireHead
     auto it = mNodeForAddress.find(addr);
     if (it == mNodeForAddress.end()) {
         ALOGE("Unknown binder address %s for dec strong.", addr.toString().c_str());
+        dump();
         return OK;
     }
 

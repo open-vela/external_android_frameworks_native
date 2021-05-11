@@ -63,9 +63,6 @@ cc_test {
         "libbinder",
         "libutils",
     ],
-    static_libs: [
-        "libgmock",
-    ],
     compile_multilib: "32",
     multilib: { lib32: { suffix: "" } },
     cflags: ["-DBINDER_IPC_32BIT=1"],
@@ -103,9 +100,6 @@ cc_test {
     shared_libs: [
         "libbinder",
         "libutils",
-    ],
-    static_libs: [
-        "libgmock",
     ],
     test_suites: ["device-tests", "vts"],
     require_root: true,

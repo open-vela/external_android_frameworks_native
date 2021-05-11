@@ -134,8 +134,7 @@ void RpcServer::join() {
         }
         LOG_RPC_DETAIL("accept4 on fd %d yields fd %d", mServer.get(), clientFd.get());
 
-        // TODO(b/183988761): cannot trust this simple ID, should not block this
-        // thread
+        // TODO(b/183988761): cannot trust this simple ID
         LOG_ALWAYS_FATAL_IF(!mAgreedExperimental, "no!");
         int32_t id;
         if (sizeof(id) != read(clientFd.get(), &id, sizeof(id))) {

@@ -49,16 +49,12 @@ bool RpcServer::setupUnixDomainServer(const char* path) {
     return setupSocketServer(UnixSocketAddress(path));
 }
 
-#ifdef __BIONIC__
-
 bool RpcServer::setupVsockServer(unsigned int port) {
     // realizing value w/ this type at compile time to avoid ubsan abort
     constexpr unsigned int kAnyCid = VMADDR_CID_ANY;
 
     return setupSocketServer(VsockSocketAddress(kAnyCid, port));
 }
-
-#endif // __BIONIC__
 
 bool RpcServer::setupInetServer(unsigned int port, unsigned int* assignedPort) {
     const char* kAddr = "127.0.0.1";
@@ -129,8 +125,8 @@ void RpcServer::join() {
     }
 
     while (true) {
-        unique_fd clientFd(
-                TEMP_FAILURE_RETRY(accept4(mServer.get(), nullptr, 0 /*length*/, SOCK_CLOEXEC)));
+        unique_fd clientFd(TEMP_FAILURE_RETRY(
+                accept4(mServer.get(), nullptr, nullptr /*length*/, SOCK_CLOEXEC)));
 
         if (clientFd < 0) {
             ALOGE("Could not accept4 socket: %s", strerror(errno));

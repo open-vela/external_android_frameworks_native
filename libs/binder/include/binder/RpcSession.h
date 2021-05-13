@@ -114,10 +114,7 @@ private:
 
     status_t readId();
 
-    // transfer ownership of thread
-    void preJoin(std::thread thread);
-    // join on thread passed to preJoin
-    void join(base::unique_fd client);
+    void join(std::thread thread, base::unique_fd client);
     void terminateLocked();
 
     struct RpcConnection : public RefBase {

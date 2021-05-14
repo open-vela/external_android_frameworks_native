@@ -255,10 +255,7 @@ bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
 
     LOG_RPC_DETAIL("Successfully setup socket server %s", addr.toString().c_str());
 
-    if (!setupExternalServer(std::move(serverFd))) {
-        ALOGE("Another thread has set up server while calling setupSocketServer. Race?");
-        return false;
-    }
+    mServer = std::move(serverFd);
     return true;
 }
 

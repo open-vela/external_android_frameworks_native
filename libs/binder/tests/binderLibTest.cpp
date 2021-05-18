@@ -605,17 +605,6 @@ TEST_F(BinderLibTest, CallBack)
     EXPECT_THAT(callBack->getResult(), StatusEq(NO_ERROR));
 }
 
-TEST_F(BinderLibTest, NoBinderCallContextGuard) {
-    IPCThreadState::SpGuard spGuard{"NoBinderCallContext"};
-    IPCThreadState::SpGuard *origGuard = IPCThreadState::self()->pushGetCallingSpGuard(&spGuard);
-
-    // yes, this test uses threads, but it's careful and uses fork in addServer
-    EXPECT_DEATH({ IPCThreadState::self()->getCallingPid(); },
-                 "In context NoBinderCallContext, getCallingPid does not make sense.");
-
-    IPCThreadState::self()->restoreGetCallingSpGuard(origGuard);
-}
-
 TEST_F(BinderLibTest, BinderCallContextGuard) {
     sp<IBinder> binder = addServer();
     Parcel data, reply;
@@ -1282,8 +1271,11 @@ class BinderLibTestService : public BBinder
                 return ret;
             }
             case BINDER_LIB_TEST_USE_CALLING_GUARD_TRANSACTION: {
-                IPCThreadState::SpGuard spGuard{"GuardInBinderTransaction"};
-                IPCThreadState::SpGuard *origGuard =
+                IPCThreadState::SpGuard spGuard{
+                        .address = __builtin_frame_address(0),
+                        .context = "GuardInBinderTransaction",
+                };
+                const IPCThreadState::SpGuard *origGuard =
                         IPCThreadState::self()->pushGetCallingSpGuard(&spGuard);
 
                 // if the guard works, this should abort
@@ -1522,7 +1514,10 @@ int run_server(int index, int readypipefd, bool usePoll)
 
     // Testing to make sure that calls that we are serving can use getCallin*
     // even though we don't here.
-    IPCThreadState::SpGuard spGuard{"main server thread"};
+    IPCThreadState::SpGuard spGuard{
+            .address = __builtin_frame_address(0),
+            .context = "main server thread",
+    };
     (void)IPCThreadState::self()->pushGetCallingSpGuard(&spGuard);
 
     status_t ret;

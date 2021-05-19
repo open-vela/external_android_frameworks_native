@@ -561,8 +561,6 @@ private:
     status_t            flattenBinder(const sp<IBinder>& binder);
     status_t            unflattenBinder(sp<IBinder>* out) const;
 
-    status_t readOutVectorSizeWithCheck(size_t elmSize, int32_t* size) const;
-
     template<class T>
     status_t            readAligned(T *pArg) const;
 
@@ -1317,7 +1315,7 @@ status_t Parcel::writeVectorSize(const std::unique_ptr<std::vector<T>>& val) {
 template<typename T>
 status_t Parcel::resizeOutVector(std::vector<T>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }
@@ -1332,7 +1330,7 @@ status_t Parcel::resizeOutVector(std::vector<T>* val) const {
 template<typename T>
 status_t Parcel::resizeOutVector(std::optional<std::vector<T>>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }
@@ -1348,7 +1346,7 @@ status_t Parcel::resizeOutVector(std::optional<std::vector<T>>* val) const {
 template<typename T>
 status_t Parcel::resizeOutVector(std::unique_ptr<std::vector<T>>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }

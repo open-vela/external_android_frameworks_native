@@ -243,7 +243,6 @@ private:
             // Whether the work source should be propagated.
             bool                mPropagateWorkSource;
             bool                mIsLooper;
-            bool mIsFlushing;
             int32_t             mStrictModePolicy;
             int32_t             mLastTransactionBinderFlags;
             CallRestriction     mCallRestriction;

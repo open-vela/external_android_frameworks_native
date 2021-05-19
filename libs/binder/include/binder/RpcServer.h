@@ -119,20 +119,9 @@ public:
     /**
      * You must have at least one client session before calling this.
      *
-     * If a client needs to actively terminate join, call shutdown() in a separate thread.
-     *
-     * At any given point, there can only be one thread calling join().
+     * TODO(b/185167543): way to shut down?
      */
     void join();
-
-    /**
-     * Shut down any existing join(). Return true if successfully shut down, false otherwise
-     * (e.g. no join() is running). Will wait for the server to be fully
-     * shutdown.
-     *
-     * TODO(b/185167543): wait for sessions to shutdown as well
-     */
-    [[nodiscard]] bool shutdown();
 
     /**
      * Accept one connection on this server. You must have at least one client
@@ -153,31 +142,14 @@ public:
     void onSessionTerminating(const sp<RpcSession>& session);
 
 private:
-    /** This is not a pipe. */
-    struct FdTrigger {
-        static std::unique_ptr<FdTrigger> make();
-        /**
-         * poll() on this fd for POLLHUP to get notification when trigger is called
-         */
-        base::borrowed_fd readFd() const { return mRead; }
-        /**
-         * Close the write end of the pipe so that the read end receives POLLHUP.
-         */
-        void trigger();
-
-    private:
-        base::unique_fd mWrite;
-        base::unique_fd mRead;
-    };
-
     friend sp<RpcServer>;
     RpcServer();
 
     void establishConnection(sp<RpcServer>&& session, base::unique_fd clientFd);
     bool setupSocketServer(const RpcSocketAddress& address);
-    [[nodiscard]] bool acceptOneNoCheck();
 
     bool mAgreedExperimental = false;
+    bool mStarted = false; // TODO(b/185167543): support dynamically added clients
     size_t mMaxThreads = 1;
     base::unique_fd mServer; // socket we are accepting sessions on
 
@@ -187,9 +159,6 @@ private:
     wp<IBinder> mRootObjectWeak;
     std::map<int32_t, sp<RpcSession>> mSessions;
     int32_t mSessionIdCounter = 0;
-    bool mJoinThreadRunning = false;
-    std::unique_ptr<FdTrigger> mShutdownTrigger;
-    std::condition_variable mShutdownCv;
 };
 
 } // namespace android

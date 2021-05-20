@@ -141,7 +141,7 @@ void RpcServer::join() {
     }
 
     while (mShutdownTrigger->triggerablePollRead(mServer)) {
-        (void)acceptOneNoCheck();
+        (void)acceptOne();
     }
 
     {
@@ -152,12 +152,6 @@ void RpcServer::join() {
 }
 
 bool RpcServer::acceptOne() {
-    LOG_ALWAYS_FATAL_IF(!mAgreedExperimental, "no!");
-    LOG_ALWAYS_FATAL_IF(!hasServer(), "RpcServer must be setup to acceptOne.");
-    return acceptOneNoCheck();
-}
-
-bool RpcServer::acceptOneNoCheck() {
     unique_fd clientFd(
             TEMP_FAILURE_RETRY(accept4(mServer.get(), nullptr, nullptr /*length*/, SOCK_CLOEXEC)));
 

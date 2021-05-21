@@ -184,18 +184,10 @@ bool RpcServer::acceptOne() {
 
 bool RpcServer::shutdown() {
     std::unique_lock<std::mutex> _l(mLock);
-    if (mShutdownTrigger == nullptr) {
-        LOG_RPC_DETAIL("Cannot shutdown. No shutdown trigger installed.");
-        return false;
-    }
+    if (mShutdownTrigger == nullptr) return false;
 
     mShutdownTrigger->trigger();
-    while (mJoinThreadRunning || !mConnectingThreads.empty()) {
-        ALOGI("Waiting for RpcServer to shut down. Join thread running: %d, Connecting threads: "
-              "%zu",
-              mJoinThreadRunning, mConnectingThreads.size());
-        mShutdownCv.wait(_l);
-    }
+    while (mJoinThreadRunning) mShutdownCv.wait(_l);
 
     // At this point, we know join() is about to exit, but the thread that calls
     // join() may not have exited yet.
@@ -230,21 +222,17 @@ size_t RpcServer::numUninitializedSessions() {
 void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clientFd) {
     // TODO(b/183988761): cannot trust this simple ID
     LOG_ALWAYS_FATAL_IF(!server->mAgreedExperimental, "no!");
-
-    // mShutdownTrigger can only be cleared once connection threads have joined.
-    // It must be set before this thread is started
-    LOG_ALWAYS_FATAL_IF(server->mShutdownTrigger == nullptr);
-
+    bool idValid = true;
     int32_t id;
-    bool idValid = server->mShutdownTrigger->interruptableRecv(clientFd.get(), &id, sizeof(id));
-    if (!idValid) {
-        ALOGE("Failed to read ID for client connecting to RPC server.");
+    if (sizeof(id) != read(clientFd.get(), &id, sizeof(id))) {
+        ALOGE("Could not read ID from fd %d", clientFd.get());
+        idValid = false;
     }
 
     std::thread thisThread;
     sp<RpcSession> session;
     {
-        std::unique_lock<std::mutex> _l(server->mLock);
+        std::lock_guard<std::mutex> _l(server->mLock);
 
         auto threadId = server->mConnectingThreads.find(std::this_thread::get_id());
         LOG_ALWAYS_FATAL_IF(threadId == server->mConnectingThreads.end(),
@@ -252,16 +240,6 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
         thisThread = std::move(threadId->second);
         ScopeGuard detachGuard = [&]() { thisThread.detach(); };
         server->mConnectingThreads.erase(threadId);
-
-        // TODO(b/185167543): we currently can't disable this because we don't
-        // shutdown sessions as well, only the server itself. So, we need to
-        // keep this separate from the detachGuard, since we temporarily want to
-        // give a notification even when we pass ownership of the thread to
-        // a session.
-        ScopeGuard threadLifetimeGuard = [&]() {
-            _l.unlock();
-            server->mShutdownCv.notify_all();
-        };
 
         if (!idValid) {
             return;

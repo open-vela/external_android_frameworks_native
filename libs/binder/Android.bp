@@ -92,9 +92,6 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
-        // TODO(b/166468760) remove these three
-        "com.android.media.swcodec",
-        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -166,10 +163,6 @@ cc_library {
     product_variables: {
         binder32bit: {
             cflags: ["-DBINDER_IPC_32BIT=1"],
-        },
-
-        debuggable: {
-            cflags: ["-DBINDER_RPC_DEV_SERVERS"],
         },
     },
 

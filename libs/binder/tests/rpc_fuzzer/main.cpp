@@ -20,7 +20,6 @@
 #include <binder/Parcel.h>
 #include <binder/RpcServer.h>
 #include <binder/RpcSession.h>
-#include <fuzzer/FuzzedDataProvider.h>
 
 #include <sys/resource.h>
 #include <sys/un.h>
@@ -54,7 +53,6 @@ class SomeBinder : public BBinder {
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     if (size > 50000) return 0;
-    FuzzedDataProvider provider(data, size);
 
     unlink(kSock.c_str());
 
@@ -86,21 +84,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     CHECK(base::WriteFully(clientFd, &id, sizeof(id)));
 #endif
 
-    bool hangupBeforeShutdown = provider.ConsumeBool();
+    CHECK(base::WriteFully(clientFd, data, size));
 
-    std::vector<uint8_t> writeData = provider.ConsumeRemainingBytes<uint8_t>();
-    CHECK(base::WriteFully(clientFd, writeData.data(), writeData.size()));
-
-    if (hangupBeforeShutdown) {
-        clientFd.reset();
-    }
+    clientFd.reset();
 
     // TODO(185167543): currently this is okay because we only shutdown the one
     // thread, but once we can shutdown other sessions, we'll need to change
     // this behavior in order to make sure all of the input is actually read.
     while (!server->shutdown()) usleep(100);
-
-    clientFd.reset();
     serverThread.join();
 
     // TODO(b/185167543): better way to force a server to shutdown

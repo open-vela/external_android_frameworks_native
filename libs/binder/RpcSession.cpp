@@ -19,12 +19,10 @@
 #include <binder/RpcSession.h>
 
 #include <inttypes.h>
-#include <poll.h>
 #include <unistd.h>
 
 #include <string_view>
 
-#include <android-base/macros.h>
 #include <binder/Parcel.h>
 #include <binder/RpcServer.h>
 #include <binder/Stability.h>
@@ -115,53 +113,6 @@ status_t RpcSession::sendDecStrong(const RpcAddress& address) {
     return state()->sendDecStrong(connection.fd(), address);
 }
 
-std::unique_ptr<RpcSession::FdTrigger> RpcSession::FdTrigger::make() {
-    auto ret = std::make_unique<RpcSession::FdTrigger>();
-    if (!android::base::Pipe(&ret->mRead, &ret->mWrite)) return nullptr;
-    return ret;
-}
-
-void RpcSession::FdTrigger::trigger() {
-    mWrite.reset();
-}
-
-status_t RpcSession::FdTrigger::triggerablePollRead(base::borrowed_fd fd) {
-    while (true) {
-        pollfd pfd[]{{.fd = fd.get(), .events = POLLIN | POLLHUP, .revents = 0},
-                     {.fd = mRead.get(), .events = POLLHUP, .revents = 0}};
-        int ret = TEMP_FAILURE_RETRY(poll(pfd, arraysize(pfd), -1));
-        if (ret < 0) {
-            return -errno;
-        }
-        if (ret == 0) {
-            continue;
-        }
-        if (pfd[1].revents & POLLHUP) {
-            return -ECANCELED;
-        }
-        return pfd[0].revents & POLLIN ? OK : DEAD_OBJECT;
-    }
-}
-
-status_t RpcSession::FdTrigger::interruptableReadFully(base::borrowed_fd fd, void* data,
-                                                       size_t size) {
-    uint8_t* buffer = reinterpret_cast<uint8_t*>(data);
-    uint8_t* end = buffer + size;
-
-    status_t status;
-    while ((status = triggerablePollRead(fd)) == OK) {
-        ssize_t readSize = TEMP_FAILURE_RETRY(recv(fd.get(), buffer, end - buffer, MSG_NOSIGNAL));
-        if (readSize == 0) return DEAD_OBJECT; // EOF
-
-        if (readSize < 0) {
-            return -errno;
-        }
-        buffer += readSize;
-        if (buffer == end) return OK;
-    }
-    return status;
-}
-
 status_t RpcSession::readId() {
     {
         std::lock_guard<std::mutex> _l(mMutex);
@@ -207,19 +158,12 @@ void RpcSession::join(unique_fd client) {
     LOG_ALWAYS_FATAL_IF(!removeServerConnection(connection),
                         "bad state: connection object guaranteed to be in list");
 
-    sp<RpcServer> server;
     {
         std::lock_guard<std::mutex> _l(mMutex);
         auto it = mThreads.find(std::this_thread::get_id());
         LOG_ALWAYS_FATAL_IF(it == mThreads.end());
         it->second.detach();
         mThreads.erase(it);
-
-        server = mForServer.promote();
-    }
-
-    if (server != nullptr) {
-        server->onSessionThreadEnding(sp<RpcSession>::fromExisting(this));
     }
 }
 
@@ -321,25 +265,14 @@ bool RpcSession::setupOneSocketClient(const RpcSocketAddress& addr, int32_t id) 
 
 void RpcSession::addClientConnection(unique_fd fd) {
     std::lock_guard<std::mutex> _l(mMutex);
-
-    if (mShutdownTrigger == nullptr) {
-        mShutdownTrigger = FdTrigger::make();
-    }
-
     sp<RpcConnection> session = sp<RpcConnection>::make();
     session->fd = std::move(fd);
     mClientConnections.push_back(session);
 }
 
-void RpcSession::setForServer(const wp<RpcServer>& server, int32_t sessionId,
-                              const std::shared_ptr<FdTrigger>& shutdownTrigger) {
-    LOG_ALWAYS_FATAL_IF(mForServer.unsafe_get() != nullptr);
-    LOG_ALWAYS_FATAL_IF(mShutdownTrigger != nullptr);
-    LOG_ALWAYS_FATAL_IF(shutdownTrigger == nullptr);
-
+void RpcSession::setForServer(const wp<RpcServer>& server, int32_t sessionId) {
     mId = sessionId;
     mForServer = server;
-    mShutdownTrigger = shutdownTrigger;
 }
 
 sp<RpcSession::RpcConnection> RpcSession::assignServerToThisThread(unique_fd fd) {

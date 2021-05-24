@@ -125,41 +125,39 @@ void RpcSession::FdTrigger::trigger() {
     mWrite.reset();
 }
 
-status_t RpcSession::FdTrigger::triggerablePollRead(base::borrowed_fd fd) {
+bool RpcSession::FdTrigger::triggerablePollRead(base::borrowed_fd fd) {
     while (true) {
-        pollfd pfd[]{{.fd = fd.get(), .events = POLLIN | POLLHUP, .revents = 0},
+        pollfd pfd[]{{.fd = fd.get(), .events = POLLIN, .revents = 0},
                      {.fd = mRead.get(), .events = POLLHUP, .revents = 0}};
         int ret = TEMP_FAILURE_RETRY(poll(pfd, arraysize(pfd), -1));
         if (ret < 0) {
-            return -errno;
+            ALOGE("Could not poll: %s", strerror(errno));
+            continue;
         }
         if (ret == 0) {
             continue;
         }
         if (pfd[1].revents & POLLHUP) {
-            return -ECANCELED;
+            return false;
         }
-        return pfd[0].revents & POLLIN ? OK : DEAD_OBJECT;
+        return true;
     }
 }
 
-status_t RpcSession::FdTrigger::interruptableReadFully(base::borrowed_fd fd, void* data,
-                                                       size_t size) {
+bool RpcSession::FdTrigger::interruptableRecv(base::borrowed_fd fd, void* data, size_t size) {
     uint8_t* buffer = reinterpret_cast<uint8_t*>(data);
     uint8_t* end = buffer + size;
 
-    status_t status;
-    while ((status = triggerablePollRead(fd)) == OK) {
+    while (triggerablePollRead(fd)) {
         ssize_t readSize = TEMP_FAILURE_RETRY(recv(fd.get(), buffer, end - buffer, MSG_NOSIGNAL));
-        if (readSize == 0) return DEAD_OBJECT; // EOF
-
         if (readSize < 0) {
-            return -errno;
+            ALOGE("Failed to read %s", strerror(errno));
+            return false;
         }
         buffer += readSize;
-        if (buffer == end) return OK;
+        if (buffer == end) return true;
     }
-    return status;
+    return false;
 }
 
 status_t RpcSession::readId() {

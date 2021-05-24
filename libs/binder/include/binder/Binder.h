@@ -94,9 +94,6 @@ public:
 
     pid_t               getDebugPid();
 
-    [[nodiscard]] status_t setRpcClientDebug(android::base::unique_fd clientFd,
-                                             uint32_t maxRpcThreads);
-
 protected:
     virtual             ~BBinder();
 
@@ -113,8 +110,6 @@ private:
     class Extras;
 
     Extras*             getOrCreateExtras();
-
-    [[nodiscard]] status_t setRpcClientDebug(const Parcel& data);
 
     std::atomic<Extras*> mExtras;
 

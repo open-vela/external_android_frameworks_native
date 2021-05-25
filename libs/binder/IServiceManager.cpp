@@ -320,18 +320,14 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
     const std::string name = String8(name16).c_str();
 
     sp<IBinder> out;
-    if (Status status = mTheRealServiceManager->getService(name, &out); !status.isOk()) {
-        ALOGW("Failed to getService in waitForService for %s: %s", name.c_str(),
-              status.toString8().c_str());
+    if (!mTheRealServiceManager->getService(name, &out).isOk()) {
         return nullptr;
     }
     if (out != nullptr) return out;
 
     sp<Waiter> waiter = sp<Waiter>::make();
-    if (Status status = mTheRealServiceManager->registerForNotifications(name, waiter);
-        !status.isOk()) {
-        ALOGW("Failed to registerForNotifications in waitForService for %s: %s", name.c_str(),
-              status.toString8().c_str());
+    if (!mTheRealServiceManager->registerForNotifications(
+            name, waiter).isOk()) {
         return nullptr;
     }
     Defer unregister ([&] {
@@ -364,9 +360,7 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
         // - init gets death signal, but doesn't know it needs to restart
         //   the service
         // - we need to request service again to get it to start
-        if (Status status = mTheRealServiceManager->getService(name, &out); !status.isOk()) {
-            ALOGW("Failed to getService in waitForService on later try for %s: %s", name.c_str(),
-                  status.toString8().c_str());
+        if (!mTheRealServiceManager->getService(name, &out).isOk()) {
             return nullptr;
         }
         if (out != nullptr) return out;
@@ -375,10 +369,7 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
 
 bool ServiceManagerShim::isDeclared(const String16& name) {
     bool declared;
-    if (Status status = mTheRealServiceManager->isDeclared(String8(name).c_str(), &declared);
-        !status.isOk()) {
-        ALOGW("Failed to get isDeclard for %s: %s", String8(name).c_str(),
-              status.toString8().c_str());
+    if (!mTheRealServiceManager->isDeclared(String8(name).c_str(), &declared).isOk()) {
         return false;
     }
     return declared;
@@ -386,11 +377,7 @@ bool ServiceManagerShim::isDeclared(const String16& name) {
 
 Vector<String16> ServiceManagerShim::getDeclaredInstances(const String16& interface) {
     std::vector<std::string> out;
-    if (Status status =
-                mTheRealServiceManager->getDeclaredInstances(String8(interface).c_str(), &out);
-        !status.isOk()) {
-        ALOGW("Failed to getDeclaredInstances for %s: %s", String8(interface).c_str(),
-              status.toString8().c_str());
+    if (!mTheRealServiceManager->getDeclaredInstances(String8(interface).c_str(), &out).isOk()) {
         return {};
     }
 
@@ -404,10 +391,7 @@ Vector<String16> ServiceManagerShim::getDeclaredInstances(const String16& interf
 
 std::optional<String16> ServiceManagerShim::updatableViaApex(const String16& name) {
     std::optional<std::string> declared;
-    if (Status status = mTheRealServiceManager->updatableViaApex(String8(name).c_str(), &declared);
-        !status.isOk()) {
-        ALOGW("Failed to get updatableViaApex for %s: %s", String8(name).c_str(),
-              status.toString8().c_str());
+    if (!mTheRealServiceManager->updatableViaApex(String8(name).c_str(), &declared).isOk()) {
         return std::nullopt;
     }
     return declared ? std::optional<String16>(String16(declared.value().c_str())) : std::nullopt;

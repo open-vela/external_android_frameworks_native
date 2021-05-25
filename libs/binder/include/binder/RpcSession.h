@@ -83,7 +83,7 @@ public:
      */
     status_t getRemoteMaxThreads(size_t* maxThreads);
 
-    [[nodiscard]] status_t transact(const sp<IBinder>& binder, uint32_t code, const Parcel& data,
+    [[nodiscard]] status_t transact(const RpcAddress& address, uint32_t code, const Parcel& data,
                                     Parcel* reply, uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const RpcAddress& address);
 
@@ -102,7 +102,6 @@ private:
 
     /** This is not a pipe. */
     struct FdTrigger {
-        /** Returns nullptr for error case */
         static std::unique_ptr<FdTrigger> make();
 
         /**
@@ -156,7 +155,7 @@ private:
 
     bool setupSocketClient(const RpcSocketAddress& address);
     bool setupOneSocketClient(const RpcSocketAddress& address, int32_t sessionId);
-    bool addClientConnection(base::unique_fd fd);
+    void addClientConnection(base::unique_fd fd);
     void setForServer(const wp<RpcServer>& server, int32_t sessionId,
                       const std::shared_ptr<FdTrigger>& shutdownTrigger);
     sp<RpcConnection> assignServerToThisThread(base::unique_fd fd);

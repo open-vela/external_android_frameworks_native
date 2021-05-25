@@ -86,7 +86,8 @@ bool RpcSession::addNullDebuggingClient() {
         return false;
     }
 
-    return addClientConnection(std::move(serverFd));
+    addClientConnection(std::move(serverFd));
+    return true;
 }
 
 sp<IBinder> RpcSession::getRootObject() {
@@ -198,8 +199,7 @@ void RpcSession::join(unique_fd client) {
                 state()->getAndExecuteCommand(connection->fd, sp<RpcSession>::fromExisting(this));
 
         if (error != OK) {
-            LOG_RPC_DETAIL("Binder connection thread closing w/ status %s",
-                           statusToString(error).c_str());
+            ALOGI("Binder connection thread closing w/ status %s", statusToString(error).c_str());
             break;
         }
     }
@@ -311,25 +311,24 @@ bool RpcSession::setupOneSocketClient(const RpcSocketAddress& addr, int32_t id) 
 
         LOG_RPC_DETAIL("Socket at %s client with fd %d", addr.toString().c_str(), serverFd.get());
 
-        return addClientConnection(std::move(serverFd));
+        addClientConnection(std::move(serverFd));
+        return true;
     }
 
     ALOGE("Ran out of retries to connect to %s", addr.toString().c_str());
     return false;
 }
 
-bool RpcSession::addClientConnection(unique_fd fd) {
+void RpcSession::addClientConnection(unique_fd fd) {
     std::lock_guard<std::mutex> _l(mMutex);
 
     if (mShutdownTrigger == nullptr) {
         mShutdownTrigger = FdTrigger::make();
-        if (mShutdownTrigger == nullptr) return false;
     }
 
     sp<RpcConnection> session = sp<RpcConnection>::make();
     session->fd = std::move(fd);
     mClientConnections.push_back(session);
-    return true;
 }
 
 void RpcSession::setForServer(const wp<RpcServer>& server, int32_t sessionId,

@@ -102,7 +102,6 @@ private:
 
     /** This is not a pipe. */
     struct FdTrigger {
-        /** Returns nullptr for error case */
         static std::unique_ptr<FdTrigger> make();
 
         /**
@@ -156,7 +155,7 @@ private:
 
     bool setupSocketClient(const RpcSocketAddress& address);
     bool setupOneSocketClient(const RpcSocketAddress& address, int32_t sessionId);
-    bool addClientConnection(base::unique_fd fd);
+    void addClientConnection(base::unique_fd fd);
     void setForServer(const wp<RpcServer>& server, int32_t sessionId,
                       const std::shared_ptr<FdTrigger>& shutdownTrigger);
     sp<RpcConnection> assignServerToThisThread(base::unique_fd fd);

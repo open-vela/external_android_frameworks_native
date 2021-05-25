@@ -79,9 +79,9 @@ void Stability::markVintf(IBinder* binder) {
     LOG_ALWAYS_FATAL_IF(result != OK, "Should only mark known object.");
 }
 
-void Stability::debugLogStability(const std::string& tag, const sp<IBinder>& binder) {
+std::string Stability::debugToString(const sp<IBinder>& binder) {
     auto stability = getCategory(binder.get());
-    ALOGE("%s: stability is %s", tag.c_str(), stability.debugString().c_str());
+    return stability.debugString();
 }
 
 void Stability::markVndk(IBinder* binder) {
@@ -100,12 +100,18 @@ void Stability::tryMarkCompilationUnit(IBinder* binder) {
 }
 
 Stability::Level Stability::getLocalLevel() {
-#ifdef __ANDROID_APEX__
-#error APEX can't use libbinder (must use libbinder_ndk)
-#endif
-
 #ifdef __ANDROID_VNDK__
-    return Level::VENDOR;
+    #ifdef __ANDROID_APEX__
+        // TODO(b/142684679) avoid use_vendor on system APEXes
+        #if !defined(__ANDROID_APEX_COM_ANDROID_MEDIA_SWCODEC__) \
+            && !defined(__ANDROID_APEX_TEST_COM_ANDROID_MEDIA_SWCODEC__)
+        #error VNDK + APEX only defined for com.android.media.swcodec
+        #endif
+        // TODO(b/142684679) avoid use_vendor on system APEXes
+        return Level::SYSTEM;
+    #else
+        return Level::VENDOR;
+    #endif
 #else
     // TODO(b/139325195): split up stability levels for system/APEX.
     return Level::SYSTEM;

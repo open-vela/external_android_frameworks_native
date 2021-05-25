@@ -83,7 +83,7 @@ public:
      */
     status_t getRemoteMaxThreads(size_t* maxThreads);
 
-    [[nodiscard]] status_t transact(const sp<IBinder>& binder, uint32_t code, const Parcel& data,
+    [[nodiscard]] status_t transact(const RpcAddress& address, uint32_t code, const Parcel& data,
                                     Parcel* reply, uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const RpcAddress& address);
 
@@ -94,49 +94,23 @@ public:
     // internal only
     const std::unique_ptr<RpcState>& state() { return mState; }
 
+    class PrivateAccessorForId {
+    private:
+        friend class RpcSession;
+        friend class RpcState;
+        explicit PrivateAccessorForId(const RpcSession* session) : mSession(session) {}
+
+        const std::optional<int32_t> get() { return mSession->mId; }
+
+        const RpcSession* mSession;
+    };
+    PrivateAccessorForId getPrivateAccessorForId() const { return PrivateAccessorForId(this); }
+
 private:
+    friend PrivateAccessorForId;
     friend sp<RpcSession>;
     friend RpcServer;
-    friend RpcState;
     RpcSession();
-
-    /** This is not a pipe. */
-    struct FdTrigger {
-        /** Returns nullptr for error case */
-        static std::unique_ptr<FdTrigger> make();
-
-        /**
-         * poll() on this fd for POLLHUP to get notification when trigger is called
-         */
-        base::borrowed_fd readFd() const { return mRead; }
-
-        /**
-         * Close the write end of the pipe so that the read end receives POLLHUP.
-         */
-        void trigger();
-
-        /**
-         * Poll for a read event.
-         *
-         * Return:
-         *   true - time to read!
-         *   false - trigger happened
-         */
-        status_t triggerablePollRead(base::borrowed_fd fd);
-
-        /**
-         * Read, but allow the read to be interrupted by this trigger.
-         *
-         * Return:
-         *   true - read succeeded at 'size'
-         *   false - interrupted (failure or trigger)
-         */
-        status_t interruptableReadFully(base::borrowed_fd fd, void* data, size_t size);
-
-    private:
-        base::unique_fd mWrite;
-        base::unique_fd mRead;
-    };
 
     status_t readId();
 
@@ -156,9 +130,8 @@ private:
 
     bool setupSocketClient(const RpcSocketAddress& address);
     bool setupOneSocketClient(const RpcSocketAddress& address, int32_t sessionId);
-    bool addClientConnection(base::unique_fd fd);
-    void setForServer(const wp<RpcServer>& server, int32_t sessionId,
-                      const std::shared_ptr<FdTrigger>& shutdownTrigger);
+    void addClientConnection(base::unique_fd fd);
+    void setForServer(const wp<RpcServer>& server, int32_t sessionId);
     sp<RpcConnection> assignServerToThisThread(base::unique_fd fd);
     bool removeServerConnection(const sp<RpcConnection>& connection);
 
@@ -208,8 +181,6 @@ private:
 
     // TODO(b/183988761): this shouldn't be guessable
     std::optional<int32_t> mId;
-
-    std::shared_ptr<FdTrigger> mShutdownTrigger;
 
     std::unique_ptr<RpcState> mState;
 

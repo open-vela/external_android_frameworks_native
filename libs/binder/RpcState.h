@@ -58,13 +58,9 @@ public:
     status_t getSessionId(const base::unique_fd& fd, const sp<RpcSession>& session,
                           int32_t* sessionIdOut);
 
-    [[nodiscard]] status_t transact(const base::unique_fd& fd, const sp<IBinder>& address,
+    [[nodiscard]] status_t transact(const base::unique_fd& fd, const RpcAddress& address,
                                     uint32_t code, const Parcel& data,
                                     const sp<RpcSession>& session, Parcel* reply, uint32_t flags);
-    [[nodiscard]] status_t transactAddress(const base::unique_fd& fd, const RpcAddress& address,
-                                           uint32_t code, const Parcel& data,
-                                           const sp<RpcSession>& session, Parcel* reply,
-                                           uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const base::unique_fd& fd, const RpcAddress& address);
     [[nodiscard]] status_t getAndExecuteCommand(const base::unique_fd& fd,
                                                 const sp<RpcSession>& session);
@@ -119,10 +115,10 @@ private:
         size_t mSize;
     };
 
-    [[nodiscard]] status_t rpcSend(const base::unique_fd& fd, const char* what, const void* data,
-                                   size_t size);
-    [[nodiscard]] status_t rpcRec(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                  const char* what, void* data, size_t size);
+    [[nodiscard]] bool rpcSend(const base::unique_fd& fd, const char* what, const void* data,
+                               size_t size);
+    [[nodiscard]] bool rpcRec(const base::unique_fd& fd, const sp<RpcSession>& session,
+                              const char* what, void* data, size_t size);
 
     [[nodiscard]] status_t waitForReply(const base::unique_fd& fd, const sp<RpcSession>& session,
                                         Parcel* reply);
@@ -133,8 +129,7 @@ private:
                                            const RpcWireHeader& command);
     [[nodiscard]] status_t processTransactInternal(const base::unique_fd& fd,
                                                    const sp<RpcSession>& session,
-                                                   CommandData transactionData,
-                                                   sp<IBinder>&& targetRef);
+                                                   CommandData transactionData);
     [[nodiscard]] status_t processDecStrong(const base::unique_fd& fd,
                                             const sp<RpcSession>& session,
                                             const RpcWireHeader& command);
@@ -170,7 +165,6 @@ private:
 
         // async transaction queue, _only_ for local binder
         struct AsyncTodo {
-            sp<IBinder> ref;
             CommandData data;
             uint64_t asyncNumber = 0;
 

@@ -193,12 +193,10 @@ bool RpcServer::shutdown() {
 
     mShutdownTrigger->trigger();
     while (mJoinThreadRunning || !mConnectingThreads.empty() || !mSessions.empty()) {
-        if (std::cv_status::timeout == mShutdownCv.wait_for(_l, std::chrono::seconds(1))) {
-            ALOGE("Waiting for RpcServer to shut down (1s w/o progress). Join thread running: %d, "
-                  "Connecting threads: "
-                  "%zu, Sessions: %zu. Is your server deadlocked?",
-                  mJoinThreadRunning, mConnectingThreads.size(), mSessions.size());
-        }
+        ALOGI("Waiting for RpcServer to shut down. Join thread running: %d, Connecting threads: "
+              "%zu, Sessions: %zu",
+              mJoinThreadRunning, mConnectingThreads.size(), mSessions.size());
+        mShutdownCv.wait(_l);
     }
 
     // At this point, we know join() is about to exit, but the thread that calls
@@ -258,12 +256,18 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
         LOG_ALWAYS_FATAL_IF(threadId == server->mConnectingThreads.end(),
                             "Must establish connection on owned thread");
         thisThread = std::move(threadId->second);
-        ScopeGuard detachGuard = [&]() {
-            thisThread.detach();
+        ScopeGuard detachGuard = [&]() { thisThread.detach(); };
+        server->mConnectingThreads.erase(threadId);
+
+        // TODO(b/185167543): we currently can't disable this because we don't
+        // shutdown sessions as well, only the server itself. So, we need to
+        // keep this separate from the detachGuard, since we temporarily want to
+        // give a notification even when we pass ownership of the thread to
+        // a session.
+        ScopeGuard threadLifetimeGuard = [&]() {
             _l.unlock();
             server->mShutdownCv.notify_all();
         };
-        server->mConnectingThreads.erase(threadId);
 
         if (!idValid) {
             return;

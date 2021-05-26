@@ -54,8 +54,6 @@ interface IBinderRpcTest {
     void sleepMs(int ms);
     oneway void sleepMsAsync(int ms);
 
-    void doCallback(IBinderRpcCallback callback, boolean isOneway, boolean delayed, @utf8InCpp String value);
-
     void die(boolean cleanup);
     void scheduleShutdown();
 

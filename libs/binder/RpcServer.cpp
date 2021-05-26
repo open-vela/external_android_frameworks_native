@@ -239,16 +239,15 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
     // It must be set before this thread is started
     LOG_ALWAYS_FATAL_IF(server->mShutdownTrigger == nullptr);
 
-    RpcConnectionHeader header;
-    status_t status = server->mShutdownTrigger->interruptableReadFully(clientFd.get(), &header,
-                                                                       sizeof(header));
+    int32_t id;
+    status_t status =
+            server->mShutdownTrigger->interruptableReadFully(clientFd.get(), &id, sizeof(id));
     bool idValid = status == OK;
     if (!idValid) {
         ALOGE("Failed to read ID for client connecting to RPC server: %s",
               statusToString(status).c_str());
         // still need to cleanup before we can return
     }
-    bool reverse = header.options & RPC_CONNECTION_OPTION_REVERSE;
 
     std::thread thisThread;
     sp<RpcSession> session;
@@ -270,35 +269,22 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
             return;
         }
 
-        if (header.sessionId == RPC_SESSION_ID_NEW) {
-            if (reverse) {
-                ALOGE("Cannot create a new session with a reverse connection, would leak");
-                return;
-            }
-
+        if (id == RPC_SESSION_ID_NEW) {
             LOG_ALWAYS_FATAL_IF(server->mSessionIdCounter >= INT32_MAX, "Out of session IDs");
             server->mSessionIdCounter++;
 
             session = RpcSession::make();
-            session->setForServer(server,
-                                  sp<RpcServer::EventListener>::fromExisting(
-                                          static_cast<RpcServer::EventListener*>(server.get())),
-                                  server->mSessionIdCounter, server->mShutdownTrigger);
+            session->setForServer(wp<RpcServer>(server), server->mSessionIdCounter,
+                                  server->mShutdownTrigger);
 
             server->mSessions[server->mSessionIdCounter] = session;
         } else {
-            auto it = server->mSessions.find(header.sessionId);
+            auto it = server->mSessions.find(id);
             if (it == server->mSessions.end()) {
-                ALOGE("Cannot add thread, no record of session with ID %d", header.sessionId);
+                ALOGE("Cannot add thread, no record of session with ID %d", id);
                 return;
             }
             session = it->second;
-        }
-
-        if (reverse) {
-            LOG_ALWAYS_FATAL_IF(!session->addClientConnection(std::move(clientFd)),
-                                "server state must already be initialized");
-            return;
         }
 
         detachGuard.Disable();
@@ -308,7 +294,7 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
     // avoid strong cycle
     server = nullptr;
 
-    RpcSession::join(std::move(session), std::move(clientFd));
+    session->join(std::move(clientFd));
 }
 
 bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
@@ -343,7 +329,7 @@ bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
     return true;
 }
 
-void RpcServer::onSessionLockedAllServerThreadsEnded(const sp<RpcSession>& session) {
+void RpcServer::onSessionTerminating(const sp<RpcSession>& session) {
     auto id = session->mId;
     LOG_ALWAYS_FATAL_IF(id == std::nullopt, "Server sessions must be initialized with ID");
     LOG_RPC_DETAIL("Dropping session %d", *id);
@@ -355,7 +341,8 @@ void RpcServer::onSessionLockedAllServerThreadsEnded(const sp<RpcSession>& sessi
     (void)mSessions.erase(it);
 }
 
-void RpcServer::onSessionServerThreadEnded() {
+void RpcServer::onSessionThreadEnding(const sp<RpcSession>& session) {
+    (void)session;
     mShutdownCv.notify_all();
 }
 

@@ -153,8 +153,8 @@ public:
 
     // internal use only
 
-    void onSessionLockedAllServerThreadsEnded(const sp<RpcSession>& session);
-    void onSessionServerThreadEnded(const sp<RpcSession>& session);
+    void onSessionTerminating(const sp<RpcSession>& session);
+    void onSessionThreadEnding(const sp<RpcSession>& session);
 
 private:
     friend sp<RpcServer>;

@@ -86,6 +86,7 @@ public:
     size_t countBinders();
     void dump();
 
+private:
     /**
      * Called when reading or writing data to a session fails to clean up
      * data associated with the session in order to cleanup binders.
@@ -104,7 +105,6 @@ public:
      */
     void terminate();
 
-private:
     // Alternative to std::vector<uint8_t> that doesn't abort on allocation failure and caps
     // large allocations to avoid being requested from allocating too much data.
     struct CommandData {

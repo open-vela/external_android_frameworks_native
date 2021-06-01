@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/unique_fd.h>
 #include <binder/Binder.h>
@@ -89,10 +90,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             if (provider.ConsumeBool()) {
                 std::vector<uint8_t> writeData = provider.ConsumeBytes<uint8_t>(
                         provider.ConsumeIntegralInRange<size_t>(0, provider.remaining_bytes()));
-                ssize_t size = TEMP_FAILURE_RETRY(send(connections.at(idx).get(), writeData.data(),
-                                                       writeData.size(), MSG_NOSIGNAL));
-                CHECK(errno == EPIPE || size == writeData.size())
-                        << size << " " << writeData.size() << " " << strerror(errno);
+                CHECK(base::WriteFully(connections.at(idx).get(), writeData.data(),
+                                       writeData.size()));
             } else {
                 connections.erase(connections.begin() + idx); // hang up
             }

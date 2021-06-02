@@ -446,7 +446,7 @@ public:
 
         for (size_t i = 0; i < numSessions; i++) {
             sp<RpcSession> session = RpcSession::make();
-            session->setMaxThreads(numReverseConnections);
+            session->setMaxReverseConnections(numReverseConnections);
 
             switch (socketType) {
                 case SocketType::UNIX:

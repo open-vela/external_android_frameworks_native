@@ -47,17 +47,16 @@ public:
     static sp<RpcSession> make();
 
     /**
-     * Set the maximum number of threads allowed to be made (for things like callbacks).
-     * By default, this is 0. This must be called before setting up this connection as a client.
-     * Server sessions will inherits this value from RpcServer.
+     * Set the maximum number of reverse connections allowed to be made (for
+     * things like callbacks). By default, this is 0. This must be called before
+     * setting up this connection as a client.
      *
      * If this is called, 'shutdown' on this session must also be called.
      * Otherwise, a threadpool will leak.
      *
      * TODO(b/185167543): start these dynamically
      */
-    void setMaxThreads(size_t threads);
-    size_t getMaxThreads();
+    void setMaxReverseConnections(size_t connections);
 
     /**
      * This should be called once per thread, matching 'join' in the remote
@@ -258,7 +257,7 @@ private:
 
     std::mutex mMutex; // for all below
 
-    size_t mMaxThreads = 0;
+    size_t mMaxReverseConnections = 0;
 
     std::condition_variable mAvailableConnectionCv; // for mWaitingThreads
     size_t mWaitingThreads = 0;

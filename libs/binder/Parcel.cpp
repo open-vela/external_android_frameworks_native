@@ -283,10 +283,9 @@ status_t Parcel::unflattenBinder(sp<IBinder>* out) const
 
         if (isNull & 1) {
             auto addr = RpcAddress::zero();
-            if (status_t status = addr.readFromParcel(*this); status != OK) return status;
-            if (status_t status = mSession->state()->onBinderEntering(mSession, addr, &binder);
-                status != OK)
-                return status;
+            status_t status = addr.readFromParcel(*this);
+            if (status != OK) return status;
+            binder = mSession->state()->onBinderEntering(mSession, addr);
         }
 
         return finishUnflattenBinder(binder, out);
@@ -593,7 +592,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
+#if defined(__ANDROID_VNDK__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

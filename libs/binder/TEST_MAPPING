@@ -16,13 +16,10 @@
       "name": "binderDriverInterfaceTest"
     },
     {
-      "name": "binderHostDeviceTest"
-    },
-    {
       "name": "binderTextOutputTest"
     },
     {
-      "name": "binderUnitTest"
+      "name": "binderParcelTest"
     },
     {
       "name": "binderLibTest"
@@ -32,9 +29,6 @@
     },
     {
       "name": "binderStabilityTest"
-    },
-    {
-      "name": "binderUtilsHostTest"
     },
     {
       "name": "libbinder_ndk_unit_test"
@@ -57,9 +51,6 @@
     {
       "name": "CtsOsTestCases",
       "options": [
-        {
-          "exclude-annotation": "android.platform.test.annotations.LargeTest"
-        },
         {
           "exclude-filter": "android.os.cts.BuildTest#testSdkInt"
         },

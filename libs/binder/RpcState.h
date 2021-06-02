@@ -81,8 +81,7 @@ public:
      * to the process, if this process already has one, or it takes ownership of
      * that refcount
      */
-    [[nodiscard]] status_t onBinderEntering(const sp<RpcSession>& session,
-                                            const RpcAddress& address, sp<IBinder>* out);
+    sp<IBinder> onBinderEntering(const sp<RpcSession>& session, const RpcAddress& address);
 
     size_t countBinders();
     void dump();

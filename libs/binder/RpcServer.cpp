@@ -280,7 +280,6 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
             server->mSessionIdCounter++;
 
             session = RpcSession::make();
-            session->setMaxThreads(server->mMaxThreads);
             session->setForServer(server,
                                   sp<RpcServer::EventListener>::fromExisting(
                                           static_cast<RpcServer::EventListener*>(server.get())),

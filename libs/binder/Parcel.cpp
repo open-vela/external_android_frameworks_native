@@ -283,10 +283,9 @@ status_t Parcel::unflattenBinder(sp<IBinder>* out) const
 
         if (isNull & 1) {
             auto addr = RpcAddress::zero();
-            if (status_t status = addr.readFromParcel(*this); status != OK) return status;
-            if (status_t status = mSession->state()->onBinderEntering(mSession, addr, &binder);
-                status != OK)
-                return status;
+            status_t status = addr.readFromParcel(*this);
+            if (status != OK) return status;
+            binder = mSession->state()->onBinderEntering(mSession, addr);
         }
 
         return finishUnflattenBinder(binder, out);

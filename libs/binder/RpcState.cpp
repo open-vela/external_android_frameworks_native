@@ -61,7 +61,6 @@ status_t RpcState::onBinderLeaving(const sp<RpcSession>& session, const sp<IBind
     }
 
     std::lock_guard<std::mutex> _l(mNodeMutex);
-    if (mTerminated) return DEAD_OBJECT;
 
     // TODO(b/182939933): maybe move address out of BpBinder, and keep binder->address map
     // in RpcState
@@ -96,13 +95,11 @@ status_t RpcState::onBinderLeaving(const sp<RpcSession>& session, const sp<IBind
     return OK;
 }
 
-status_t RpcState::onBinderEntering(const sp<RpcSession>& session, const RpcAddress& address,
-                                    sp<IBinder>* out) {
+sp<IBinder> RpcState::onBinderEntering(const sp<RpcSession>& session, const RpcAddress& address) {
     std::unique_lock<std::mutex> _l(mNodeMutex);
-    if (mTerminated) return DEAD_OBJECT;
 
     if (auto it = mNodeForAddress.find(address); it != mNodeForAddress.end()) {
-        *out = it->second.binder.promote();
+        sp<IBinder> binder = it->second.binder.promote();
 
         // implicitly have strong RPC refcount, since we received this binder
         it->second.timesRecd++;
@@ -114,7 +111,7 @@ status_t RpcState::onBinderEntering(const sp<RpcSession>& session, const RpcAddr
         // immediately, we wait to send the last one in BpBinder::onLastDecStrong.
         (void)session->sendDecStrong(address);
 
-        return OK;
+        return binder;
     }
 
     auto&& [it, inserted] = mNodeForAddress.insert({address, BinderNode{}});
@@ -122,9 +119,10 @@ status_t RpcState::onBinderEntering(const sp<RpcSession>& session, const RpcAddr
 
     // Currently, all binders are assumed to be part of the same session (no
     // device global binders in the RPC world).
-    it->second.binder = *out = BpBinder::create(session, it->first);
+    sp<IBinder> binder = BpBinder::create(session, it->first);
+    it->second.binder = binder;
     it->second.timesRecd = 1;
-    return OK;
+    return binder;
 }
 
 size_t RpcState::countBinders() {
@@ -558,14 +556,12 @@ status_t RpcState::processTransactInternal(const base::unique_fd& fd, const sp<R
     sp<IBinder> target;
     if (!addr.isZero()) {
         if (!targetRef) {
-            replyStatus = onBinderEntering(session, addr, &target);
+            target = onBinderEntering(session, addr);
         } else {
             target = targetRef;
         }
 
-        if (replyStatus != OK) {
-            // do nothing
-        } else if (target == nullptr) {
+        if (target == nullptr) {
             // This can happen if the binder is remote in this process, and
             // another thread has called the last decStrong on this binder.
             // However, for local binders, it indicates a misbehaving client
@@ -625,34 +621,34 @@ status_t RpcState::processTransactInternal(const base::unique_fd& fd, const sp<R
         } else {
             LOG_RPC_DETAIL("Got special transaction %u", transaction->code);
 
-            switch (transaction->code) {
-                case RPC_SPECIAL_TRANSACT_GET_MAX_THREADS: {
-                    replyStatus = reply.writeInt32(session->getMaxThreads());
-                    break;
-                }
-                case RPC_SPECIAL_TRANSACT_GET_SESSION_ID: {
-                    // for client connections, this should always report the value
-                    // originally returned from the server
-                    int32_t id = session->mId.value();
-                    replyStatus = reply.writeInt32(id);
-                    break;
-                }
-                default: {
-                    sp<RpcServer> server = session->server().promote();
-                    if (server) {
-                        switch (transaction->code) {
-                            case RPC_SPECIAL_TRANSACT_GET_ROOT: {
-                                replyStatus = reply.writeStrongBinder(server->getRootObject());
-                                break;
-                            }
-                            default: {
-                                replyStatus = UNKNOWN_TRANSACTION;
-                            }
-                        }
-                    } else {
-                        ALOGE("Special command sent, but no server object attached.");
+            sp<RpcServer> server = session->server().promote();
+            if (server) {
+                // special case for 'zero' address (special server commands)
+                switch (transaction->code) {
+                    case RPC_SPECIAL_TRANSACT_GET_ROOT: {
+                        replyStatus = reply.writeStrongBinder(server->getRootObject());
+                        break;
+                    }
+                    case RPC_SPECIAL_TRANSACT_GET_MAX_THREADS: {
+                        replyStatus = reply.writeInt32(server->getMaxThreads());
+                        break;
+                    }
+                    case RPC_SPECIAL_TRANSACT_GET_SESSION_ID: {
+                        // only sessions w/ services can be the source of a
+                        // session ID (so still guarded by non-null server)
+                        //
+                        // sessions associated with servers must have an ID
+                        // (hence abort)
+                        int32_t id = session->mId.value();
+                        replyStatus = reply.writeInt32(id);
+                        break;
+                    }
+                    default: {
+                        replyStatus = UNKNOWN_TRANSACTION;
                     }
                 }
+            } else {
+                ALOGE("Special command sent, but no server object attached.");
             }
         }
     }

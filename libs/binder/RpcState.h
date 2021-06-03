@@ -66,15 +66,8 @@ public:
                                            const sp<RpcSession>& session, Parcel* reply,
                                            uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const base::unique_fd& fd, const RpcAddress& address);
-
-    enum class CommandType {
-        ANY,
-        CONTROL_ONLY,
-    };
     [[nodiscard]] status_t getAndExecuteCommand(const base::unique_fd& fd,
-                                                const sp<RpcSession>& session, CommandType type);
-    [[nodiscard]] status_t drainCommands(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                         CommandType type);
+                                                const sp<RpcSession>& session);
 
     /**
      * Called by Parcel for outgoing binders. This implies one refcount of
@@ -136,7 +129,7 @@ private:
                                         Parcel* reply);
     [[nodiscard]] status_t processServerCommand(const base::unique_fd& fd,
                                                 const sp<RpcSession>& session,
-                                                const RpcWireHeader& command, CommandType type);
+                                                const RpcWireHeader& command);
     [[nodiscard]] status_t processTransact(const base::unique_fd& fd, const sp<RpcSession>& session,
                                            const RpcWireHeader& command);
     [[nodiscard]] status_t processTransactInternal(const base::unique_fd& fd,

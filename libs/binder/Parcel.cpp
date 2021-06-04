@@ -173,8 +173,8 @@ static void release_object(const sp<ProcessState>& proc,
 status_t Parcel::finishFlattenBinder(const sp<IBinder>& binder)
 {
     internal::Stability::tryMarkCompilationUnit(binder.get());
-    int16_t rep = internal::Stability::getCategory(binder.get()).repr();
-    return writeInt32(rep);
+    auto category = internal::Stability::getCategory(binder.get());
+    return writeInt32(category.repr());
 }
 
 status_t Parcel::finishUnflattenBinder(
@@ -184,8 +184,7 @@ status_t Parcel::finishUnflattenBinder(
     status_t status = readInt32(&stability);
     if (status != OK) return status;
 
-    status = internal::Stability::setRepr(binder.get(), static_cast<int16_t>(stability),
-                                          true /*log*/);
+    status = internal::Stability::setRepr(binder.get(), stability, true /*log*/);
     if (status != OK) return status;
 
     *out = binder;
@@ -196,11 +195,8 @@ static constexpr inline int schedPolicyMask(int policy, int priority) {
     return (priority & FLAT_BINDER_FLAG_PRIORITY_MASK) | ((policy & 3) << FLAT_BINDER_FLAG_SCHED_POLICY_SHIFT);
 }
 
-status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
-    BBinder* local = nullptr;
-    if (binder) local = binder->localBinder();
-    if (local) local->setParceled();
-
+status_t Parcel::flattenBinder(const sp<IBinder>& binder)
+{
     if (isForRpc()) {
         if (binder) {
             status_t status = writeInt32(1); // non-null
@@ -226,6 +222,7 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
     }
 
     if (binder != nullptr) {
+        BBinder *local = binder->localBinder();
         if (!local) {
             BpBinder *proxy = binder->remoteBinder();
             if (proxy == nullptr) {
@@ -596,7 +593,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__)
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

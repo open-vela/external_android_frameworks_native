@@ -129,7 +129,8 @@ bool checkCallingPermission(const String16& permission)
     return checkCallingPermission(permission, nullptr, nullptr);
 }
 
-static StaticString16 _permission(u"permission");
+static String16 _permission("permission");
+
 
 bool checkCallingPermission(const String16& permission, int32_t* outPid, int32_t* outUid)
 {

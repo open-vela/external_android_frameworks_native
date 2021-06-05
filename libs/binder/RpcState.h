@@ -58,23 +58,12 @@ public:
     status_t getSessionId(const base::unique_fd& fd, const sp<RpcSession>& session,
                           int32_t* sessionIdOut);
 
-    [[nodiscard]] status_t transact(const base::unique_fd& fd, const sp<IBinder>& address,
+    [[nodiscard]] status_t transact(const base::unique_fd& fd, const RpcAddress& address,
                                     uint32_t code, const Parcel& data,
                                     const sp<RpcSession>& session, Parcel* reply, uint32_t flags);
-    [[nodiscard]] status_t transactAddress(const base::unique_fd& fd, const RpcAddress& address,
-                                           uint32_t code, const Parcel& data,
-                                           const sp<RpcSession>& session, Parcel* reply,
-                                           uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const base::unique_fd& fd, const RpcAddress& address);
-
-    enum class CommandType {
-        ANY,
-        CONTROL_ONLY,
-    };
     [[nodiscard]] status_t getAndExecuteCommand(const base::unique_fd& fd,
-                                                const sp<RpcSession>& session, CommandType type);
-    [[nodiscard]] status_t drainCommands(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                         CommandType type);
+                                                const sp<RpcSession>& session);
 
     /**
      * Called by Parcel for outgoing binders. This implies one refcount of
@@ -88,12 +77,12 @@ public:
      * to the process, if this process already has one, or it takes ownership of
      * that refcount
      */
-    [[nodiscard]] status_t onBinderEntering(const sp<RpcSession>& session,
-                                            const RpcAddress& address, sp<IBinder>* out);
+    sp<IBinder> onBinderEntering(const sp<RpcSession>& session, const RpcAddress& address);
 
     size_t countBinders();
     void dump();
 
+private:
     /**
      * Called when reading or writing data to a session fails to clean up
      * data associated with the session in order to cleanup binders.
@@ -112,10 +101,6 @@ public:
      */
     void terminate();
 
-private:
-    void dumpLocked();
-    void terminate(std::unique_lock<std::mutex>& lock);
-
     // Alternative to std::vector<uint8_t> that doesn't abort on allocation failure and caps
     // large allocations to avoid being requested from allocating too much data.
     struct CommandData {
@@ -130,24 +115,21 @@ private:
         size_t mSize;
     };
 
-    [[nodiscard]] status_t rpcSend(const base::unique_fd& fd, const char* what, const void* data,
-                                   size_t size);
-    [[nodiscard]] status_t rpcRec(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                  const char* what, void* data, size_t size);
+    [[nodiscard]] bool rpcSend(const base::unique_fd& fd, const char* what, const void* data,
+                               size_t size);
+    [[nodiscard]] bool rpcRec(const base::unique_fd& fd, const char* what, void* data, size_t size);
 
     [[nodiscard]] status_t waitForReply(const base::unique_fd& fd, const sp<RpcSession>& session,
                                         Parcel* reply);
     [[nodiscard]] status_t processServerCommand(const base::unique_fd& fd,
                                                 const sp<RpcSession>& session,
-                                                const RpcWireHeader& command, CommandType type);
+                                                const RpcWireHeader& command);
     [[nodiscard]] status_t processTransact(const base::unique_fd& fd, const sp<RpcSession>& session,
                                            const RpcWireHeader& command);
     [[nodiscard]] status_t processTransactInternal(const base::unique_fd& fd,
                                                    const sp<RpcSession>& session,
-                                                   CommandData transactionData,
-                                                   sp<IBinder>&& targetRef);
+                                                   CommandData transactionData);
     [[nodiscard]] status_t processDecStrong(const base::unique_fd& fd,
-                                            const sp<RpcSession>& session,
                                             const RpcWireHeader& command);
 
     struct BinderNode {
@@ -181,7 +163,6 @@ private:
 
         // async transaction queue, _only_ for local binder
         struct AsyncTodo {
-            sp<IBinder> ref;
             CommandData data;
             uint64_t asyncNumber = 0;
 
@@ -197,16 +178,6 @@ private:
 
         // (no additional data specific to remote binders)
     };
-
-    // checks if there is any reference left to a node and erases it. If erase
-    // happens, and there is a strong reference to the binder kept by
-    // binderNode, this returns that strong reference, so that it can be
-    // dropped after any locks are removed.
-    sp<IBinder> tryEraseNode(std::map<RpcAddress, BinderNode>::iterator& it);
-    // true - success
-    // false - state terminated, lock gone, halt
-    [[nodiscard]] bool nodeProgressAsyncNumber(BinderNode* node,
-                                               std::unique_lock<std::mutex>& lock);
 
     std::mutex mNodeMutex;
     bool mTerminated = false;

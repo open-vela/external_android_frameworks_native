@@ -60,7 +60,6 @@ cc_test {
     defaults: ["binder_test_defaults"],
     srcs: ["binderLibTest.cpp"],
     shared_libs: [
-        "libbase",
         "libbinder",
         "libutils",
     ],
@@ -102,7 +101,6 @@ cc_test {
 
     srcs: ["binderLibTest.cpp"],
     shared_libs: [
-        "libbase",
         "libbinder",
         "libutils",
     ],
@@ -118,7 +116,6 @@ aidl_interface {
     host_supported: true,
     unstable: true,
     srcs: [
-        "IBinderRpcCallback.aidl",
         "IBinderRpcSession.aidl",
         "IBinderRpcTest.aidl",
     ],
@@ -135,9 +132,6 @@ cc_test {
     target: {
         darwin: {
             enabled: false,
-        },
-        android: {
-            test_suites: ["vts"],
         },
     },
     defaults: [

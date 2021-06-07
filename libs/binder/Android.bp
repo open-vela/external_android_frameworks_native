@@ -71,8 +71,6 @@ libbinder_no_vendor_interface_sources = [
 cc_library {
     name: "libbinder",
 
-    version_script: "libbinder.map",
-
     // for vndbinder
     vendor_available: true,
     vndk: {

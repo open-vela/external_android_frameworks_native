@@ -144,19 +144,12 @@ status_t RpcSession::sendDecStrong(const RpcAddress& address) {
 
 std::unique_ptr<RpcSession::FdTrigger> RpcSession::FdTrigger::make() {
     auto ret = std::make_unique<RpcSession::FdTrigger>();
-    if (!android::base::Pipe(&ret->mRead, &ret->mWrite)) {
-        ALOGE("Could not create pipe %s", strerror(errno));
-        return nullptr;
-    }
+    if (!android::base::Pipe(&ret->mRead, &ret->mWrite)) return nullptr;
     return ret;
 }
 
 void RpcSession::FdTrigger::trigger() {
     mWrite.reset();
-}
-
-bool RpcSession::FdTrigger::isTriggered() {
-    return mWrite == -1;
 }
 
 status_t RpcSession::FdTrigger::triggerablePollRead(base::borrowed_fd fd) {
@@ -415,21 +408,20 @@ bool RpcSession::addClientConnection(unique_fd fd) {
     return true;
 }
 
-bool RpcSession::setForServer(const wp<RpcServer>& server, const wp<EventListener>& eventListener,
-                              int32_t sessionId) {
+void RpcSession::setForServer(const wp<RpcServer>& server, const wp<EventListener>& eventListener,
+                              int32_t sessionId,
+                              const std::shared_ptr<FdTrigger>& shutdownTrigger) {
     LOG_ALWAYS_FATAL_IF(mForServer != nullptr);
     LOG_ALWAYS_FATAL_IF(server == nullptr);
     LOG_ALWAYS_FATAL_IF(mEventListener != nullptr);
     LOG_ALWAYS_FATAL_IF(eventListener == nullptr);
     LOG_ALWAYS_FATAL_IF(mShutdownTrigger != nullptr);
-
-    mShutdownTrigger = FdTrigger::make();
-    if (mShutdownTrigger == nullptr) return false;
+    LOG_ALWAYS_FATAL_IF(shutdownTrigger == nullptr);
 
     mId = sessionId;
     mForServer = server;
     mEventListener = eventListener;
-    return true;
+    mShutdownTrigger = shutdownTrigger;
 }
 
 sp<RpcSession::RpcConnection> RpcSession::assignServerToThisThread(unique_fd fd) {

@@ -47,19 +47,6 @@ public:
     static sp<RpcSession> make();
 
     /**
-     * Set the maximum number of threads allowed to be made (for things like callbacks).
-     * By default, this is 0. This must be called before setting up this connection as a client.
-     * Server sessions will inherits this value from RpcServer.
-     *
-     * If this is called, 'shutdown' on this session must also be called.
-     * Otherwise, a threadpool will leak.
-     *
-     * TODO(b/189955605): start these dynamically
-     */
-    void setMaxThreads(size_t threads);
-    size_t getMaxThreads();
-
-    /**
      * This should be called once per thread, matching 'join' in the remote
      * process.
      */
@@ -96,23 +83,7 @@ public:
      */
     status_t getRemoteMaxThreads(size_t* maxThreads);
 
-    /**
-     * Shuts down the service.
-     *
-     * For client sessions, wait can be true or false. For server sessions,
-     * waiting is not currently supported (will abort).
-     *
-     * Warning: this is currently not active/nice (the server isn't told we're
-     * shutting down). Being nicer to the server could potentially make it
-     * reclaim resources faster.
-     *
-     * If this is called w/ 'wait' true, then this will wait for shutdown to
-     * complete before returning. This will hang if it is called from the
-     * session threadpool (when processing received calls).
-     */
-    [[nodiscard]] bool shutdownAndWait(bool wait);
-
-    [[nodiscard]] status_t transact(const sp<IBinder>& binder, uint32_t code, const Parcel& data,
+    [[nodiscard]] status_t transact(const RpcAddress& address, uint32_t code, const Parcel& data,
                                     Parcel* reply, uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const RpcAddress& address);
 
@@ -123,74 +94,31 @@ public:
     // internal only
     const std::unique_ptr<RpcState>& state() { return mState; }
 
+    class PrivateAccessorForId {
+    private:
+        friend class RpcSession;
+        friend class RpcState;
+        explicit PrivateAccessorForId(const RpcSession* session) : mSession(session) {}
+
+        const std::optional<int32_t> get() { return mSession->mId; }
+
+        const RpcSession* mSession;
+    };
+    PrivateAccessorForId getPrivateAccessorForId() const { return PrivateAccessorForId(this); }
+
 private:
+    friend PrivateAccessorForId;
     friend sp<RpcSession>;
     friend RpcServer;
-    friend RpcState;
     RpcSession();
-
-    /** This is not a pipe. */
-    struct FdTrigger {
-        /** Returns nullptr for error case */
-        static std::unique_ptr<FdTrigger> make();
-
-        /**
-         * Close the write end of the pipe so that the read end receives POLLHUP.
-         * Not threadsafe.
-         */
-        void trigger();
-
-        /**
-         * Whether this has been triggered.
-         */
-        bool isTriggered();
-
-        /**
-         * Poll for a read event.
-         *
-         * Return:
-         *   true - time to read!
-         *   false - trigger happened
-         */
-        status_t triggerablePollRead(base::borrowed_fd fd);
-
-        /**
-         * Read, but allow the read to be interrupted by this trigger.
-         *
-         * Return:
-         *   true - read succeeded at 'size'
-         *   false - interrupted (failure or trigger)
-         */
-        status_t interruptableReadFully(base::borrowed_fd fd, void* data, size_t size);
-
-    private:
-        base::unique_fd mWrite;
-        base::unique_fd mRead;
-    };
-
-    class EventListener : public virtual RefBase {
-    public:
-        virtual void onSessionLockedAllServerThreadsEnded(const sp<RpcSession>& session) = 0;
-        virtual void onSessionServerThreadEnded() = 0;
-    };
-
-    class WaitForShutdownListener : public EventListener {
-    public:
-        void onSessionLockedAllServerThreadsEnded(const sp<RpcSession>& session) override;
-        void onSessionServerThreadEnded() override;
-        void waitForShutdown(std::unique_lock<std::mutex>& lock);
-
-    private:
-        std::condition_variable mCv;
-        bool mShutdown = false;
-    };
 
     status_t readId();
 
     // transfer ownership of thread
     void preJoin(std::thread thread);
     // join on thread passed to preJoin
-    static void join(sp<RpcSession>&& session, base::unique_fd client);
+    void join(base::unique_fd client);
+    void terminateLocked();
 
     struct RpcConnection : public RefBase {
         base::unique_fd fd;
@@ -200,15 +128,12 @@ private:
         std::optional<pid_t> exclusiveTid;
     };
 
-    [[nodiscard]] bool setupSocketClient(const RpcSocketAddress& address);
-    [[nodiscard]] bool setupOneSocketConnection(const RpcSocketAddress& address, int32_t sessionId,
-                                                bool server);
-    [[nodiscard]] bool addClientConnection(base::unique_fd fd);
-    [[nodiscard]] bool setForServer(const wp<RpcServer>& server,
-                                    const wp<RpcSession::EventListener>& eventListener,
-                                    int32_t sessionId);
+    bool setupSocketClient(const RpcSocketAddress& address);
+    bool setupOneSocketClient(const RpcSocketAddress& address, int32_t sessionId);
+    void addClientConnection(base::unique_fd fd);
+    void setForServer(const wp<RpcServer>& server, int32_t sessionId);
     sp<RpcConnection> assignServerToThisThread(base::unique_fd fd);
-    [[nodiscard]] bool removeServerConnection(const sp<RpcConnection>& connection);
+    bool removeServerConnection(const sp<RpcConnection>& connection);
 
     enum class ConnectionUse {
         CLIENT,
@@ -253,19 +178,13 @@ private:
     // serve calls to the server at all times (e.g. if it hosts a callback)
 
     wp<RpcServer> mForServer; // maybe null, for client sessions
-    sp<WaitForShutdownListener> mShutdownListener; // used for client sessions
-    wp<EventListener> mEventListener; // mForServer if server, mShutdownListener if client
 
     // TODO(b/183988761): this shouldn't be guessable
     std::optional<int32_t> mId;
 
-    std::unique_ptr<FdTrigger> mShutdownTrigger;
-
     std::unique_ptr<RpcState> mState;
 
     std::mutex mMutex; // for all below
-
-    size_t mMaxThreads = 0;
 
     std::condition_variable mAvailableConnectionCv; // for mWaitingThreads
     size_t mWaitingThreads = 0;
@@ -273,7 +192,13 @@ private:
     size_t mClientConnectionsOffset = 0;
     std::vector<sp<RpcConnection>> mClientConnections;
     std::vector<sp<RpcConnection>> mServerConnections;
+
+    // TODO(b/185167543): use for reverse sessions (allow client to also
+    // serve calls on a session).
+    // TODO(b/185167543): allow sharing between different sessions in a
+    // process? (or combine with mServerConnections)
     std::map<std::thread::id, std::thread> mThreads;
+    bool mTerminated = false;
 };
 
 } // namespace android

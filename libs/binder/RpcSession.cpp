@@ -113,21 +113,17 @@ status_t RpcSession::getRemoteMaxThreads(size_t* maxThreads) {
     return state()->getMaxThreads(connection.fd(), sp<RpcSession>::fromExisting(this), maxThreads);
 }
 
-bool RpcSession::shutdownAndWait(bool wait) {
+bool RpcSession::shutdown() {
     std::unique_lock<std::mutex> _l(mMutex);
+    LOG_ALWAYS_FATAL_IF(mForServer.promote() != nullptr, "Can only shut down client session");
     LOG_ALWAYS_FATAL_IF(mShutdownTrigger == nullptr, "Shutdown trigger not installed");
+    LOG_ALWAYS_FATAL_IF(mShutdownListener == nullptr, "Shutdown listener not installed");
 
     mShutdownTrigger->trigger();
+    mShutdownListener->waitForShutdown(_l);
+    mState->terminate();
 
-    if (wait) {
-        LOG_ALWAYS_FATAL_IF(mShutdownListener == nullptr, "Shutdown listener not installed");
-        mShutdownListener->waitForShutdown(_l);
-        LOG_ALWAYS_FATAL_IF(!mThreads.empty(), "Shutdown failed");
-    }
-
-    _l.unlock();
-    mState->clear();
-
+    LOG_ALWAYS_FATAL_IF(!mThreads.empty(), "Shutdown failed");
     return true;
 }
 
@@ -143,7 +139,7 @@ status_t RpcSession::transact(const sp<IBinder>& binder, uint32_t code, const Pa
 status_t RpcSession::sendDecStrong(const RpcAddress& address) {
     ExclusiveConnection connection(sp<RpcSession>::fromExisting(this),
                                    ConnectionUse::CLIENT_REFCOUNT);
-    return state()->sendDecStrong(connection.fd(), sp<RpcSession>::fromExisting(this), address);
+    return state()->sendDecStrong(connection.fd(), address);
 }
 
 std::unique_ptr<RpcSession::FdTrigger> RpcSession::FdTrigger::make() {
@@ -289,7 +285,7 @@ bool RpcSession::setupSocketClient(const RpcSocketAddress& addr) {
 
     if (!setupOneSocketConnection(addr, RPC_SESSION_ID_NEW, false /*reverse*/)) return false;
 
-    // TODO(b/189955605): we should add additional sessions dynamically
+    // TODO(b/185167543): we should add additional sessions dynamically
     // instead of all at once.
     // TODO(b/186470974): first risk of blocking
     size_t numThreadsAvailable;
@@ -307,11 +303,11 @@ bool RpcSession::setupSocketClient(const RpcSocketAddress& addr) {
 
     // we've already setup one client
     for (size_t i = 0; i + 1 < numThreadsAvailable; i++) {
-        // TODO(b/189955605): shutdown existing connections?
+        // TODO(b/185167543): shutdown existing connections?
         if (!setupOneSocketConnection(addr, mId.value(), false /*reverse*/)) return false;
     }
 
-    // TODO(b/189955605): we should add additional sessions dynamically
+    // TODO(b/185167543): we should add additional sessions dynamically
     // instead of all at once - the other side should be responsible for setting
     // up additional connections. We need to create at least one (unless 0 are
     // requested to be set) in order to allow the other side to reliably make

@@ -65,8 +65,7 @@ public:
                                            uint32_t code, const Parcel& data,
                                            const sp<RpcSession>& session, Parcel* reply,
                                            uint32_t flags);
-    [[nodiscard]] status_t sendDecStrong(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                         const RpcAddress& address);
+    [[nodiscard]] status_t sendDecStrong(const base::unique_fd& fd, const RpcAddress& address);
 
     enum class CommandType {
         ANY,
@@ -111,10 +110,11 @@ public:
      * WARNING: RpcState is responsible for calling this when the session is
      * no longer recoverable.
      */
-    void clear();
+    void terminate();
 
 private:
     void dumpLocked();
+    void terminate(std::unique_lock<std::mutex>& lock);
 
     // Alternative to std::vector<uint8_t> that doesn't abort on allocation failure and caps
     // large allocations to avoid being requested from allocating too much data.
@@ -130,8 +130,8 @@ private:
         size_t mSize;
     };
 
-    [[nodiscard]] status_t rpcSend(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                   const char* what, const void* data, size_t size);
+    [[nodiscard]] status_t rpcSend(const base::unique_fd& fd, const char* what, const void* data,
+                                   size_t size);
     [[nodiscard]] status_t rpcRec(const base::unique_fd& fd, const sp<RpcSession>& session,
                                   const char* what, void* data, size_t size);
 
@@ -204,8 +204,9 @@ private:
     // dropped after any locks are removed.
     sp<IBinder> tryEraseNode(std::map<RpcAddress, BinderNode>::iterator& it);
     // true - success
-    // false - session shutdown, halt
-    [[nodiscard]] bool nodeProgressAsyncNumber(BinderNode* node);
+    // false - state terminated, lock gone, halt
+    [[nodiscard]] bool nodeProgressAsyncNumber(BinderNode* node,
+                                               std::unique_lock<std::mutex>& lock);
 
     std::mutex mNodeMutex;
     bool mTerminated = false;

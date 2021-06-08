@@ -54,7 +54,7 @@ public:
      * If this is called, 'shutdown' on this session must also be called.
      * Otherwise, a threadpool will leak.
      *
-     * TODO(b/189955605): start these dynamically
+     * TODO(b/185167543): start these dynamically
      */
     void setMaxThreads(size_t threads);
     size_t getMaxThreads();
@@ -97,20 +97,14 @@ public:
     status_t getRemoteMaxThreads(size_t* maxThreads);
 
     /**
-     * Shuts down the service.
-     *
-     * For client sessions, wait can be true or false. For server sessions,
-     * waiting is not currently supported (will abort).
+     * Shuts down the service. Only works for client sessions (server-side
+     * sessions currently only support shutting down the entire server).
      *
      * Warning: this is currently not active/nice (the server isn't told we're
      * shutting down). Being nicer to the server could potentially make it
      * reclaim resources faster.
-     *
-     * If this is called w/ 'wait' true, then this will wait for shutdown to
-     * complete before returning. This will hang if it is called from the
-     * session threadpool (when processing received calls).
      */
-    [[nodiscard]] bool shutdownAndWait(bool wait);
+    [[nodiscard]] bool shutdown();
 
     [[nodiscard]] status_t transact(const sp<IBinder>& binder, uint32_t code, const Parcel& data,
                                     Parcel* reply, uint32_t flags);
@@ -272,6 +266,9 @@ private:
     size_t mClientConnectionsOffset = 0;
     std::vector<sp<RpcConnection>> mClientConnections;
     std::vector<sp<RpcConnection>> mServerConnections;
+
+    // TODO(b/185167543): allow sharing between different sessions in a
+    // process? (or combine with mServerConnections)
     std::map<std::thread::id, std::thread> mThreads;
 };
 

@@ -265,27 +265,6 @@ status_t RpcState::rpcRec(const base::unique_fd& fd, const sp<RpcSession>& sessi
     return OK;
 }
 
-status_t RpcState::sendConnectionInit(const base::unique_fd& fd, const sp<RpcSession>& session) {
-    RpcClientConnectionInit init{
-            .msg = RPC_CONNECTION_INIT_OKAY,
-    };
-    return rpcSend(fd, session, "connection init", &init, sizeof(init));
-}
-
-status_t RpcState::readConnectionInit(const base::unique_fd& fd, const sp<RpcSession>& session) {
-    RpcClientConnectionInit init;
-    if (status_t status = rpcRec(fd, session, "connection init", &init, sizeof(init)); status != OK)
-        return status;
-
-    static_assert(sizeof(init.msg) == sizeof(RPC_CONNECTION_INIT_OKAY));
-    if (0 != strncmp(init.msg, RPC_CONNECTION_INIT_OKAY, sizeof(init.msg))) {
-        ALOGE("Connection init message unrecognized %.*s", static_cast<int>(sizeof(init.msg)),
-              init.msg);
-        return BAD_VALUE;
-    }
-    return OK;
-}
-
 sp<IBinder> RpcState::getRootObject(const base::unique_fd& fd, const sp<RpcSession>& session) {
     Parcel data;
     data.markForRpc(session);
@@ -586,7 +565,7 @@ status_t RpcState::processTransact(const base::unique_fd& fd, const sp<RpcSessio
         status != OK)
         return status;
 
-    return processTransactInternal(fd, session, std::move(transactionData));
+    return processTransactInternal(fd, session, std::move(transactionData), nullptr /*targetRef*/);
 }
 
 static void do_nothing_to_transact_data(Parcel* p, const uint8_t* data, size_t dataSize,
@@ -599,13 +578,7 @@ static void do_nothing_to_transact_data(Parcel* p, const uint8_t* data, size_t d
 }
 
 status_t RpcState::processTransactInternal(const base::unique_fd& fd, const sp<RpcSession>& session,
-                                           CommandData transactionData) {
-    // for 'recursive' calls to this, we have already read and processed the
-    // binder from the transaction data and taken reference counts into account,
-    // so it is cached here.
-    sp<IBinder> targetRef;
-processTransactInternalTailCall:
-
+                                           CommandData transactionData, sp<IBinder>&& targetRef) {
     if (transactionData.size() < sizeof(RpcWireTransaction)) {
         ALOGE("Expecting %zu but got %zu bytes for RpcWireTransaction. Terminating!",
               sizeof(RpcWireTransaction), transactionData.size());
@@ -778,12 +751,13 @@ processTransactInternalTailCall:
                 // - gotta go fast
                 auto& todo = const_cast<BinderNode::AsyncTodo&>(it->second.asyncTodo.top());
 
-                // reset up arguments
-                transactionData = std::move(todo.data);
-                targetRef = std::move(todo.ref);
+                CommandData nextData = std::move(todo.data);
+                sp<IBinder> nextRef = std::move(todo.ref);
 
                 it->second.asyncTodo.pop();
-                goto processTransactInternalTailCall;
+                _l.unlock();
+                return processTransactInternal(fd, session, std::move(nextData),
+                                               std::move(nextRef));
             }
         }
         return OK;

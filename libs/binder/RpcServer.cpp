@@ -307,15 +307,13 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
         }
 
         detachGuard.Disable();
-        session->preJoinThreadOwnership(std::move(thisThread));
+        session->preJoin(std::move(thisThread));
     }
-
-    auto setupResult = session->preJoinSetup(std::move(clientFd));
 
     // avoid strong cycle
     server = nullptr;
 
-    RpcSession::join(std::move(session), std::move(setupResult));
+    RpcSession::join(std::move(session), std::move(clientFd));
 }
 
 bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {

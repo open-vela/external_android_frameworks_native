@@ -185,6 +185,13 @@ private:
         bool mShutdown = false;
     };
 
+    status_t readId();
+
+    // transfer ownership of thread
+    void preJoin(std::thread thread);
+    // join on thread passed to preJoin
+    static void join(sp<RpcSession>&& session, base::unique_fd client);
+
     struct RpcConnection : public RefBase {
         base::unique_fd fd;
 
@@ -192,27 +199,6 @@ private:
         // or receive transactions.
         std::optional<pid_t> exclusiveTid;
     };
-
-    status_t readId();
-
-    // A thread joining a server must always call these functions in order, and
-    // cleanup is only programmed once into join. These are in separate
-    // functions in order to allow for different locks to be taken during
-    // different parts of setup.
-    //
-    // transfer ownership of thread (usually done while a lock is taken on the
-    // structure which originally owns the thread)
-    void preJoinThreadOwnership(std::thread thread);
-    // pass FD to thread and read initial connection information
-    struct PreJoinSetupResult {
-        // Server connection object associated with this
-        sp<RpcConnection> connection;
-        // Status of setup
-        status_t status;
-    };
-    PreJoinSetupResult preJoinSetup(base::unique_fd fd);
-    // join on thread passed to preJoinThreadOwnership
-    static void join(sp<RpcSession>&& session, PreJoinSetupResult&& result);
 
     [[nodiscard]] bool setupSocketClient(const RpcSocketAddress& address);
     [[nodiscard]] bool setupOneSocketConnection(const RpcSocketAddress& address, int32_t sessionId,
@@ -230,12 +216,10 @@ private:
         CLIENT_REFCOUNT,
     };
 
-    // Object representing exclusive access to a connection.
+    // RAII object for session connection
     class ExclusiveConnection {
     public:
-        static status_t find(const sp<RpcSession>& session, ConnectionUse use,
-                             ExclusiveConnection* connection);
-
+        explicit ExclusiveConnection(const sp<RpcSession>& session, ConnectionUse use);
         ~ExclusiveConnection();
         const base::unique_fd& fd() { return mConnection->fd; }
 

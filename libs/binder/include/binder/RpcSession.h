@@ -118,11 +118,7 @@ public:
 
     ~RpcSession();
 
-    /**
-     * Server if this session is created as part of a server (symmetrical to
-     * client servers). Otherwise, nullptr.
-     */
-    sp<RpcServer> server();
+    wp<RpcServer> server();
 
     // internal only
     const std::unique_ptr<RpcState>& state() { return mState; }
@@ -174,14 +170,14 @@ private:
 
     class EventListener : public virtual RefBase {
     public:
-        virtual void onSessionLockedAllIncomingThreadsEnded(const sp<RpcSession>& session) = 0;
-        virtual void onSessionIncomingThreadEnded() = 0;
+        virtual void onSessionLockedAllServerThreadsEnded(const sp<RpcSession>& session) = 0;
+        virtual void onSessionServerThreadEnded() = 0;
     };
 
     class WaitForShutdownListener : public EventListener {
     public:
-        void onSessionLockedAllIncomingThreadsEnded(const sp<RpcSession>& session) override;
-        void onSessionIncomingThreadEnded() override;
+        void onSessionLockedAllServerThreadsEnded(const sp<RpcSession>& session) override;
+        void onSessionServerThreadEnded() override;
         void waitForShutdown(std::unique_lock<std::mutex>& lock);
 
     private:
@@ -195,8 +191,6 @@ private:
         // whether this or another thread is currently using this fd to make
         // or receive transactions.
         std::optional<pid_t> exclusiveTid;
-
-        bool allowNested = false;
     };
 
     status_t readId();
@@ -221,14 +215,14 @@ private:
     static void join(sp<RpcSession>&& session, PreJoinSetupResult&& result);
 
     [[nodiscard]] bool setupSocketClient(const RpcSocketAddress& address);
-    [[nodiscard]] bool setupOneSocketConnection(const RpcSocketAddress& address,
-                                                const RpcAddress& sessionId, bool server);
-    [[nodiscard]] bool addOutgoingConnection(base::unique_fd fd);
+    [[nodiscard]] bool setupOneSocketConnection(const RpcSocketAddress& address, int32_t sessionId,
+                                                bool server);
+    [[nodiscard]] bool addClientConnection(base::unique_fd fd);
     [[nodiscard]] bool setForServer(const wp<RpcServer>& server,
                                     const wp<RpcSession::EventListener>& eventListener,
-                                    const RpcAddress& sessionId);
-    sp<RpcConnection> assignIncomingConnectionToThisThread(base::unique_fd fd);
-    [[nodiscard]] bool removeIncomingConnection(const sp<RpcConnection>& connection);
+                                    int32_t sessionId);
+    sp<RpcConnection> assignServerToThisThread(base::unique_fd fd);
+    [[nodiscard]] bool removeServerConnection(const sp<RpcConnection>& connection);
 
     enum class ConnectionUse {
         CLIENT,
@@ -243,7 +237,7 @@ private:
                              ExclusiveConnection* connection);
 
         ~ExclusiveConnection();
-        const sp<RpcConnection>& get() { return mConnection; }
+        const base::unique_fd& fd() { return mConnection->fd; }
 
     private:
         static void findConnection(pid_t tid, sp<RpcConnection>* exclusive,
@@ -260,13 +254,13 @@ private:
         bool mReentrant = false;
     };
 
-    // On the other side of a session, for each of mOutgoingConnections here, there should
-    // be one of mIncomingConnections on the other side (and vice versa).
+    // On the other side of a session, for each of mClientConnections here, there should
+    // be one of mServerConnections on the other side (and vice versa).
     //
     // For the simplest session, a single server with one client, you would
     // have:
-    //  - the server has a single 'mIncomingConnections' and a thread listening on this
-    //  - the client has a single 'mOutgoingConnections' and makes calls to this
+    //  - the server has a single 'mServerConnections' and a thread listening on this
+    //  - the client has a single 'mClientConnections' and makes calls to this
     //  - here, when the client makes a call, the server can call back into it
     //    (nested calls), but outside of this, the client will only ever read
     //    calls from the server when it makes a call itself.
@@ -278,7 +272,8 @@ private:
     sp<WaitForShutdownListener> mShutdownListener; // used for client sessions
     wp<EventListener> mEventListener; // mForServer if server, mShutdownListener if client
 
-    std::optional<RpcAddress> mId;
+    // TODO(b/183988761): this shouldn't be guessable
+    std::optional<int32_t> mId;
 
     std::unique_ptr<FdTrigger> mShutdownTrigger;
 
@@ -291,9 +286,9 @@ private:
     std::condition_variable mAvailableConnectionCv; // for mWaitingThreads
     size_t mWaitingThreads = 0;
     // hint index into clients, ++ when sending an async transaction
-    size_t mOutgoingConnectionsOffset = 0;
-    std::vector<sp<RpcConnection>> mOutgoingConnections;
-    std::vector<sp<RpcConnection>> mIncomingConnections;
+    size_t mClientConnectionsOffset = 0;
+    std::vector<sp<RpcConnection>> mClientConnections;
+    std::vector<sp<RpcConnection>> mServerConnections;
     std::map<std::thread::id, std::thread> mThreads;
 };
 

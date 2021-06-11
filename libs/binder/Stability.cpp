@@ -33,6 +33,7 @@ constexpr uint8_t kBinderWireFormatVersion = 1;
 Stability::Category Stability::Category::currentFromLevel(Level level) {
     return {
         .version = kBinderWireFormatVersion,
+        .reserved = {0},
         .level = level,
     };
 }
@@ -78,9 +79,9 @@ void Stability::markVintf(IBinder* binder) {
     LOG_ALWAYS_FATAL_IF(result != OK, "Should only mark known object.");
 }
 
-std::string Stability::debugToString(const sp<IBinder>& binder) {
+void Stability::debugLogStability(const std::string& tag, const sp<IBinder>& binder) {
     auto stability = getCategory(binder.get());
-    return stability.debugString();
+    ALOGE("%s: stability is %s", tag.c_str(), stability.debugString().c_str());
 }
 
 void Stability::markVndk(IBinder* binder) {
@@ -99,18 +100,12 @@ void Stability::tryMarkCompilationUnit(IBinder* binder) {
 }
 
 Stability::Level Stability::getLocalLevel() {
+#ifdef __ANDROID_APEX__
+#error APEX can't use libbinder (must use libbinder_ndk)
+#endif
+
 #ifdef __ANDROID_VNDK__
-    #ifdef __ANDROID_APEX__
-        // TODO(b/142684679) avoid use_vendor on system APEXes
-        #if !defined(__ANDROID_APEX_COM_ANDROID_MEDIA_SWCODEC__) \
-            && !defined(__ANDROID_APEX_TEST_COM_ANDROID_MEDIA_SWCODEC__)
-        #error VNDK + APEX only defined for com.android.media.swcodec
-        #endif
-        // TODO(b/142684679) avoid use_vendor on system APEXes
-        return Level::SYSTEM;
-    #else
-        return Level::VENDOR;
-    #endif
+    return Level::VENDOR;
 #else
     // TODO(b/139325195): split up stability levels for system/APEX.
     return Level::SYSTEM;

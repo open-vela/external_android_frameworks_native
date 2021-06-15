@@ -270,25 +270,14 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
             return;
         }
 
-        RpcAddress sessionId = RpcAddress::fromRawEmbedded(&header.sessionId);
-
-        if (sessionId.isZero()) {
+        if (header.sessionId == RPC_SESSION_ID_NEW) {
             if (reverse) {
                 ALOGE("Cannot create a new session with a reverse connection, would leak");
                 return;
             }
 
-            RpcAddress sessionId = RpcAddress::zero();
-            size_t tries = 0;
-            do {
-                // don't block if there is some entropy issue
-                if (tries++ > 5) {
-                    ALOGE("Cannot find new address: %s", sessionId.toString().c_str());
-                    return;
-                }
-
-                sessionId = RpcAddress::random(true /*forServer*/);
-            } while (server->mSessions.end() != server->mSessions.find(sessionId));
+            LOG_ALWAYS_FATAL_IF(server->mSessionIdCounter >= INT32_MAX, "Out of session IDs");
+            server->mSessionIdCounter++;
 
             session = RpcSession::make();
             session->setMaxThreads(server->mMaxThreads);
@@ -296,24 +285,23 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
                                        sp<RpcServer::EventListener>::fromExisting(
                                                static_cast<RpcServer::EventListener*>(
                                                        server.get())),
-                                       sessionId)) {
+                                       server->mSessionIdCounter)) {
                 ALOGE("Failed to attach server to session");
                 return;
             }
 
-            server->mSessions[sessionId] = session;
+            server->mSessions[server->mSessionIdCounter] = session;
         } else {
-            auto it = server->mSessions.find(sessionId);
+            auto it = server->mSessions.find(header.sessionId);
             if (it == server->mSessions.end()) {
-                ALOGE("Cannot add thread, no record of session with ID %s",
-                      sessionId.toString().c_str());
+                ALOGE("Cannot add thread, no record of session with ID %d", header.sessionId);
                 return;
             }
             session = it->second;
         }
 
         if (reverse) {
-            LOG_ALWAYS_FATAL_IF(!session->addOutgoingConnection(std::move(clientFd), true),
+            LOG_ALWAYS_FATAL_IF(!session->addClientConnection(std::move(clientFd)),
                                 "server state must already be initialized");
             return;
         }
@@ -362,21 +350,19 @@ bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
     return true;
 }
 
-void RpcServer::onSessionLockedAllIncomingThreadsEnded(const sp<RpcSession>& session) {
+void RpcServer::onSessionLockedAllServerThreadsEnded(const sp<RpcSession>& session) {
     auto id = session->mId;
     LOG_ALWAYS_FATAL_IF(id == std::nullopt, "Server sessions must be initialized with ID");
-    LOG_RPC_DETAIL("Dropping session with address %s", id->toString().c_str());
+    LOG_RPC_DETAIL("Dropping session %d", *id);
 
     std::lock_guard<std::mutex> _l(mLock);
     auto it = mSessions.find(*id);
-    LOG_ALWAYS_FATAL_IF(it == mSessions.end(), "Bad state, unknown session id %s",
-                        id->toString().c_str());
-    LOG_ALWAYS_FATAL_IF(it->second != session, "Bad state, session has id mismatch %s",
-                        id->toString().c_str());
+    LOG_ALWAYS_FATAL_IF(it == mSessions.end(), "Bad state, unknown session id %d", *id);
+    LOG_ALWAYS_FATAL_IF(it->second != session, "Bad state, session has id mismatch %d", *id);
     (void)mSessions.erase(it);
 }
 
-void RpcServer::onSessionIncomingThreadEnded() {
+void RpcServer::onSessionServerThreadEnded() {
     mShutdownCv.notify_all();
 }
 

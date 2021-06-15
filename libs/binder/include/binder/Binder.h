@@ -101,8 +101,7 @@ public:
     // to another process.
     void setParceled();
 
-    [[nodiscard]] status_t setRpcClientDebug(android::base::unique_fd clientFd,
-                                             const sp<IBinder>& keepAliveBinder);
+    [[nodiscard]] status_t setRpcClientDebug(android::base::unique_fd clientFd);
 
 protected:
     virtual             ~BBinder();
@@ -117,13 +116,11 @@ private:
                         BBinder(const BBinder& o);
             BBinder&    operator=(const BBinder& o);
 
-    class RpcServerLink;
     class Extras;
 
     Extras*             getOrCreateExtras();
 
     [[nodiscard]] status_t setRpcClientDebug(const Parcel& data);
-    void removeRpcServerLink(const sp<RpcServerLink>& link);
 
     std::atomic<Extras*> mExtras;
 

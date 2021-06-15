@@ -162,17 +162,14 @@ public:
      * 2. spawns 1 new thread that calls RpcServer::join()
      *    - join() spawns some number of threads that accept() connections; see RpcServer
      *
-     * setRpcClientDebug() may be called multiple times. Each call will add a new RpcServer
-     * and opens up a TCP port.
+     * setRpcClientDebug() may only be called once.
+     * TODO(b/182914638): If allow to shut down the client, addRpcClient can be called repeatedly.
      *
      * Note: A thread is spawned for each accept()'ed fd, which may call into functions of the
      * interface freely. See RpcServer::join(). To avoid such race conditions, implement the service
      * functions with multithreading support.
-     *
-     * On death of @a keepAliveBinder, the RpcServer shuts down.
      */
-    [[nodiscard]] status_t setRpcClientDebug(android::base::unique_fd socketFd,
-                                             const sp<IBinder>& keepAliveBinder);
+    [[nodiscard]] status_t setRpcClientDebug(android::base::unique_fd socketFd);
 
     // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        transact(   uint32_t code,

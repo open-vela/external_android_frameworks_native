@@ -26,11 +26,9 @@
 #include <binder/IServiceManager.h>
 #include <binder/RpcServer.h>
 
-using android::BBinder;
 using android::defaultServiceManager;
 using android::OK;
 using android::RpcServer;
-using android::sp;
 using android::statusToString;
 using android::String16;
 using android::base::Basename;
@@ -76,8 +74,7 @@ int Dispatch(const char* name) {
         return EX_SOFTWARE;
     }
     auto socket = rpcServer->releaseServer();
-    auto keepAliveBinder = sp<BBinder>::make();
-    auto status = binder->setRpcClientDebug(std::move(socket), keepAliveBinder);
+    auto status = binder->setRpcClientDebug(std::move(socket));
     if (status != OK) {
         LOG(ERROR) << "setRpcClientDebug failed with " << statusToString(status);
         return EX_SOFTWARE;

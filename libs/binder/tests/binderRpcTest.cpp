@@ -214,8 +214,7 @@ public:
         if (delayed) {
             std::thread([=]() {
                 ALOGE("Executing delayed callback: '%s'", value.c_str());
-                Status status = doCallback(callback, oneway, false, value);
-                ALOGE("Delayed callback status: '%s'", status.toString8().c_str());
+                (void)doCallback(callback, oneway, false, value);
             }).detach();
             return Status::ok();
         }
@@ -225,11 +224,6 @@ public:
         }
 
         return callback->sendCallback(value);
-    }
-
-    Status doCallbackAsync(const sp<IBinderRpcCallback>& callback, bool oneway, bool delayed,
-                           const std::string& value) override {
-        return doCallback(callback, oneway, delayed, value);
     }
 
     Status die(bool cleanup) override {
@@ -984,42 +978,31 @@ TEST_P(BinderRpc, OnewayCallExhaustion) {
 TEST_P(BinderRpc, Callbacks) {
     const static std::string kTestString = "good afternoon!";
 
-    for (bool callIsOneway : {true, false}) {
-        for (bool callbackIsOneway : {true, false}) {
-            for (bool delayed : {true, false}) {
-                auto proc = createRpcTestSocketServerProcess(1, 1, 1);
-                auto cb = sp<MyBinderRpcCallback>::make();
+    for (bool oneway : {true, false}) {
+        for (bool delayed : {true, false}) {
+            auto proc = createRpcTestSocketServerProcess(1, 1, 1);
+            auto cb = sp<MyBinderRpcCallback>::make();
 
-                if (callIsOneway) {
-                    EXPECT_OK(proc.rootIface->doCallbackAsync(cb, callbackIsOneway, delayed,
-                                                              kTestString));
-                } else {
-                    EXPECT_OK(
-                            proc.rootIface->doCallback(cb, callbackIsOneway, delayed, kTestString));
-                }
+            EXPECT_OK(proc.rootIface->doCallback(cb, oneway, delayed, kTestString));
 
-                using std::literals::chrono_literals::operator""s;
-                std::unique_lock<std::mutex> _l(cb->mMutex);
-                cb->mCv.wait_for(_l, 1s, [&] { return !cb->mValues.empty(); });
+            using std::literals::chrono_literals::operator""s;
+            std::unique_lock<std::mutex> _l(cb->mMutex);
+            cb->mCv.wait_for(_l, 1s, [&] { return !cb->mValues.empty(); });
 
-                EXPECT_EQ(cb->mValues.size(), 1)
-                        << "callIsOneway: " << callIsOneway
-                        << " callbackIsOneway: " << callbackIsOneway << " delayed: " << delayed;
-                if (cb->mValues.empty()) continue;
-                EXPECT_EQ(cb->mValues.at(0), kTestString)
-                        << "callIsOneway: " << callIsOneway
-                        << " callbackIsOneway: " << callbackIsOneway << " delayed: " << delayed;
+            EXPECT_EQ(cb->mValues.size(), 1) << "oneway: " << oneway << "delayed: " << delayed;
+            if (cb->mValues.empty()) continue;
+            EXPECT_EQ(cb->mValues.at(0), kTestString)
+                    << "oneway: " << oneway << "delayed: " << delayed;
 
-                // since we are severing the connection, we need to go ahead and
-                // tell the server to shutdown and exit so that waitpid won't hang
-                EXPECT_OK(proc.rootIface->scheduleShutdown());
+            // since we are severing the connection, we need to go ahead and
+            // tell the server to shutdown and exit so that waitpid won't hang
+            EXPECT_OK(proc.rootIface->scheduleShutdown());
 
-                // since this session has a reverse connection w/ a threadpool, we
-                // need to manually shut it down
-                EXPECT_TRUE(proc.proc.sessions.at(0).session->shutdownAndWait(true));
+            // since this session has a reverse connection w/ a threadpool, we
+            // need to manually shut it down
+            EXPECT_TRUE(proc.proc.sessions.at(0).session->shutdownAndWait(true));
 
-                proc.expectAlreadyShutdown = true;
-            }
+            proc.expectAlreadyShutdown = true;
         }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,22 +14,7 @@
  * limitations under the License.
  */
 
-// This AIDL is to test things that can't be tested in CtsNdkBinderTestCases
-// because it requires libbinder_ndk implementation details or APIs not
-// available to apps. Please prefer adding tests to CtsNdkBinderTestCases
-// over here.
-
-import IEmpty;
-
-@SensitiveData
-interface IBinderNdkUnitTest {
-    int repeatInt(int a);
-
-    void takeInterface(IEmpty test);
-    void forceFlushCommands();
-
-    boolean getsRequestedSid();
-
-    void forcePersist(boolean persist);
-    void setCustomActiveServicesCallback();
+interface IBinderRpcCallback {
+    void sendCallback(@utf8InCpp String str);
+    oneway void sendOnewayCallback(@utf8InCpp String str);
 }

@@ -94,16 +94,6 @@ public:
 
     pid_t               getDebugPid();
 
-    // Whether this binder has been sent to another process.
-    bool wasParceled();
-    // Consider this binder as parceled (setup/init-related calls should no
-    // longer by called. This is automatically set by when this binder is sent
-    // to another process.
-    void setParceled();
-
-    [[nodiscard]] status_t setRpcClientDebug(android::base::unique_fd clientFd,
-                                             const sp<IBinder>& keepAliveBinder);
-
 protected:
     virtual             ~BBinder();
 
@@ -117,24 +107,17 @@ private:
                         BBinder(const BBinder& o);
             BBinder&    operator=(const BBinder& o);
 
-    class RpcServerLink;
     class Extras;
 
     Extras*             getOrCreateExtras();
 
-    [[nodiscard]] status_t setRpcClientDebug(const Parcel& data);
-    void removeRpcServerLink(const sp<RpcServerLink>& link);
-
     std::atomic<Extras*> mExtras;
 
     friend ::android::internal::Stability;
-    int16_t mStability;
-    bool mParceled;
-    uint8_t mReserved0;
-
-#ifdef __LP64__
-    int32_t mReserved1;
-#endif
+    union {
+        int32_t mStability;
+        void* mReserved0;
+    };
 };
 
 // ---------------------------------------------------------------------------

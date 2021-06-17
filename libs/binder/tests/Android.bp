@@ -60,9 +60,7 @@ cc_test {
     defaults: ["binder_test_defaults"],
     srcs: ["binderLibTest.cpp"],
     shared_libs: [
-        "libbase",
         "libbinder",
-        "liblog",
         "libutils",
     ],
     static_libs: [
@@ -103,9 +101,7 @@ cc_test {
 
     srcs: ["binderLibTest.cpp"],
     shared_libs: [
-        "libbase",
         "libbinder",
-        "liblog",
         "libutils",
     ],
     static_libs: [
@@ -120,7 +116,6 @@ aidl_interface {
     host_supported: true,
     unstable: true,
     srcs: [
-        "IBinderRpcCallback.aidl",
         "IBinderRpcSession.aidl",
         "IBinderRpcTest.aidl",
     ],
@@ -137,9 +132,6 @@ cc_test {
     target: {
         darwin: {
             enabled: false,
-        },
-        android: {
-            test_suites: ["vts"],
         },
     },
     defaults: [
@@ -164,6 +156,10 @@ cc_test {
     ],
     test_suites: ["general-tests"],
     require_root: true,
+    // Prevent the unit test target from running on sc-dev as it's not ready.
+    test_options: {
+        unit_test: false,
+    },
 }
 
 cc_benchmark {

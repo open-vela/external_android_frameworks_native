@@ -71,6 +71,8 @@ libbinder_no_vendor_interface_sources = [
 cc_library {
     name: "libbinder",
 
+    version_script: "libbinder.map",
+
     // for vndbinder
     vendor_available: true,
     vndk: {
@@ -92,9 +94,6 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
-        // TODO(b/166468760) remove these three
-        "com.android.media.swcodec",
-        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -136,34 +135,6 @@ cc_library {
             // NOT static to keep the wire protocol unfrozen
             static: {
                 enabled: false,
-            },
-        },
-        android_arm64: {
-            // b/189438896 Sampling PGO restricted to arm64, arm32 in sc-dev
-            pgo: {
-                sampling: true,
-                profile_file: "libbinder/libbinder.profdata",
-            },
-            // b/189438896 Add exported symbols in a map file for ABI stability
-            version_script: "libbinder.arm64.map",
-            target: {
-                vendor: {
-                    version_script: "libbinder.arm64.vendor.map",
-                },
-            },
-        },
-        android_arm: {
-            // b/189438896 Sampling PGO restricted to arm64, arm32 in sc-dev
-            pgo: {
-                sampling: true,
-                profile_file: "libbinder/libbinder.profdata",
-            },
-            // b/189438896 Add exported symbols in a map file for ABI stability
-            version_script: "libbinder.arm32.map",
-            target: {
-                vendor: {
-                    version_script: "libbinder.arm32.vendor.map",
-                },
             },
         },
         vendor: {
@@ -241,6 +212,11 @@ cc_library {
         "performance*",
         "portability*",
     ],
+
+    pgo: {
+        sampling: true,
+        profile_file: "libbinder/libbinder.profdata",
+    },
 }
 
 // AIDL interface between libbinder and framework.jar

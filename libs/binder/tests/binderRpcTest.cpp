@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#include <BnBinderRpcCallback.h>
 #include <BnBinderRpcSession.h>
 #include <BnBinderRpcTest.h>
 #include <aidl/IBinderRpcTest.h>
@@ -24,7 +23,6 @@
 #include <android/binder_libbinder.h>
 #include <binder/Binder.h>
 #include <binder/BpBinder.h>
-#include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 #include <binder/ProcessState.h>
 #include <binder/RpcServer.h>
@@ -35,15 +33,12 @@
 #include <cstdlib>
 #include <iostream>
 #include <thread>
-#include <type_traits>
 
 #include <sys/prctl.h>
 #include <unistd.h>
 
 #include "../RpcState.h"   // for debugging
 #include "../vm_sockets.h" // for VMADDR_*
-
-using namespace std::chrono_literals;
 
 namespace android {
 
@@ -90,22 +85,6 @@ private:
     std::string mName;
 };
 std::atomic<int32_t> MyBinderRpcSession::gNum;
-
-class MyBinderRpcCallback : public BnBinderRpcCallback {
-    Status sendCallback(const std::string& value) {
-        std::unique_lock _l(mMutex);
-        mValues.push_back(value);
-        _l.unlock();
-        mCv.notify_one();
-        return Status::ok();
-    }
-    Status sendOnewayCallback(const std::string& value) { return sendCallback(value); }
-
-public:
-    std::mutex mMutex;
-    std::condition_variable mCv;
-    std::vector<std::string> mValues;
-};
 
 class MyBinderRpcTest : public BnBinderRpcTest {
 public:
@@ -205,33 +184,6 @@ public:
         return sleepMs(ms);
     }
 
-    Status doCallback(const sp<IBinderRpcCallback>& callback, bool oneway, bool delayed,
-                      const std::string& value) override {
-        if (callback == nullptr) {
-            return Status::fromExceptionCode(Status::EX_NULL_POINTER);
-        }
-
-        if (delayed) {
-            std::thread([=]() {
-                ALOGE("Executing delayed callback: '%s'", value.c_str());
-                Status status = doCallback(callback, oneway, false, value);
-                ALOGE("Delayed callback status: '%s'", status.toString8().c_str());
-            }).detach();
-            return Status::ok();
-        }
-
-        if (oneway) {
-            return callback->sendOnewayCallback(value);
-        }
-
-        return callback->sendCallback(value);
-    }
-
-    Status doCallbackAsync(const sp<IBinderRpcCallback>& callback, bool oneway, bool delayed,
-                           const std::string& value) override {
-        return doCallback(callback, oneway, delayed, value);
-    }
-
     Status die(bool cleanup) override {
         if (cleanup) {
             exit(1);
@@ -239,53 +191,42 @@ public:
             _exit(1);
         }
     }
-
-    Status scheduleShutdown() override {
-        sp<RpcServer> strongServer = server.promote();
-        if (strongServer == nullptr) {
-            return Status::fromExceptionCode(Status::EX_NULL_POINTER);
-        }
-        std::thread([=] {
-            LOG_ALWAYS_FATAL_IF(!strongServer->shutdown(), "Could not shutdown");
-        }).detach();
-        return Status::ok();
-    }
-
-    Status useKernelBinderCallingId() override {
-        // this is WRONG! It does not make sense when using RPC binder, and
-        // because it is SO wrong, and so much code calls this, it should abort!
-
-        (void)IPCThreadState::self()->getCallingPid();
-        return Status::ok();
-    }
 };
 sp<IBinder> MyBinderRpcTest::mHeldBinder;
+
+class Pipe {
+public:
+    Pipe() { CHECK(android::base::Pipe(&mRead, &mWrite)); }
+    Pipe(Pipe&&) = default;
+    android::base::borrowed_fd readEnd() { return mRead; }
+    android::base::borrowed_fd writeEnd() { return mWrite; }
+
+private:
+    android::base::unique_fd mRead;
+    android::base::unique_fd mWrite;
+};
 
 class Process {
 public:
     Process(Process&&) = default;
-    Process(const std::function<void(android::base::borrowed_fd /* writeEnd */)>& f) {
-        android::base::unique_fd writeEnd;
-        CHECK(android::base::Pipe(&mReadEnd, &writeEnd)) << strerror(errno);
+    Process(const std::function<void(Pipe*)>& f) {
         if (0 == (mPid = fork())) {
             // racey: assume parent doesn't crash before this is set
             prctl(PR_SET_PDEATHSIG, SIGHUP);
 
-            f(writeEnd);
-
-            exit(0);
+            f(&mPipe);
         }
     }
     ~Process() {
         if (mPid != 0) {
-            waitpid(mPid, nullptr, 0);
+            kill(mPid, SIGKILL);
         }
     }
-    android::base::borrowed_fd readEnd() { return mReadEnd; }
+    Pipe* getPipe() { return &mPipe; }
 
 private:
     pid_t mPid = 0;
-    android::base::unique_fd mReadEnd;
+    Pipe mPipe;
 };
 
 static std::string allocateSocketAddress() {
@@ -293,11 +234,6 @@ static std::string allocateSocketAddress() {
     std::string temp = getenv("TMPDIR") ?: "/tmp";
     return temp + "/binderRpcTest_" + std::to_string(id++);
 };
-
-static unsigned int allocateVsockPort() {
-    static unsigned int vsockPort = 3456;
-    return vsockPort++;
-}
 
 struct ProcessSession {
     // reference to process hosting a socket server
@@ -344,14 +280,11 @@ struct BinderRpcTestProcessSession {
     sp<IBinderRpcTest> rootIface;
 
     // whether session should be invalidated by end of run
-    bool expectAlreadyShutdown = false;
+    bool expectInvalid = false;
 
     BinderRpcTestProcessSession(BinderRpcTestProcessSession&&) = default;
     ~BinderRpcTestProcessSession() {
-        EXPECT_NE(nullptr, rootIface);
-        if (rootIface == nullptr) return;
-
-        if (!expectAlreadyShutdown) {
+        if (!expectInvalid) {
             std::vector<int32_t> remoteCounts;
             // calling over any sessions counts across all sessions
             EXPECT_OK(rootIface->countBinders(&remoteCounts));
@@ -359,8 +292,6 @@ struct BinderRpcTestProcessSession {
             for (auto remoteCount : remoteCounts) {
                 EXPECT_EQ(remoteCount, 1);
             }
-
-            EXPECT_OK(rootIface->scheduleShutdown());
         }
 
         rootIface = nullptr;
@@ -386,24 +317,24 @@ static inline std::string PrintSocketType(const testing::TestParamInfo<SocketTyp
             return "";
     }
 }
-
 class BinderRpc : public ::testing::TestWithParam<SocketType> {
 public:
     // This creates a new process serving an interface on a certain number of
     // threads.
     ProcessSession createRpcTestSocketServerProcess(
-            size_t numThreads, size_t numSessions, size_t numReverseConnections,
+            size_t numThreads, size_t numSessions,
             const std::function<void(const sp<RpcServer>&)>& configure) {
         CHECK_GE(numSessions, 1) << "Must have at least one session to a server";
 
         SocketType socketType = GetParam();
 
-        unsigned int vsockPort = allocateVsockPort();
         std::string addr = allocateSocketAddress();
         unlink(addr.c_str());
+        static unsigned int vsockPort = 3456;
+        vsockPort++;
 
         auto ret = ProcessSession{
-                .host = Process([&](android::base::borrowed_fd writeEnd) {
+                .host = Process([&](Pipe* pipe) {
                     sp<RpcServer> server = RpcServer::make();
 
                     server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
@@ -427,28 +358,23 @@ public:
                             LOG_ALWAYS_FATAL("Unknown socket type");
                     }
 
-                    CHECK(android::base::WriteFully(writeEnd, &outPort, sizeof(outPort)));
+                    CHECK(android::base::WriteFully(pipe->writeEnd(), &outPort, sizeof(outPort)));
 
                     configure(server);
 
                     server->join();
-
-                    // Another thread calls shutdown. Wait for it to complete.
-                    (void)server->shutdown();
                 }),
         };
 
         // always read socket, so that we have waited for the server to start
         unsigned int outPort = 0;
-        CHECK(android::base::ReadFully(ret.host.readEnd(), &outPort, sizeof(outPort)));
+        CHECK(android::base::ReadFully(ret.host.getPipe()->readEnd(), &outPort, sizeof(outPort)));
         if (socketType == SocketType::INET) {
             CHECK_NE(0, outPort);
         }
 
         for (size_t i = 0; i < numSessions; i++) {
             sp<RpcSession> session = RpcSession::make();
-            session->setMaxThreads(numReverseConnections);
-
             switch (socketType) {
                 case SocketType::UNIX:
                     if (session->setupUnixDomainClient(addr.c_str())) goto success;
@@ -470,11 +396,9 @@ public:
     }
 
     BinderRpcTestProcessSession createRpcTestSocketServerProcess(size_t numThreads,
-                                                                 size_t numSessions = 1,
-                                                                 size_t numReverseConnections = 0) {
+                                                                 size_t numSessions = 1) {
         BinderRpcTestProcessSession ret{
                 .proc = createRpcTestSocketServerProcess(numThreads, numSessions,
-                                                         numReverseConnections,
                                                          [&](const sp<RpcServer>& server) {
                                                              sp<MyBinderRpcTest> service =
                                                                      new MyBinderRpcTest;
@@ -489,6 +413,15 @@ public:
         return ret;
     }
 };
+
+TEST_P(BinderRpc, RootObjectIsNull) {
+    auto proc = createRpcTestSocketServerProcess(1, 1, [](const sp<RpcServer>& server) {
+        // this is the default, but to be explicit
+        server->setRootObject(nullptr);
+    });
+
+    EXPECT_EQ(nullptr, proc.sessions.at(0).root);
+}
 
 TEST_P(BinderRpc, Ping) {
     auto proc = createRpcTestSocketServerProcess(1);
@@ -877,7 +810,7 @@ TEST_P(BinderRpc, ThreadingStressTest) {
 TEST_P(BinderRpc, OnewayStressTest) {
     constexpr size_t kNumClientThreads = 10;
     constexpr size_t kNumServerThreads = 10;
-    constexpr size_t kNumCalls = 500;
+    constexpr size_t kNumCalls = 100;
 
     auto proc = createRpcTestSocketServerProcess(kNumServerThreads);
 
@@ -900,7 +833,8 @@ TEST_P(BinderRpc, OnewayCallDoesNotWait) {
     constexpr size_t kReallyLongTimeMs = 100;
     constexpr size_t kSleepMs = kReallyLongTimeMs * 5;
 
-    auto proc = createRpcTestSocketServerProcess(1);
+    // more than one thread, just so this doesn't deadlock
+    auto proc = createRpcTestSocketServerProcess(2);
 
     size_t epochMsBefore = epochMillis();
 
@@ -932,99 +866,6 @@ TEST_P(BinderRpc, OnewayCallQueueing) {
     size_t epochMsAfter = epochMillis();
 
     EXPECT_GT(epochMsAfter, epochMsBefore + kSleepMs * kNumSleeps);
-
-    // pending oneway transactions hold ref, make sure we read data on all
-    // sockets
-    std::vector<std::thread> threads;
-    for (size_t i = 0; i < 1 + kNumExtraServerThreads; i++) {
-        threads.push_back(std::thread([&] { EXPECT_OK(proc.rootIface->sleepMs(250)); }));
-    }
-    for (auto& t : threads) t.join();
-}
-
-TEST_P(BinderRpc, OnewayCallExhaustion) {
-    constexpr size_t kNumClients = 2;
-    constexpr size_t kTooLongMs = 1000;
-
-    auto proc = createRpcTestSocketServerProcess(kNumClients /*threads*/, 2 /*sessions*/);
-
-    // Build up oneway calls on the second session to make sure it terminates
-    // and shuts down. The first session should be unaffected (proc destructor
-    // checks the first session).
-    auto iface = interface_cast<IBinderRpcTest>(proc.proc.sessions.at(1).root);
-
-    std::vector<std::thread> threads;
-    for (size_t i = 0; i < kNumClients; i++) {
-        // one of these threads will get stuck queueing a transaction once the
-        // socket fills up, the other will be able to fill up transactions on
-        // this object
-        threads.push_back(std::thread([&] {
-            while (iface->sleepMsAsync(kTooLongMs).isOk()) {
-            }
-        }));
-    }
-    for (auto& t : threads) t.join();
-
-    Status status = iface->sleepMsAsync(kTooLongMs);
-    EXPECT_EQ(DEAD_OBJECT, status.transactionError()) << status;
-
-    // the second session should be shutdown in the other process by the time we
-    // are able to join above (it'll only be hung up once it finishes processing
-    // any pending commands). We need to erase this session from the record
-    // here, so that the destructor for our session won't check that this
-    // session is valid, but we still want it to test the other session.
-    proc.proc.sessions.erase(proc.proc.sessions.begin() + 1);
-}
-
-TEST_P(BinderRpc, Callbacks) {
-    const static std::string kTestString = "good afternoon!";
-
-    for (bool callIsOneway : {true, false}) {
-        for (bool callbackIsOneway : {true, false}) {
-            for (bool delayed : {true, false}) {
-                auto proc = createRpcTestSocketServerProcess(1, 1, 1);
-                auto cb = sp<MyBinderRpcCallback>::make();
-
-                if (callIsOneway) {
-                    EXPECT_OK(proc.rootIface->doCallbackAsync(cb, callbackIsOneway, delayed,
-                                                              kTestString));
-                } else {
-                    EXPECT_OK(
-                            proc.rootIface->doCallback(cb, callbackIsOneway, delayed, kTestString));
-                }
-
-                using std::literals::chrono_literals::operator""s;
-                std::unique_lock<std::mutex> _l(cb->mMutex);
-                cb->mCv.wait_for(_l, 1s, [&] { return !cb->mValues.empty(); });
-
-                EXPECT_EQ(cb->mValues.size(), 1)
-                        << "callIsOneway: " << callIsOneway
-                        << " callbackIsOneway: " << callbackIsOneway << " delayed: " << delayed;
-                if (cb->mValues.empty()) continue;
-                EXPECT_EQ(cb->mValues.at(0), kTestString)
-                        << "callIsOneway: " << callIsOneway
-                        << " callbackIsOneway: " << callbackIsOneway << " delayed: " << delayed;
-
-                // since we are severing the connection, we need to go ahead and
-                // tell the server to shutdown and exit so that waitpid won't hang
-                EXPECT_OK(proc.rootIface->scheduleShutdown());
-
-                // since this session has a reverse connection w/ a threadpool, we
-                // need to manually shut it down
-                EXPECT_TRUE(proc.proc.sessions.at(0).session->shutdownAndWait(true));
-
-                proc.expectAlreadyShutdown = true;
-            }
-        }
-    }
-}
-
-TEST_P(BinderRpc, OnewayCallbackWithNoThread) {
-    auto proc = createRpcTestSocketServerProcess(1);
-    auto cb = sp<MyBinderRpcCallback>::make();
-
-    Status status = proc.rootIface->doCallback(cb, true /*oneway*/, false /*delayed*/, "anything");
-    EXPECT_EQ(WOULD_BLOCK, status.transactionError());
 }
 
 TEST_P(BinderRpc, Die) {
@@ -1042,21 +883,8 @@ TEST_P(BinderRpc, Die) {
         EXPECT_EQ(DEAD_OBJECT, proc.rootIface->die(doDeathCleanup).transactionError())
                 << "Do death cleanup: " << doDeathCleanup;
 
-        proc.expectAlreadyShutdown = true;
+        proc.expectInvalid = true;
     }
-}
-
-TEST_P(BinderRpc, UseKernelBinderCallingId) {
-    auto proc = createRpcTestSocketServerProcess(1);
-
-    // we can't allocate IPCThreadState so actually the first time should
-    // succeed :(
-    EXPECT_OK(proc.rootIface->useKernelBinderCallingId());
-
-    // second time! we catch the error :)
-    EXPECT_EQ(DEAD_OBJECT, proc.rootIface->useKernelBinderCallingId().transactionError());
-
-    proc.expectAlreadyShutdown = true;
 }
 
 TEST_P(BinderRpc, WorksWithLibbinderNdkPing) {
@@ -1103,33 +931,15 @@ TEST_P(BinderRpc, Fds) {
     ASSERT_EQ(beforeFds, countFds()) << (system("ls -l /proc/self/fd/"), "fd leak?");
 }
 
-static bool testSupportVsockLoopback() {
-    unsigned int vsockPort = allocateVsockPort();
-    sp<RpcServer> server = RpcServer::make();
-    server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
-    CHECK(server->setupVsockServer(vsockPort));
-    server->start();
-
-    sp<RpcSession> session = RpcSession::make();
-    bool okay = session->setupVsockClient(VMADDR_CID_LOCAL, vsockPort);
-    CHECK(server->shutdown());
-    ALOGE("Detected vsock loopback supported: %d", okay);
-    return okay;
-}
-
-static std::vector<SocketType> testSocketTypes() {
-    std::vector<SocketType> ret = {SocketType::UNIX, SocketType::INET};
-
-    static bool hasVsockLoopback = testSupportVsockLoopback();
-
-    if (hasVsockLoopback) {
-        ret.push_back(SocketType::VSOCK);
-    }
-
-    return ret;
-}
-
-INSTANTIATE_TEST_CASE_P(PerSocket, BinderRpc, ::testing::ValuesIn(testSocketTypes()),
+INSTANTIATE_TEST_CASE_P(PerSocket, BinderRpc,
+                        ::testing::ValuesIn({
+                                SocketType::UNIX,
+// TODO(b/185269356): working on host
+#ifdef __BIONIC__
+                                SocketType::VSOCK,
+#endif
+                                SocketType::INET,
+                        }),
                         PrintSocketType);
 
 class BinderRpcServerRootObject : public ::testing::TestWithParam<std::tuple<bool, bool>> {};
@@ -1159,54 +969,6 @@ TEST_P(BinderRpcServerRootObject, WeakRootObject) {
 
 INSTANTIATE_TEST_CASE_P(BinderRpc, BinderRpcServerRootObject,
                         ::testing::Combine(::testing::Bool(), ::testing::Bool()));
-
-class OneOffSignal {
-public:
-    // If notify() was previously called, or is called within |duration|, return true; else false.
-    template <typename R, typename P>
-    bool wait(std::chrono::duration<R, P> duration) {
-        std::unique_lock<std::mutex> lock(mMutex);
-        return mCv.wait_for(lock, duration, [this] { return mValue; });
-    }
-    void notify() {
-        std::unique_lock<std::mutex> lock(mMutex);
-        mValue = true;
-        lock.unlock();
-        mCv.notify_all();
-    }
-
-private:
-    std::mutex mMutex;
-    std::condition_variable mCv;
-    bool mValue = false;
-};
-
-TEST(BinderRpc, Shutdown) {
-    auto addr = allocateSocketAddress();
-    unlink(addr.c_str());
-    auto server = RpcServer::make();
-    server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
-    ASSERT_TRUE(server->setupUnixDomainServer(addr.c_str()));
-    auto joinEnds = std::make_shared<OneOffSignal>();
-
-    // If things are broken and the thread never stops, don't block other tests. Because the thread
-    // may run after the test finishes, it must not access the stack memory of the test. Hence,
-    // shared pointers are passed.
-    std::thread([server, joinEnds] {
-        server->join();
-        joinEnds->notify();
-    }).detach();
-
-    bool shutdown = false;
-    for (int i = 0; i < 10 && !shutdown; i++) {
-        usleep(300 * 1000); // 300ms; total 3s
-        if (server->shutdown()) shutdown = true;
-    }
-    ASSERT_TRUE(shutdown) << "server->shutdown() never returns true";
-
-    ASSERT_TRUE(joinEnds->wait(2s))
-            << "After server->shutdown() returns true, join() did not stop after 2s";
-}
 
 } // namespace android
 

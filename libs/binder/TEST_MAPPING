@@ -19,7 +19,7 @@
       "name": "binderTextOutputTest"
     },
     {
-      "name": "binderParcelTest"
+      "name": "binderUnitTest"
     },
     {
       "name": "binderLibTest"
@@ -31,7 +31,7 @@
       "name": "binderStabilityTest"
     },
     {
-      "name": "binderUtilsHostTest"
+      "name": "binderUtilsTest"
     },
     {
       "name": "libbinder_ndk_unit_test"

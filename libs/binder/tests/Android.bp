@@ -77,14 +77,14 @@ cc_test {
 
 // unit test only, which can run on host and doesn't use /dev/binder
 cc_test {
-    name: "binderUnitTest",
+    name: "binderParcelTest",
     host_supported: true,
     target: {
         darwin: {
             enabled: false,
         },
     },
-    srcs: ["binderParcelUnitTest.cpp"],
+    srcs: ["binderParcelTest.cpp"],
     shared_libs: [
         "libbinder",
         "libutils",

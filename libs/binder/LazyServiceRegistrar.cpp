@@ -40,9 +40,9 @@ public:
 
     void setActiveServicesCallback(const std::function<bool(bool)>& activeServicesCallback);
 
-    bool tryUnregisterLocked();
+    bool tryUnregister();
 
-    void reRegisterLocked();
+    void reRegister();
 
 protected:
     Status onClients(const sp<IBinder>& service, bool clients) override;
@@ -59,9 +59,6 @@ private:
         bool registered = true;
     };
 
-    bool registerServiceLocked(const sp<IBinder>& service, const std::string& name,
-                               bool allowIsolated, int dumpFlags);
-
     /**
      * Looks up a service guaranteed to be registered (service from onClients).
      */
@@ -71,7 +68,7 @@ private:
      * Unregisters all services that we can. If we can't unregister all, re-register other
      * services.
      */
-    void tryShutdownLocked();
+    void tryShutdown();
 
     /**
      * Try to shutdown the process, unless:
@@ -79,10 +76,7 @@ private:
      * - The active services count callback returns 'true', or
      * - Some services have clients.
      */
-    void maybeTryShutdownLocked();
-
-    // for below
-    std::mutex mMutex;
+    void maybeTryShutdown();
 
     // count of services with clients
     size_t mNumConnectedServices;
@@ -123,13 +117,6 @@ private:
 
 bool ClientCounterCallbackImpl::registerService(const sp<IBinder>& service, const std::string& name,
                                             bool allowIsolated, int dumpFlags) {
-    std::lock_guard<std::mutex> lock(mMutex);
-    return registerServiceLocked(service, name, allowIsolated, dumpFlags);
-}
-
-bool ClientCounterCallbackImpl::registerServiceLocked(const sp<IBinder>& service,
-                                                      const std::string& name, bool allowIsolated,
-                                                      int dumpFlags) {
     auto manager = interface_cast<AidlServiceManager>(asBinder(defaultServiceManager()));
 
     bool reRegister = mRegisteredServices.count(name) > 0;
@@ -177,15 +164,14 @@ std::map<std::string, ClientCounterCallbackImpl::Service>::iterator ClientCounte
 }
 
 void ClientCounterCallbackImpl::forcePersist(bool persist) {
-    std::lock_guard<std::mutex> lock(mMutex);
     mForcePersist = persist;
     if (!mForcePersist) {
         // Attempt a shutdown in case the number of clients hit 0 while the flag was on
-        maybeTryShutdownLocked();
+        maybeTryShutdown();
     }
 }
 
-bool ClientCounterCallbackImpl::tryUnregisterLocked() {
+bool ClientCounterCallbackImpl::tryUnregister() {
     auto manager = interface_cast<AidlServiceManager>(asBinder(defaultServiceManager()));
 
     for (auto& [name, entry] : mRegisteredServices) {
@@ -201,14 +187,15 @@ bool ClientCounterCallbackImpl::tryUnregisterLocked() {
     return true;
 }
 
-void ClientCounterCallbackImpl::reRegisterLocked() {
+void ClientCounterCallbackImpl::reRegister() {
     for (auto& [name, entry] : mRegisteredServices) {
         // re-register entry if not already registered
         if (entry.registered) {
             continue;
         }
 
-        if (!registerServiceLocked(entry.service, name, entry.allowIsolated, entry.dumpFlags)) {
+        if (!registerService(entry.service, name, entry.allowIsolated,
+                             entry.dumpFlags)) {
             // Must restart. Otherwise, clients will never be able to get a hold of this service.
             LOG_ALWAYS_FATAL("Bad state: could not re-register services");
         }
@@ -217,7 +204,7 @@ void ClientCounterCallbackImpl::reRegisterLocked() {
     }
 }
 
-void ClientCounterCallbackImpl::maybeTryShutdownLocked() {
+void ClientCounterCallbackImpl::maybeTryShutdown() {
     if (mForcePersist) {
         ALOGI("Shutdown prevented by forcePersist override flag.");
         return;
@@ -236,12 +223,15 @@ void ClientCounterCallbackImpl::maybeTryShutdownLocked() {
     // client count change event, try to shutdown the process if its services
     // have no clients.
     if (!handledInCallback && mNumConnectedServices == 0) {
-        tryShutdownLocked();
+        tryShutdown();
     }
 }
 
+/**
+ * onClients is oneway, so no need to worry about multi-threading. Note that this means multiple
+ * invocations could occur on different threads however.
+ */
 Status ClientCounterCallbackImpl::onClients(const sp<IBinder>& service, bool clients) {
-    std::lock_guard<std::mutex> lock(mMutex);
     auto & [name, registered] = *assertRegisteredService(service);
     if (registered.clients == clients) {
         LOG_ALWAYS_FATAL("Process already thought %s had clients: %d but servicemanager has "
@@ -262,24 +252,23 @@ Status ClientCounterCallbackImpl::onClients(const sp<IBinder>& service, bool cli
     ALOGI("Process has %zu (of %zu available) client(s) in use after notification %s has clients: %d",
           mNumConnectedServices, mRegisteredServices.size(), name.c_str(), clients);
 
-    maybeTryShutdownLocked();
+    maybeTryShutdown();
     return Status::ok();
 }
 
-void ClientCounterCallbackImpl::tryShutdownLocked() {
-    ALOGI("Trying to shut down the service. No clients in use for any service in process.");
+ void ClientCounterCallbackImpl::tryShutdown() {
+     ALOGI("Trying to shut down the service. No clients in use for any service in process.");
 
-    if (tryUnregisterLocked()) {
-        ALOGI("Unregistered all clients and exiting");
-        exit(EXIT_SUCCESS);
-    }
+    if (tryUnregister()) {
+         ALOGI("Unregistered all clients and exiting");
+         exit(EXIT_SUCCESS);
+     }
 
-    reRegisterLocked();
+    reRegister();
 }
 
 void ClientCounterCallbackImpl::setActiveServicesCallback(const std::function<bool(bool)>&
                                                           activeServicesCallback) {
-    std::lock_guard<std::mutex> lock(mMutex);
     mActiveServicesCallback = activeServicesCallback;
 }
 
@@ -302,15 +291,11 @@ void ClientCounterCallback::setActiveServicesCallback(const std::function<bool(b
 }
 
 bool ClientCounterCallback::tryUnregister() {
-    // see comments in header, this should only be called from the active
-    // services callback, see also b/191781736
-    return mImpl->tryUnregisterLocked();
+    return mImpl->tryUnregister();
 }
 
 void ClientCounterCallback::reRegister() {
-    // see comments in header, this should only be called from the active
-    // services callback, see also b/191781736
-    mImpl->reRegisterLocked();
+    mImpl->reRegister();
 }
 
 }  // namespace internal

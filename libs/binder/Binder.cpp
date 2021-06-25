@@ -311,13 +311,15 @@ status_t BBinder::dump(int /*fd*/, const Vector<String16>& /*args*/)
     return NO_ERROR;
 }
 
-void* BBinder::attachObject(const void* objectID, void* object, void* cleanupCookie,
-                            object_cleanup_func func) {
+void BBinder::attachObject(
+    const void* objectID, void* object, void* cleanupCookie,
+    object_cleanup_func func)
+{
     Extras* e = getOrCreateExtras();
-    if (!e) return nullptr; // out of memory
+    if (!e) return; // out of memory
 
     AutoMutex _l(e->mLock);
-    return e->mObjects.attach(objectID, object, cleanupCookie, func);
+    e->mObjects.attach(objectID, object, cleanupCookie, func);
 }
 
 void* BBinder::findObject(const void* objectID) const
@@ -329,12 +331,13 @@ void* BBinder::findObject(const void* objectID) const
     return e->mObjects.find(objectID);
 }
 
-void* BBinder::detachObject(const void* objectID) {
+void BBinder::detachObject(const void* objectID)
+{
     Extras* e = mExtras.load(std::memory_order_acquire);
-    if (!e) return nullptr;
+    if (!e) return;
 
     AutoMutex _l(e->mLock);
-    return e->mObjects.detach(objectID);
+    e->mObjects.detach(objectID);
 }
 
 BBinder* BBinder::localBinder()

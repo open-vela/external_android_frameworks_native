@@ -61,22 +61,22 @@ BpBinder::ObjectManager::~ObjectManager()
     kill();
 }
 
-void* BpBinder::ObjectManager::attach(const void* objectID, void* object, void* cleanupCookie,
-                                      IBinder::object_cleanup_func func) {
+void BpBinder::ObjectManager::attach(
+    const void* objectID, void* object, void* cleanupCookie,
+    IBinder::object_cleanup_func func)
+{
     entry_t e;
     e.object = object;
     e.cleanupCookie = cleanupCookie;
     e.func = func;
 
-    if (ssize_t idx = mObjects.indexOfKey(objectID); idx >= 0) {
-        ALOGI("Trying to attach object ID %p to binder ObjectManager %p with object %p, but object "
-              "ID already in use",
-              objectID, this, object);
-        return mObjects[idx].object;
+    if (mObjects.indexOfKey(objectID) >= 0) {
+        ALOGE("Trying to attach object ID %p to binder ObjectManager %p with object %p, but object ID already in use",
+                objectID, this,  object);
+        return;
     }
 
     mObjects.add(objectID, e);
-    return nullptr;
 }
 
 void* BpBinder::ObjectManager::find(const void* objectID) const
@@ -86,12 +86,9 @@ void* BpBinder::ObjectManager::find(const void* objectID) const
     return mObjects.valueAt(i).object;
 }
 
-void* BpBinder::ObjectManager::detach(const void* objectID) {
-    ssize_t idx = mObjects.indexOfKey(objectID);
-    if (idx < 0) return nullptr;
-    void* value = mObjects[idx].object;
-    mObjects.removeItemsAt(idx, 1);
-    return value;
+void BpBinder::ObjectManager::detach(const void* objectID)
+{
+    mObjects.removeItem(objectID);
 }
 
 void BpBinder::ObjectManager::kill()
@@ -409,11 +406,14 @@ void BpBinder::reportOneDeath(const Obituary& obit)
     recipient->binderDied(wp<BpBinder>::fromExisting(this));
 }
 
-void* BpBinder::attachObject(const void* objectID, void* object, void* cleanupCookie,
-                             object_cleanup_func func) {
+
+void BpBinder::attachObject(
+    const void* objectID, void* object, void* cleanupCookie,
+    object_cleanup_func func)
+{
     AutoMutex _l(mLock);
     ALOGV("Attaching object %p to binder %p (manager=%p)", object, this, &mObjects);
-    return mObjects.attach(objectID, object, cleanupCookie, func);
+    mObjects.attach(objectID, object, cleanupCookie, func);
 }
 
 void* BpBinder::findObject(const void* objectID) const
@@ -422,9 +422,10 @@ void* BpBinder::findObject(const void* objectID) const
     return mObjects.find(objectID);
 }
 
-void* BpBinder::detachObject(const void* objectID) {
+void BpBinder::detachObject(const void* objectID)
+{
     AutoMutex _l(mLock);
-    return mObjects.detach(objectID);
+    mObjects.detach(objectID);
 }
 
 BpBinder* BpBinder::remoteBinder()

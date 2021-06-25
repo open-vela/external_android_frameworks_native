@@ -179,17 +179,6 @@ status_t IBinder::setRpcClientDebug(android::base::unique_fd socketFd,
     return transact(SET_RPC_CLIENT_TRANSACTION, data, &reply);
 }
 
-void IBinder::withLock(const std::function<void()>& doWithLock) {
-    BBinder* local = localBinder();
-    if (local) {
-        local->withLock(doWithLock);
-        return;
-    }
-    BpBinder* proxy = this->remoteBinder();
-    LOG_ALWAYS_FATAL_IF(proxy == nullptr, "binder object must be either local or remote");
-    proxy->withLock(doWithLock);
-}
-
 // ---------------------------------------------------------------------------
 
 class BBinder::RpcServerLink : public IBinder::DeathRecipient {
@@ -322,13 +311,15 @@ status_t BBinder::dump(int /*fd*/, const Vector<String16>& /*args*/)
     return NO_ERROR;
 }
 
-void* BBinder::attachObject(const void* objectID, void* object, void* cleanupCookie,
-                            object_cleanup_func func) {
+void BBinder::attachObject(
+    const void* objectID, void* object, void* cleanupCookie,
+    object_cleanup_func func)
+{
     Extras* e = getOrCreateExtras();
-    LOG_ALWAYS_FATAL_IF(!e, "no memory");
+    if (!e) return; // out of memory
 
     AutoMutex _l(e->mLock);
-    return e->mObjects.attach(objectID, object, cleanupCookie, func);
+    e->mObjects.attach(objectID, object, cleanupCookie, func);
 }
 
 void* BBinder::findObject(const void* objectID) const
@@ -340,20 +331,13 @@ void* BBinder::findObject(const void* objectID) const
     return e->mObjects.find(objectID);
 }
 
-void* BBinder::detachObject(const void* objectID) {
+void BBinder::detachObject(const void* objectID)
+{
     Extras* e = mExtras.load(std::memory_order_acquire);
-    if (!e) return nullptr;
+    if (!e) return;
 
     AutoMutex _l(e->mLock);
-    return e->mObjects.detach(objectID);
-}
-
-void BBinder::withLock(const std::function<void()>& doWithLock) {
-    Extras* e = getOrCreateExtras();
-    LOG_ALWAYS_FATAL_IF(!e, "no memory");
-
-    AutoMutex _l(e->mLock);
-    doWithLock();
+    e->mObjects.detach(objectID);
 }
 
 BBinder* BBinder::localBinder()

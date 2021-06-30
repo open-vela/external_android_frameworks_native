@@ -167,12 +167,9 @@ sp<IBinder> getDeviceService(std::vector<std::string>&& serviceDispatcherArgs) {
         ALOGE("RpcSession::getRootObject returns nullptr");
         return nullptr;
     }
-
-    LOG_ALWAYS_FATAL_IF(
-            nullptr !=
-            binder->attachObject(kDeviceServiceExtraId,
-                                 static_cast<void*>(new CommandResult(std::move(*result))), nullptr,
-                                 &cleanupCommandResult));
+    binder->attachObject(kDeviceServiceExtraId,
+                         static_cast<void*>(new CommandResult(std::move(*result))), nullptr,
+                         &cleanupCommandResult);
     return binder;
 }
 

@@ -33,6 +33,7 @@ constexpr uint8_t kBinderWireFormatVersion = 1;
 Stability::Category Stability::Category::currentFromLevel(Level level) {
     return {
         .version = kBinderWireFormatVersion,
+        .reserved = {0},
         .level = level,
     };
 }
@@ -78,9 +79,9 @@ void Stability::markVintf(IBinder* binder) {
     LOG_ALWAYS_FATAL_IF(result != OK, "Should only mark known object.");
 }
 
-std::string Stability::debugToString(const sp<IBinder>& binder) {
+void Stability::debugLogStability(const std::string& tag, const sp<IBinder>& binder) {
     auto stability = getCategory(binder.get());
-    return stability.debugString();
+    ALOGE("%s: stability is %s", tag.c_str(), stability.debugString().c_str());
 }
 
 void Stability::markVndk(IBinder* binder) {

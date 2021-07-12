@@ -897,7 +897,7 @@ macro_rules! declare_binder_interface {
 #[macro_export]
 macro_rules! declare_binder_enum {
     {
-        $enum:ident : [$backing:ty; $size:expr] {
+        $enum:ident : $backing:ty {
             $( $name:ident = $value:expr, )*
         }
     } => {
@@ -905,11 +905,6 @@ macro_rules! declare_binder_enum {
         pub struct $enum(pub $backing);
         impl $enum {
             $( pub const $name: Self = Self($value); )*
-
-            #[inline(always)]
-            pub const fn enum_values() -> [Self; $size] {
-                [$(Self::$name),*]
-            }
         }
 
         impl $crate::parcel::Serialize for $enum {

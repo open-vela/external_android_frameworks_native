@@ -347,11 +347,7 @@ bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
         return false;
     }
 
-    // Right now, we create all threads at once, making accept4 slow. To avoid hanging the client,
-    // the backlog is increased to a large number.
-    // TODO(b/189955605): Once we create threads dynamically & lazily, the backlog can be reduced
-    //  to 1.
-    if (0 != TEMP_FAILURE_RETRY(listen(serverFd.get(), 50 /*backlog*/))) {
+    if (0 != TEMP_FAILURE_RETRY(listen(serverFd.get(), 1 /*backlog*/))) {
         int savedErrno = errno;
         ALOGE("Could not listen socket at %s: %s", addr.toString().c_str(), strerror(savedErrno));
         return false;

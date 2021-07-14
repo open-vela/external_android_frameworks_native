@@ -94,9 +94,6 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
-        // TODO(b/166468760) remove these three
-        "com.android.media.swcodec",
-        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -192,6 +189,7 @@ cc_library {
 
     header_libs: [
         "libbinder_headers",
+        "libandroid_runtime_threads_headers",
     ],
 
     export_header_lib_headers: [

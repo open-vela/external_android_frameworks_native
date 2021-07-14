@@ -182,7 +182,7 @@ void RpcServer::join() {
 bool RpcServer::shutdown() {
     std::unique_lock<std::mutex> _l(mLock);
     if (mShutdownTrigger == nullptr) {
-        LOG_RPC_DETAIL("Cannot shutdown. No shutdown trigger installed (already shutdown?)");
+        LOG_RPC_DETAIL("Cannot shutdown. No shutdown trigger installed.");
         return false;
     }
 
@@ -211,8 +211,6 @@ bool RpcServer::shutdown() {
         mJoinThread->join();
         mJoinThread.reset();
     }
-
-    LOG_RPC_DETAIL("Finished waiting on shutdown.");
 
     mShutdownTrigger = nullptr;
     return true;

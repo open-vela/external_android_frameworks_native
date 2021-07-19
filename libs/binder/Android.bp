@@ -94,6 +94,9 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
+        // TODO(b/166468760) remove these three
+        "com.android.media.swcodec",
+        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -285,7 +288,7 @@ cc_library {
     // Do not expand the visibility.
     visibility: [
         "//packages/modules/Virtualization/authfs:__subpackages__",
-        "//packages/modules/Virtualization/compos",
+        "//packages/modules/Virtualization/compos:__subpackages__",
         "//packages/modules/Virtualization/microdroid",
     ],
 }

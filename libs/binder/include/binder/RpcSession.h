@@ -47,19 +47,6 @@ public:
     static sp<RpcSession> make();
 
     /**
-     * Set the maximum number of threads allowed to be made (for things like callbacks).
-     * By default, this is 0. This must be called before setting up this connection as a client.
-     * Server sessions will inherits this value from RpcServer.
-     *
-     * If this is called, 'shutdown' on this session must also be called.
-     * Otherwise, a threadpool will leak.
-     *
-     * TODO(b/189955605): start these dynamically
-     */
-    void setMaxThreads(size_t threads);
-    size_t getMaxThreads();
-
-    /**
      * This should be called once per thread, matching 'join' in the remote
      * process.
      */
@@ -96,101 +83,42 @@ public:
      */
     status_t getRemoteMaxThreads(size_t* maxThreads);
 
-    /**
-     * Shuts down the service.
-     *
-     * For client sessions, wait can be true or false. For server sessions,
-     * waiting is not currently supported (will abort).
-     *
-     * Warning: this is currently not active/nice (the server isn't told we're
-     * shutting down). Being nicer to the server could potentially make it
-     * reclaim resources faster.
-     *
-     * If this is called w/ 'wait' true, then this will wait for shutdown to
-     * complete before returning. This will hang if it is called from the
-     * session threadpool (when processing received calls).
-     */
-    [[nodiscard]] bool shutdownAndWait(bool wait);
-
-    [[nodiscard]] status_t transact(const sp<IBinder>& binder, uint32_t code, const Parcel& data,
+    [[nodiscard]] status_t transact(const RpcAddress& address, uint32_t code, const Parcel& data,
                                     Parcel* reply, uint32_t flags);
     [[nodiscard]] status_t sendDecStrong(const RpcAddress& address);
 
     ~RpcSession();
 
-    /**
-     * Server if this session is created as part of a server (symmetrical to
-     * client servers). Otherwise, nullptr.
-     */
-    sp<RpcServer> server();
+    wp<RpcServer> server();
 
     // internal only
     const std::unique_ptr<RpcState>& state() { return mState; }
 
+    class PrivateAccessorForId {
+    private:
+        friend class RpcSession;
+        friend class RpcState;
+        explicit PrivateAccessorForId(const RpcSession* session) : mSession(session) {}
+
+        const std::optional<int32_t> get() { return mSession->mId; }
+
+        const RpcSession* mSession;
+    };
+    PrivateAccessorForId getPrivateAccessorForId() const { return PrivateAccessorForId(this); }
+
 private:
+    friend PrivateAccessorForId;
     friend sp<RpcSession>;
     friend RpcServer;
-    friend RpcState;
     RpcSession();
 
-    /** This is not a pipe. */
-    struct FdTrigger {
-        /** Returns nullptr for error case */
-        static std::unique_ptr<FdTrigger> make();
+    status_t readId();
 
-        /**
-         * Close the write end of the pipe so that the read end receives POLLHUP.
-         * Not threadsafe.
-         */
-        void trigger();
-
-        /**
-         * Whether this has been triggered.
-         */
-        bool isTriggered();
-
-        /**
-         * Poll for a read event.
-         *
-         * event - for pollfd
-         *
-         * Return:
-         *   true - time to read!
-         *   false - trigger happened
-         */
-        status_t triggerablePoll(base::borrowed_fd fd, int16_t event);
-
-        /**
-         * Read (or write), but allow to be interrupted by this trigger.
-         *
-         * Return:
-         *   true - succeeded in completely processing 'size'
-         *   false - interrupted (failure or trigger)
-         */
-        status_t interruptableReadFully(base::borrowed_fd fd, void* data, size_t size);
-        status_t interruptableWriteFully(base::borrowed_fd fd, const void* data, size_t size);
-
-    private:
-        base::unique_fd mWrite;
-        base::unique_fd mRead;
-    };
-
-    class EventListener : public virtual RefBase {
-    public:
-        virtual void onSessionLockedAllIncomingThreadsEnded(const sp<RpcSession>& session) = 0;
-        virtual void onSessionIncomingThreadEnded() = 0;
-    };
-
-    class WaitForShutdownListener : public EventListener {
-    public:
-        void onSessionLockedAllIncomingThreadsEnded(const sp<RpcSession>& session) override;
-        void onSessionIncomingThreadEnded() override;
-        void waitForShutdown(std::unique_lock<std::mutex>& lock);
-
-    private:
-        std::condition_variable mCv;
-        bool mShutdown = false;
-    };
+    // transfer ownership of thread
+    void preJoin(std::thread thread);
+    // join on thread passed to preJoin
+    void join(base::unique_fd client);
+    void terminateLocked();
 
     struct RpcConnection : public RefBase {
         base::unique_fd fd;
@@ -198,41 +126,14 @@ private:
         // whether this or another thread is currently using this fd to make
         // or receive transactions.
         std::optional<pid_t> exclusiveTid;
-
-        bool allowNested = false;
     };
 
-    status_t readId();
-
-    // A thread joining a server must always call these functions in order, and
-    // cleanup is only programmed once into join. These are in separate
-    // functions in order to allow for different locks to be taken during
-    // different parts of setup.
-    //
-    // transfer ownership of thread (usually done while a lock is taken on the
-    // structure which originally owns the thread)
-    void preJoinThreadOwnership(std::thread thread);
-    // pass FD to thread and read initial connection information
-    struct PreJoinSetupResult {
-        // Server connection object associated with this
-        sp<RpcConnection> connection;
-        // Status of setup
-        status_t status;
-    };
-    PreJoinSetupResult preJoinSetup(base::unique_fd fd);
-    // join on thread passed to preJoinThreadOwnership
-    static void join(sp<RpcSession>&& session, PreJoinSetupResult&& result);
-
-    [[nodiscard]] bool setupSocketClient(const RpcSocketAddress& address);
-    [[nodiscard]] bool setupOneSocketConnection(const RpcSocketAddress& address,
-                                                const RpcAddress& sessionId, bool server);
-    [[nodiscard]] bool addIncomingConnection(base::unique_fd fd);
-    [[nodiscard]] bool addOutgoingConnection(base::unique_fd fd, bool init);
-    [[nodiscard]] bool setForServer(const wp<RpcServer>& server,
-                                    const wp<RpcSession::EventListener>& eventListener,
-                                    const RpcAddress& sessionId);
-    sp<RpcConnection> assignIncomingConnectionToThisThread(base::unique_fd fd);
-    [[nodiscard]] bool removeIncomingConnection(const sp<RpcConnection>& connection);
+    bool setupSocketClient(const RpcSocketAddress& address);
+    bool setupOneSocketClient(const RpcSocketAddress& address, int32_t sessionId);
+    void addClientConnection(base::unique_fd fd);
+    void setForServer(const wp<RpcServer>& server, int32_t sessionId);
+    sp<RpcConnection> assignServerToThisThread(base::unique_fd fd);
+    bool removeServerConnection(const sp<RpcConnection>& connection);
 
     enum class ConnectionUse {
         CLIENT,
@@ -240,14 +141,12 @@ private:
         CLIENT_REFCOUNT,
     };
 
-    // Object representing exclusive access to a connection.
+    // RAII object for session connection
     class ExclusiveConnection {
     public:
-        static status_t find(const sp<RpcSession>& session, ConnectionUse use,
-                             ExclusiveConnection* connection);
-
+        explicit ExclusiveConnection(const sp<RpcSession>& session, ConnectionUse use);
         ~ExclusiveConnection();
-        const sp<RpcConnection>& get() { return mConnection; }
+        const base::unique_fd& fd() { return mConnection->fd; }
 
     private:
         static void findConnection(pid_t tid, sp<RpcConnection>* exclusive,
@@ -264,13 +163,13 @@ private:
         bool mReentrant = false;
     };
 
-    // On the other side of a session, for each of mOutgoingConnections here, there should
-    // be one of mIncomingConnections on the other side (and vice versa).
+    // On the other side of a session, for each of mClientConnections here, there should
+    // be one of mServerConnections on the other side (and vice versa).
     //
     // For the simplest session, a single server with one client, you would
     // have:
-    //  - the server has a single 'mIncomingConnections' and a thread listening on this
-    //  - the client has a single 'mOutgoingConnections' and makes calls to this
+    //  - the server has a single 'mServerConnections' and a thread listening on this
+    //  - the client has a single 'mClientConnections' and makes calls to this
     //  - here, when the client makes a call, the server can call back into it
     //    (nested calls), but outside of this, the client will only ever read
     //    calls from the server when it makes a call itself.
@@ -279,26 +178,27 @@ private:
     // serve calls to the server at all times (e.g. if it hosts a callback)
 
     wp<RpcServer> mForServer; // maybe null, for client sessions
-    sp<WaitForShutdownListener> mShutdownListener; // used for client sessions
-    wp<EventListener> mEventListener; // mForServer if server, mShutdownListener if client
 
-    std::optional<RpcAddress> mId;
-
-    std::unique_ptr<FdTrigger> mShutdownTrigger;
+    // TODO(b/183988761): this shouldn't be guessable
+    std::optional<int32_t> mId;
 
     std::unique_ptr<RpcState> mState;
 
     std::mutex mMutex; // for all below
 
-    size_t mMaxThreads = 0;
-
     std::condition_variable mAvailableConnectionCv; // for mWaitingThreads
     size_t mWaitingThreads = 0;
     // hint index into clients, ++ when sending an async transaction
-    size_t mOutgoingConnectionsOffset = 0;
-    std::vector<sp<RpcConnection>> mOutgoingConnections;
-    std::vector<sp<RpcConnection>> mIncomingConnections;
+    size_t mClientConnectionsOffset = 0;
+    std::vector<sp<RpcConnection>> mClientConnections;
+    std::vector<sp<RpcConnection>> mServerConnections;
+
+    // TODO(b/185167543): use for reverse sessions (allow client to also
+    // serve calls on a session).
+    // TODO(b/185167543): allow sharing between different sessions in a
+    // process? (or combine with mServerConnections)
     std::map<std::thread::id, std::thread> mThreads;
+    bool mTerminated = false;
 };
 
 } // namespace android

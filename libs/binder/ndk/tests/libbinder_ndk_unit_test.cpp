@@ -39,6 +39,7 @@
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
+#include <thread>
 #include "android/binder_ibinder.h"
 
 using namespace android;
@@ -241,26 +242,6 @@ TEST(NdkBinder, CheckServiceThatDoesExist) {
     AIBinder_decStrong(binder);
 }
 
-TEST(NdkBinder, UnimplementedDump) {
-    sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
-    ASSERT_NE(foo, nullptr);
-    AIBinder* binder = foo->getBinder();
-    EXPECT_EQ(OK, AIBinder_dump(binder, STDOUT_FILENO, nullptr, 0));
-    AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedShell) {
-    // libbinder_ndk doesn't support calling shell, so we are calling from the
-    // libbinder across processes to the NDK service which doesn't implement
-    // shell
-    static const sp<android::IServiceManager> sm(android::defaultServiceManager());
-    sp<IBinder> testService = sm->getService(String16(IFoo::kSomeInstanceName));
-
-    Vector<String16> argsVec;
-    EXPECT_EQ(OK, IBinder::shellCommand(testService, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-                                        argsVec, nullptr, nullptr));
-}
-
 TEST(NdkBinder, DoubleNumber) {
     sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
     ASSERT_NE(foo, nullptr);
@@ -268,6 +249,27 @@ TEST(NdkBinder, DoubleNumber) {
     int32_t out;
     EXPECT_EQ(STATUS_OK, foo->doubleNumber(1, &out));
     EXPECT_EQ(2, out);
+}
+
+TEST(NdkBinder, GetTestServiceStressTest) {
+    // libbinder has some complicated logic to make sure only one instance of
+    // ABpBinder is associated with each binder.
+
+    constexpr size_t kNumThreads = 10;
+    constexpr size_t kNumCalls = 1000;
+    std::vector<std::thread> threads;
+
+    for (size_t i = 0; i < kNumThreads; i++) {
+        threads.push_back(std::thread([&]() {
+            for (size_t j = 0; j < kNumCalls; j++) {
+                auto binder =
+                        ndk::SpAIBinder(AServiceManager_checkService(IFoo::kSomeInstanceName));
+                EXPECT_EQ(STATUS_OK, AIBinder_ping(binder.get()));
+            }
+        }));
+    }
+
+    for (auto& thread : threads) thread.join();
 }
 
 void defaultInstanceCounter(const char* instance, void* context) {

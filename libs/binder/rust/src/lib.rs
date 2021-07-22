@@ -115,14 +115,21 @@ pub use error::{status_t, ExceptionCode, Result, Status, StatusCode};
 pub use native::add_service;
 pub use native::Binder;
 pub use parcel::Parcel;
-pub use proxy::{get_interface, get_service};
+pub use proxy::{get_interface, get_service, wait_for_interface, wait_for_service};
 pub use proxy::{AssociateClass, DeathRecipient, Proxy, SpIBinder, WpIBinder};
 pub use state::{ProcessState, ThreadState};
+
+/// Unstable, in-development API that only allowlisted clients are allowed to use.
+pub mod unstable_api {
+    pub use crate::binder::AsNative;
+    pub use crate::proxy::unstable_api::new_spibinder;
+    pub use crate::sys::AIBinder;
+}
 
 /// The public API usable outside AIDL-generated interface crates.
 pub mod public_api {
     pub use super::parcel::ParcelFileDescriptor;
-    pub use super::{add_service, get_interface};
+    pub use super::{add_service, get_interface, wait_for_interface};
     pub use super::{
         BinderFeatures, DeathRecipient, ExceptionCode, IBinder, Interface, ProcessState, SpIBinder,
         Status, StatusCode, Strong, ThreadState, Weak, WpIBinder,

@@ -261,15 +261,15 @@ status_t BpBinder::transact(
         if (code >= FIRST_CALL_TRANSACTION && code <= LAST_CALL_TRANSACTION) {
             using android::internal::Stability;
 
-            int16_t stability = Stability::getRepr(this);
+            auto category = Stability::getCategory(this);
             Stability::Level required = privateVendor ? Stability::VENDOR
                 : Stability::getLocalLevel();
 
-            if (CC_UNLIKELY(!Stability::check(stability, required))) {
+            if (CC_UNLIKELY(!Stability::check(category, required))) {
                 ALOGE("Cannot do a user transaction on a %s binder (%s) in a %s context.",
-                      Stability::levelString(stability).c_str(),
-                      String8(getInterfaceDescriptor()).c_str(),
-                      Stability::levelString(required).c_str());
+                    category.debugString().c_str(),
+                    String8(getInterfaceDescriptor()).c_str(),
+                    Stability::levelString(required).c_str());
                 return BAD_TYPE;
             }
         }

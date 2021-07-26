@@ -173,7 +173,7 @@ static void release_object(const sp<ProcessState>& proc,
 status_t Parcel::finishFlattenBinder(const sp<IBinder>& binder)
 {
     internal::Stability::tryMarkCompilationUnit(binder.get());
-    int16_t rep = internal::Stability::getCategory(binder.get()).repr();
+    int16_t rep = internal::Stability::getRepr(binder.get());
     return writeInt32(rep);
 }
 
@@ -597,7 +597,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__)
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

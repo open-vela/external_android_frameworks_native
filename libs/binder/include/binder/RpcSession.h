@@ -37,10 +37,6 @@ class RpcServer;
 class RpcSocketAddress;
 class RpcState;
 
-constexpr uint32_t RPC_WIRE_PROTOCOL_VERSION_NEXT = 0;
-constexpr uint32_t RPC_WIRE_PROTOCOL_VERSION_EXPERIMENTAL = 0xF0000000;
-constexpr uint32_t RPC_WIRE_PROTOCOL_VERSION = RPC_WIRE_PROTOCOL_VERSION_EXPERIMENTAL;
-
 /**
  * This represents a session (group of connections) between a client
  * and a server. Multiple connections are needed for multiple parallel "binder"
@@ -62,13 +58,6 @@ public:
      */
     void setMaxThreads(size_t threads);
     size_t getMaxThreads();
-
-    /**
-     * By default, the minimum of the supported versions of the client and the
-     * server will be used. Usually, this API should only be used for debugging.
-     */
-    [[nodiscard]] bool setProtocolVersion(uint32_t version);
-    std::optional<uint32_t> getProtocolVersion();
 
     /**
      * This should be called once per thread, matching 'join' in the remote
@@ -302,7 +291,6 @@ private:
     std::mutex mMutex; // for all below
 
     size_t mMaxThreads = 0;
-    std::optional<uint32_t> mProtocolVersion;
 
     std::condition_variable mAvailableConnectionCv; // for mWaitingThreads
     size_t mWaitingThreads = 0;

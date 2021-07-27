@@ -29,7 +29,11 @@ class Parcel;
 struct RpcWireAddress;
 
 /**
- * This class represents an identifier across an RPC boundary.
+ * This class represents an identifier of a binder object.
+ *
+ * The purpose of this class it to hide the ABI of an RpcWireAddress, and
+ * potentially allow us to change the size of it in the future (RpcWireAddress
+ * is PIMPL, essentially - although the type that is used here is not exposed).
  */
 class RpcAddress {
 public:
@@ -42,20 +46,9 @@ public:
     bool isZero() const;
 
     /**
-     * Create a new random address.
+     * Create a new address which is unique
      */
-    static RpcAddress random(bool forServer);
-
-    /**
-     * Whether this address was created with 'bool forServer' true
-     */
-    bool isForServer() const;
-
-    /**
-     * Whether this address is one that could be created with this version of
-     * libbinder.
-     */
-    bool isRecognizedType() const;
+    static RpcAddress unique();
 
     /**
      * Creates a new address as a copy of an embedded object.

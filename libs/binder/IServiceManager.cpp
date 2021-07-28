@@ -154,7 +154,8 @@ bool checkCallingPermission(const String16& permission, int32_t* outPid, int32_t
     return checkPermission(permission, pid, uid);
 }
 
-bool checkPermission(const String16& permission, pid_t pid, uid_t uid, bool logPermissionFailure) {
+bool checkPermission(const String16& permission, pid_t pid, uid_t uid)
+{
     static Mutex gPermissionControllerLock;
     static sp<IPermissionController> gPermissionController;
 
@@ -179,10 +180,8 @@ bool checkPermission(const String16& permission, pid_t pid, uid_t uid, bool logP
 
             // Is this a permission failure, or did the controller go away?
             if (IInterface::asBinder(pc)->isBinderAlive()) {
-                if (logPermissionFailure) {
-                    ALOGW("Permission failure: %s from uid=%d pid=%d", String8(permission).string(),
-                          uid, pid);
-                }
+                ALOGW("Permission failure: %s from uid=%d pid=%d",
+                        String8(permission).string(), uid, pid);
                 return false;
             }
 

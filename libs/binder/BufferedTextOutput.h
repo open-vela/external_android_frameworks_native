@@ -47,7 +47,10 @@ protected:
 private:
     struct BufferState;
     struct ThreadState;
-
+    
+    static  ThreadState*getThreadState();
+    static  void        threadDestructor(void *st);
+    
             BufferState*getBuffer() const;
             
     uint32_t            mFlags;

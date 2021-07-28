@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_BINDER_H
+#define ANDROID_BINDER_H
 
 #include <atomic>
 #include <stdint.h>
@@ -54,11 +55,12 @@ public:
                                         uint32_t flags = 0,
                                         wp<DeathRecipient>* outRecipient = nullptr);
 
-    virtual void* attachObject(const void* objectID, void* object, void* cleanupCookie,
-                               object_cleanup_func func) final;
+    virtual void        attachObject(   const void* objectID,
+                                        void* object,
+                                        void* cleanupCookie,
+                                        object_cleanup_func func) final;
     virtual void*       findObject(const void* objectID) const final;
-    virtual void* detachObject(const void* objectID) final;
-    void withLock(const std::function<void()>& doWithLock);
+    virtual void        detachObject(const void* objectID) final;
 
     virtual BBinder*    localBinder();
 
@@ -86,22 +88,7 @@ public:
     int                 getMinSchedulerPolicy();
     int                 getMinSchedulerPriority();
 
-    // Whether realtime scheduling policies are inherited.
-    bool                isInheritRt();
-    // This must be called before the object is sent to another process. Not thread safe.
-    void                setInheritRt(bool inheritRt);
-
     pid_t               getDebugPid();
-
-    // Whether this binder has been sent to another process.
-    bool wasParceled();
-    // Consider this binder as parceled (setup/init-related calls should no
-    // longer by called. This is automatically set by when this binder is sent
-    // to another process.
-    void setParceled();
-
-    [[nodiscard]] status_t setRpcClientDebug(android::base::unique_fd clientFd,
-                                             const sp<IBinder>& keepAliveBinder);
 
 protected:
     virtual             ~BBinder();
@@ -116,24 +103,17 @@ private:
                         BBinder(const BBinder& o);
             BBinder&    operator=(const BBinder& o);
 
-    class RpcServerLink;
     class Extras;
 
     Extras*             getOrCreateExtras();
 
-    [[nodiscard]] status_t setRpcClientDebug(const Parcel& data);
-    void removeRpcServerLink(const sp<RpcServerLink>& link);
-
     std::atomic<Extras*> mExtras;
 
     friend ::android::internal::Stability;
-    int16_t mStability;
-    bool mParceled;
-    uint8_t mReserved0;
-
-#ifdef __LP64__
-    int32_t mReserved1;
-#endif
+    union {
+        int32_t mStability;
+        void* mReserved0;
+    };
 };
 
 // ---------------------------------------------------------------------------
@@ -147,8 +127,8 @@ protected:
     virtual void            onLastStrongRef(const void* id);
     virtual bool            onIncStrongAttempted(uint32_t flags, const void* id);
 
-    inline IBinder* remote() const { return mRemote; }
-    inline sp<IBinder> remoteStrong() const { return sp<IBinder>::fromExisting(mRemote); }
+    inline  IBinder*        remote()                { return mRemote; }
+    inline  IBinder*        remote() const          { return mRemote; }
 
 private:
                             BpRefBase(const BpRefBase& o);
@@ -162,3 +142,5 @@ private:
 } // namespace android
 
 // ---------------------------------------------------------------------------
+
+#endif // ANDROID_BINDER_H

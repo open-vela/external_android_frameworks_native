@@ -14,20 +14,17 @@
  * limitations under the License.
  */
 
-use crate::binder::{AsNative, Interface, InterfaceClassMethods, Remotable, Stability, TransactionCode};
+use crate::binder::{AsNative, Interface, InterfaceClassMethods, Remotable, TransactionCode};
 use crate::error::{status_result, status_t, Result, StatusCode};
 use crate::parcel::{Parcel, Serialize};
 use crate::proxy::SpIBinder;
 use crate::sys;
 
 use std::convert::TryFrom;
-use std::ffi::{c_void, CStr, CString};
-use std::fs::File;
+use std::ffi::{c_void, CString};
 use std::mem::ManuallyDrop;
 use std::ops::Deref;
-use std::os::raw::c_char;
-use std::os::unix::io::FromRawFd;
-use std::slice;
+use std::ptr;
 
 /// Rust wrapper around Binder remotable objects.
 ///
@@ -51,39 +48,12 @@ pub struct Binder<T: Remotable> {
 /// to how `Box<T>` is `Send` if `T` is `Send`.
 unsafe impl<T: Remotable> Send for Binder<T> {}
 
-/// # Safety
-///
-/// A `Binder<T>` is a pair of unique owning pointers to two values:
-///   * a C++ ABBinder which is thread-safe, i.e. `Send + Sync`
-///   * a Rust object which implements `Remotable`; this trait requires `Send + Sync`
-///
-/// `ABBinder` contains an immutable `mUserData` pointer, which is actually a
-/// pointer to a boxed `T: Remotable`, which is `Sync`. `ABBinder` also contains
-/// a mutable pointer to its class, but mutation of this field is controlled by
-/// a mutex and it is only allowed to be set once, therefore we can concurrently
-/// access this field safely. `ABBinder` inherits from `BBinder`, which is also
-/// thread-safe. Thus `ABBinder` is thread-safe.
-///
-/// Both pointers are unique (never escape the `Binder<T>` object and are not copied)
-/// so we can essentially treat `Binder<T>` as a box-like containing the two objects;
-/// the box-like object inherits `Sync` from the two inner values, similarly
-/// to how `Box<T>` is `Sync` if `T` is `Sync`.
-unsafe impl<T: Remotable> Sync for Binder<T> {}
-
 impl<T: Remotable> Binder<T> {
-    /// Create a new Binder remotable object with default stability
+    /// Create a new Binder remotable object.
     ///
     /// This moves the `rust_object` into an owned [`Box`] and Binder will
     /// manage its lifetime.
     pub fn new(rust_object: T) -> Binder<T> {
-        Self::new_with_stability(rust_object, Stability::default())
-    }
-
-    /// Create a new Binder remotable object with the given stability
-    ///
-    /// This moves the `rust_object` into an owned [`Box`] and Binder will
-    /// manage its lifetime.
-    pub fn new_with_stability(rust_object: T, stability: Stability) -> Binder<T> {
         let class = T::get_class();
         let rust_object = Box::into_raw(Box::new(rust_object));
         let ibinder = unsafe {
@@ -95,12 +65,10 @@ impl<T: Remotable> Binder<T> {
             // ends.
             sys::AIBinder_new(class.into(), rust_object as *mut c_void)
         };
-        let mut binder = Binder {
+        Binder {
             ibinder,
             rust_object,
-        };
-        binder.mark_stability(stability);
-        binder
+        }
     }
 
     /// Set the extension of a binder interface. This allows a downstream
@@ -193,42 +161,6 @@ impl<T: Remotable> Binder<T> {
     pub fn get_descriptor() -> &'static str {
         T::get_descriptor()
     }
-
-    /// Mark this binder object with the given stability guarantee
-    fn mark_stability(&mut self, stability: Stability) {
-        match stability {
-            Stability::Local => self.mark_local_stability(),
-            Stability::Vintf => {
-                unsafe {
-                    // Safety: Self always contains a valid `AIBinder` pointer, so
-                    // we can always call this C API safely.
-                    sys::AIBinder_markVintfStability(self.as_native_mut());
-                }
-            }
-        }
-    }
-
-    /// Mark this binder object with local stability, which is vendor if we are
-    /// building for the VNDK and system otherwise.
-    #[cfg(vendor_ndk)]
-    fn mark_local_stability(&mut self) {
-        unsafe {
-            // Safety: Self always contains a valid `AIBinder` pointer, so
-            // we can always call this C API safely.
-            sys::AIBinder_markVendorStability(self.as_native_mut());
-        }
-    }
-
-    /// Mark this binder object with local stability, which is vendor if we are
-    /// building for the VNDK and system otherwise.
-    #[cfg(not(vendor_ndk))]
-    fn mark_local_stability(&mut self) {
-        unsafe {
-            // Safety: Self always contains a valid `AIBinder` pointer, so
-            // we can always call this C API safely.
-            sys::AIBinder_markSystemStability(self.as_native_mut());
-        }
-    }
 }
 
 impl<T: Remotable> Interface for Binder<T> {
@@ -295,7 +227,7 @@ impl<T: Remotable> InterfaceClassMethods for Binder<T> {
     /// Must be called with a valid pointer to a `T` object. After this call,
     /// the pointer will be invalid and should not be dereferenced.
     unsafe extern "C" fn on_destroy(object: *mut c_void) {
-        Box::from_raw(object as *mut T);
+        ptr::drop_in_place(object as *mut T)
     }
 
     /// Called whenever a new, local `AIBinder` object is needed of a specific
@@ -311,37 +243,6 @@ impl<T: Remotable> InterfaceClassMethods for Binder<T> {
         // We just return the argument, as it is already a pointer to the rust
         // object created by Box.
         args
-    }
-
-    /// Called to handle the `dump` transaction.
-    ///
-    /// # Safety
-    ///
-    /// Must be called with a non-null, valid pointer to a local `AIBinder` that
-    /// contains a `T` pointer in its user data. fd should be a non-owned file
-    /// descriptor, and args must be an array of null-terminated string
-    /// poiinters with length num_args.
-    unsafe extern "C" fn on_dump(binder: *mut sys::AIBinder, fd: i32, args: *mut *const c_char, num_args: u32) -> status_t {
-        if fd < 0 {
-            return StatusCode::UNEXPECTED_NULL as status_t;
-        }
-        // We don't own this file, so we need to be careful not to drop it.
-        let file = ManuallyDrop::new(File::from_raw_fd(fd));
-
-        if args.is_null() {
-            return StatusCode::UNEXPECTED_NULL as status_t;
-        }
-        let args = slice::from_raw_parts(args, num_args as usize);
-        let args: Vec<_> = args.iter().map(|s| CStr::from_ptr(*s)).collect();
-
-        let object = sys::AIBinder_getUserData(binder);
-        let binder: &T = &*(object as *const T);
-        let res = binder.on_dump(&file, &args);
-
-        match res {
-            Ok(()) => 0,
-            Err(e) => e as status_t,
-        }
     }
 }
 
@@ -460,10 +361,6 @@ impl Remotable for () {
         _data: &Parcel,
         _reply: &mut Parcel,
     ) -> Result<()> {
-        Ok(())
-    }
-
-    fn on_dump(&self, _file: &File, _args: &[&CStr]) -> Result<()> {
         Ok(())
     }
 

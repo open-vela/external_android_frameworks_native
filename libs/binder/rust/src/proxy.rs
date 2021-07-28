@@ -17,8 +17,7 @@
 //! Rust API for interacting with a remote binder service.
 
 use crate::binder::{
-    AsNative, FromIBinder, IBinder, IBinderInternal, Interface, InterfaceClass, Strong,
-    TransactionCode, TransactionFlags,
+    AsNative, FromIBinder, IBinder, Interface, InterfaceClass, TransactionCode, TransactionFlags,
 };
 use crate::error::{status_result, Result, StatusCode};
 use crate::parcel::{
@@ -27,7 +26,6 @@ use crate::parcel::{
 };
 use crate::sys;
 
-use std::cmp::Ordering;
 use std::convert::TryInto;
 use std::ffi::{c_void, CString};
 use std::fmt;
@@ -48,13 +46,8 @@ impl fmt::Debug for SpIBinder {
 
 /// # Safety
 ///
-/// An `SpIBinder` is an immutable handle to a C++ IBinder, which is thread-safe
+/// An `SpIBinder` is a handle to a C++ IBinder, which is thread-safe
 unsafe impl Send for SpIBinder {}
-
-/// # Safety
-///
-/// An `SpIBinder` is an immutable handle to a C++ IBinder, which is thread-safe
-unsafe impl Sync for SpIBinder {}
 
 impl SpIBinder {
     /// Create an `SpIBinder` wrapper object from a raw `AIBinder` pointer.
@@ -77,20 +70,6 @@ impl SpIBinder {
         ptr.as_mut().map(|p| Self(p))
     }
 
-    /// Extract a raw `AIBinder` pointer from this wrapper.
-    ///
-    /// This method should _only_ be used for testing. Do not try to use the NDK
-    /// interface directly for anything else.
-    ///
-    /// # Safety
-    ///
-    /// The resulting pointer is valid only as long as the SpIBinder is alive.
-    /// The SpIBinder object retains ownership of the AIBinder and the caller
-    /// should not attempt to free the returned pointer.
-    pub unsafe fn as_raw(&self) -> *mut sys::AIBinder {
-        self.0
-    }
-
     /// Return true if this binder object is hosted in a different process than
     /// the current one.
     pub fn is_remote(&self) -> bool {
@@ -106,13 +85,13 @@ impl SpIBinder {
     ///
     /// If this object does not implement the expected interface, the error
     /// `StatusCode::BAD_TYPE` is returned.
-    pub fn into_interface<I: FromIBinder + Interface + ?Sized>(self) -> Result<Strong<I>> {
+    pub fn into_interface<I: FromIBinder + ?Sized>(self) -> Result<Box<I>> {
         FromIBinder::try_from(self)
     }
 
     /// Return the interface class of this binder object, if associated with
     /// one.
-    pub fn get_class(&mut self) -> Option<InterfaceClass> {
+    pub(crate) fn get_class(&mut self) -> Option<InterfaceClass> {
         unsafe {
             // Safety: `SpIBinder` guarantees that it always contains a valid
             // `AIBinder` pointer. `AIBinder_getClass` returns either a null
@@ -122,26 +101,6 @@ impl SpIBinder {
             let class = sys::AIBinder_getClass(self.as_native_mut());
             class.as_ref().map(|p| InterfaceClass::from_ptr(p))
         }
-    }
-
-    /// Creates a new weak reference to this binder object.
-    pub fn downgrade(&mut self) -> WpIBinder {
-        WpIBinder::new(self)
-    }
-}
-
-pub mod unstable_api {
-    use super::{sys, SpIBinder};
-
-    /// A temporary API to allow the client to create a `SpIBinder` from a `sys::AIBinder`. This is
-    /// needed to bridge RPC binder, which doesn't have Rust API yet.
-    /// TODO(b/184872979): remove once the Rust API is created.
-    ///
-    /// # Safety
-    ///
-    /// See `SpIBinder::from_raw`.
-    pub unsafe fn new_spibinder(ptr: *mut sys::AIBinder) -> Option<SpIBinder> {
-        SpIBinder::from_raw(ptr)
     }
 }
 
@@ -167,36 +126,6 @@ impl AssociateClass for SpIBinder {
             // always safe.
             sys::AIBinder_associateClass(self.as_native_mut(), class.into())
         }
-    }
-}
-
-impl Ord for SpIBinder {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let less_than = unsafe {
-            // Safety: SpIBinder always holds a valid `AIBinder` pointer, so
-            // this pointer is always safe to pass to `AIBinder_lt` (null is
-            // also safe to pass to this function, but we should never do that).
-            sys::AIBinder_lt(self.0, other.0)
-        };
-        let greater_than = unsafe {
-            // Safety: SpIBinder always holds a valid `AIBinder` pointer, so
-            // this pointer is always safe to pass to `AIBinder_lt` (null is
-            // also safe to pass to this function, but we should never do that).
-            sys::AIBinder_lt(other.0, self.0)
-        };
-        if !less_than && !greater_than {
-            Ordering::Equal
-        } else if less_than {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    }
-}
-
-impl PartialOrd for SpIBinder {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
     }
 }
 
@@ -232,7 +161,7 @@ impl Drop for SpIBinder {
     }
 }
 
-impl<T: AsNative<sys::AIBinder>> IBinderInternal for T {
+impl<T: AsNative<sys::AIBinder>> IBinder for T {
     /// Perform a binder transaction
     fn transact<F: FnOnce(&mut Parcel) -> Result<()>>(
         &self,
@@ -321,7 +250,9 @@ impl<T: AsNative<sys::AIBinder>> IBinderInternal for T {
     }
 
     fn set_requesting_sid(&mut self, enable: bool) {
-        unsafe { sys::AIBinder_setRequestingSid(self.as_native_mut(), enable) };
+        unsafe {
+            sys::AIBinder_setRequestingSid(self.as_native_mut(), enable)
+        };
     }
 
     fn dump<F: AsRawFd>(&mut self, fp: &F, args: &[&str]) -> Result<()> {
@@ -370,15 +301,13 @@ impl<T: AsNative<sys::AIBinder>> IBinderInternal for T {
         status_result(status)?;
         Ok(ibinder)
     }
-}
 
-impl<T: AsNative<sys::AIBinder>> IBinder for T {
     fn link_to_death(&mut self, recipient: &mut DeathRecipient) -> Result<()> {
         status_result(unsafe {
             // Safety: `SpIBinder` guarantees that `self` always contains a
             // valid pointer to an `AIBinder`. `recipient` can always be
             // converted into a valid pointer to an
-            // `AIBinder_DeathRecipient`. Any value is safe to pass as the
+            // `AIBinder_DeatRecipient`. Any value is safe to pass as the
             // cookie, although we depend on this value being set by
             // `get_cookie` when the death recipient callback is called.
             sys::AIBinder_linkToDeath(
@@ -394,7 +323,7 @@ impl<T: AsNative<sys::AIBinder>> IBinder for T {
             // Safety: `SpIBinder` guarantees that `self` always contains a
             // valid pointer to an `AIBinder`. `recipient` can always be
             // converted into a valid pointer to an
-            // `AIBinder_DeathRecipient`. Any value is safe to pass as the
+            // `AIBinder_DeatRecipient`. Any value is safe to pass as the
             // cookie, although we depend on this value being set by
             // `get_cookie` when the death recipient callback is called.
             sys::AIBinder_unlinkToDeath(
@@ -423,10 +352,7 @@ impl SerializeArray for Option<&SpIBinder> {}
 
 impl Deserialize for SpIBinder {
     fn deserialize(parcel: &Parcel) -> Result<SpIBinder> {
-        parcel
-            .read_binder()
-            .transpose()
-            .unwrap_or(Err(StatusCode::UNEXPECTED_NULL))
+        parcel.read_binder().transpose().unwrap()
     }
 }
 
@@ -441,30 +367,15 @@ impl DeserializeArray for Option<SpIBinder> {}
 
 /// A weak reference to a Binder remote object.
 ///
-/// This struct encapsulates the generic C++ `wp<IBinder>` class. This wrapper
-/// is untyped; typed interface access is implemented by the AIDL compiler.
+/// This struct encapsulates the C++ `wp<IBinder>` class. However, this wrapper
+/// is untyped, so properly typed versions implementing a particular binder
+/// interface should be crated with [`declare_binder_interface!`].
 pub struct WpIBinder(*mut sys::AIBinder_Weak);
-
-impl fmt::Debug for WpIBinder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad("WpIBinder")
-    }
-}
-
-/// # Safety
-///
-/// A `WpIBinder` is an immutable handle to a C++ IBinder, which is thread-safe.
-unsafe impl Send for WpIBinder {}
-
-/// # Safety
-///
-/// A `WpIBinder` is an immutable handle to a C++ IBinder, which is thread-safe.
-unsafe impl Sync for WpIBinder {}
 
 impl WpIBinder {
     /// Create a new weak reference from an object that can be converted into a
     /// raw `AIBinder` pointer.
-    fn new<B: AsNative<sys::AIBinder>>(binder: &mut B) -> WpIBinder {
+    pub fn new<B: AsNative<sys::AIBinder>>(binder: &mut B) -> WpIBinder {
         let ptr = unsafe {
             // Safety: `SpIBinder` guarantees that `binder` always contains a
             // valid pointer to an `AIBinder`.
@@ -483,75 +394,6 @@ impl WpIBinder {
             // to pass to `SpIBinder::from_raw`.
             let ptr = sys::AIBinder_Weak_promote(self.0);
             SpIBinder::from_raw(ptr)
-        }
-    }
-}
-
-impl Clone for WpIBinder {
-    fn clone(&self) -> Self {
-        let ptr = unsafe {
-            // Safety: WpIBinder always holds a valid `AIBinder_Weak` pointer,
-            // so this pointer is always safe to pass to `AIBinder_Weak_clone`
-            // (although null is also a safe value to pass to this API).
-            //
-            // We get ownership of the returned pointer, so can construct a new
-            // WpIBinder object from it.
-            sys::AIBinder_Weak_clone(self.0)
-        };
-        assert!(
-            !ptr.is_null(),
-            "Unexpected null pointer from AIBinder_Weak_clone"
-        );
-        Self(ptr)
-    }
-}
-
-impl Ord for WpIBinder {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let less_than = unsafe {
-            // Safety: WpIBinder always holds a valid `AIBinder_Weak` pointer,
-            // so this pointer is always safe to pass to `AIBinder_Weak_lt`
-            // (null is also safe to pass to this function, but we should never
-            // do that).
-            sys::AIBinder_Weak_lt(self.0, other.0)
-        };
-        let greater_than = unsafe {
-            // Safety: WpIBinder always holds a valid `AIBinder_Weak` pointer,
-            // so this pointer is always safe to pass to `AIBinder_Weak_lt`
-            // (null is also safe to pass to this function, but we should never
-            // do that).
-            sys::AIBinder_Weak_lt(other.0, self.0)
-        };
-        if !less_than && !greater_than {
-            Ordering::Equal
-        } else if less_than {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    }
-}
-
-impl PartialOrd for WpIBinder {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for WpIBinder {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl Eq for WpIBinder {}
-
-impl Drop for WpIBinder {
-    fn drop(&mut self) {
-        unsafe {
-            // Safety: WpIBinder always holds a valid `AIBinder_Weak` pointer, so we
-            // know this pointer is safe to pass to `AIBinder_Weak_delete` here.
-            sys::AIBinder_Weak_delete(self.0);
         }
     }
 }
@@ -678,32 +520,10 @@ pub fn get_service(name: &str) -> Option<SpIBinder> {
     }
 }
 
-/// Retrieve an existing service, or start it if it is configured as a dynamic
-/// service and isn't yet started.
-pub fn wait_for_service(name: &str) -> Option<SpIBinder> {
-    let name = CString::new(name).ok()?;
-    unsafe {
-        // Safety: `AServiceManager_waitforService` returns either a null
-        // pointer or a valid pointer to an owned `AIBinder`. Either of these
-        // values is safe to pass to `SpIBinder::from_raw`.
-        SpIBinder::from_raw(sys::AServiceManager_waitForService(name.as_ptr()))
-    }
-}
-
 /// Retrieve an existing service for a particular interface, blocking for a few
 /// seconds if it doesn't yet exist.
-pub fn get_interface<T: FromIBinder + ?Sized>(name: &str) -> Result<Strong<T>> {
+pub fn get_interface<T: FromIBinder + ?Sized>(name: &str) -> Result<Box<T>> {
     let service = get_service(name);
-    match service {
-        Some(service) => FromIBinder::try_from(service),
-        None => Err(StatusCode::NAME_NOT_FOUND),
-    }
-}
-
-/// Retrieve an existing service for a particular interface, or start it if it
-/// is configured as a dynamic service and isn't yet started.
-pub fn wait_for_interface<T: FromIBinder + ?Sized>(name: &str) -> Result<Strong<T>> {
-    let service = wait_for_service(name);
     match service {
         Some(service) => FromIBinder::try_from(service),
         None => Err(StatusCode::NAME_NOT_FOUND),

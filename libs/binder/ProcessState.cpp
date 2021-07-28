@@ -27,8 +27,8 @@
 #include <utils/String8.h>
 #include <utils/threads.h>
 
+#include <private/binder/binder_module.h>
 #include "Static.h"
-#include "binder_module.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -43,7 +43,6 @@
 
 #define BINDER_VM_SIZE ((1 * 1024 * 1024) - sysconf(_SC_PAGE_SIZE) * 2)
 #define DEFAULT_MAX_BINDER_THREADS 15
-#define DEFAULT_ENABLE_ONEWAY_SPAM_DETECTION 1
 
 #ifdef __ANDROID_VNDK__
 const char* kDefaultDriver = "/dev/vndbinder";
@@ -106,7 +105,7 @@ sp<ProcessState> ProcessState::init(const char *driver, bool requireDefault)
         }
 
         std::lock_guard<std::mutex> l(gProcessMutex);
-        gProcess = sp<ProcessState>::make(driver);
+        gProcess = new ProcessState(driver);
     });
 
     if (requireDefault) {
@@ -125,13 +124,13 @@ sp<IBinder> ProcessState::getContextObject(const sp<IBinder>& /*caller*/)
 {
     sp<IBinder> context = getStrongProxyForHandle(0);
 
-    if (context) {
-        // The root object is special since we get it directly from the driver, it is never
-        // written by Parcell::writeStrongBinder.
-        internal::Stability::markCompilationUnit(context.get());
-    } else {
-        ALOGW("Not able to get context object on %s.", mDriverName.c_str());
+    if (context == nullptr) {
+       ALOGW("Not able to get context object on %s.", mDriverName.c_str());
     }
+
+    // The root object is special since we get it directly from the driver, it is never
+    // written by Parcell::writeStrongBinder.
+    internal::Stability::tryMarkCompilationUnit(context.get());
 
     return context;
 }
@@ -205,13 +204,11 @@ ssize_t ProcessState::getKernelReferences(size_t buf_count, uintptr_t* buf)
 // that the handle points to. Can only be used by the servicemanager.
 //
 // Returns -1 in case of failure, otherwise the strong reference count.
-ssize_t ProcessState::getStrongRefCountForNode(const sp<BpBinder>& binder) {
-    if (binder->isRpcBinder()) return -1;
-
+ssize_t ProcessState::getStrongRefCountForNodeByHandle(int32_t handle) {
     binder_node_info_for_ref info;
     memset(&info, 0, sizeof(binder_node_info_for_ref));
 
-    info.handle = binder->getPrivateAccessorForId().binderHandle();
+    info.handle = handle;
 
     status_t result = ioctl(mDriverFD, BINDER_GET_NODE_INFO_FOR_REF, &info);
 
@@ -300,8 +297,8 @@ sp<IBinder> ProcessState::getStrongProxyForHandle(int32_t handle)
                    return nullptr;
             }
 
-            sp<BpBinder> b = BpBinder::create(handle);
-            e->binder = b.get();
+            b = BpBinder::create(handle);
+            e->binder = b;
             if (b) e->refs = b->getWeakRefs();
             result = b;
         } else {
@@ -341,7 +338,7 @@ void ProcessState::spawnPooledThread(bool isMain)
     if (mThreadPoolStarted) {
         String8 name = makeBinderThreadName();
         ALOGV("Spawning new pooled thread, name=%s\n", name.string());
-        sp<Thread> t = sp<PoolThread>::make(isMain);
+        sp<Thread> t = new PoolThread(isMain);
         t->run(name.string());
     }
 }
@@ -357,23 +354,6 @@ status_t ProcessState::setThreadPoolMaxThreadCount(size_t maxThreads) {
         ALOGE("Binder ioctl to set max threads failed: %s", strerror(-result));
     }
     return result;
-}
-
-size_t ProcessState::getThreadPoolMaxThreadCount() const {
-    // may actually be one more than this, if join is called
-    if (mThreadPoolStarted) return mMaxThreads;
-    // must not be initialized or maybe has poll thread setup, we
-    // currently don't track this in libbinder
-    return 0;
-}
-
-status_t ProcessState::enableOnewaySpamDetection(bool enable) {
-    uint32_t enableDetection = enable ? 1 : 0;
-    if (ioctl(mDriverFD, BINDER_ENABLE_ONEWAY_SPAM_DETECTION, &enableDetection) == -1) {
-        ALOGI("Binder ioctl to enable oneway spam detection failed: %s", strerror(errno));
-        return -errno;
-    }
-    return NO_ERROR;
 }
 
 void ProcessState::giveThreadPoolName() {
@@ -406,11 +386,6 @@ static int open_driver(const char *driver)
         if (result == -1) {
             ALOGE("Binder ioctl to set max threads failed: %s", strerror(errno));
         }
-        uint32_t enable = DEFAULT_ENABLE_ONEWAY_SPAM_DETECTION;
-        result = ioctl(fd, BINDER_ENABLE_ONEWAY_SPAM_DETECTION, &enable);
-        if (result == -1) {
-            ALOGD("Binder ioctl to enable oneway spam detection failed: %s", strerror(errno));
-        }
     } else {
         ALOGW("Opening '%s' failed: %s\n", driver, strerror(errno));
     }
@@ -424,13 +399,18 @@ ProcessState::ProcessState(const char *driver)
     , mThreadCountLock(PTHREAD_MUTEX_INITIALIZER)
     , mThreadCountDecrement(PTHREAD_COND_INITIALIZER)
     , mExecutingThreadsCount(0)
-    , mWaitingForThreads(0)
     , mMaxThreads(DEFAULT_MAX_BINDER_THREADS)
     , mStarvationStartTimeMs(0)
     , mThreadPoolStarted(false)
     , mThreadPoolSeq(1)
     , mCallRestriction(CallRestriction::NONE)
 {
+
+// TODO(b/166468760): enforce in build system
+#if defined(__ANDROID_APEX__)
+    LOG_ALWAYS_FATAL("Cannot use libbinder in APEX (only system.img libbinder) since it is not stable.");
+#endif
+
     if (mDriverFD >= 0) {
         // mmap the binder, providing a chunk of virtual address space to receive transactions.
         mVMStart = mmap(nullptr, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, 0);

@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-#pragma once
+//
+#ifndef ANDROID_IINTERFACE_H
+#define ANDROID_IINTERFACE_H
 
 #include <binder/Binder.h>
 
@@ -143,10 +145,11 @@ public:                                                                 \
     {                                                                   \
         ::android::sp<I##INTERFACE> intr;                               \
         if (obj != nullptr) {                                           \
-            intr = ::android::sp<I##INTERFACE>::cast(                   \
-                obj->queryLocalInterface(I##INTERFACE::descriptor));    \
+            intr = static_cast<I##INTERFACE*>(                          \
+                obj->queryLocalInterface(                               \
+                        I##INTERFACE::descriptor).get());               \
             if (intr == nullptr) {                                      \
-                intr = ::android::sp<Bp##INTERFACE>::make(obj);         \
+                intr = new Bp##INTERFACE(obj);                          \
             }                                                           \
         }                                                               \
         return intr;                                                    \
@@ -185,7 +188,7 @@ template<typename INTERFACE>
 inline sp<IInterface> BnInterface<INTERFACE>::queryLocalInterface(
         const String16& _descriptor)
 {
-    if (_descriptor == INTERFACE::descriptor) return sp<IInterface>::fromExisting(this);
+    if (_descriptor == INTERFACE::descriptor) return this;
     return nullptr;
 }
 
@@ -239,11 +242,23 @@ constexpr const char* const kManualInterfaces[] = {
   "android.hardware.ICameraRecordingProxyListener",
   "android.hardware.ICrypto",
   "android.hardware.IOMXObserver",
+  "android.hardware.ISoundTrigger",
+  "android.hardware.ISoundTriggerClient",
+  "android.hardware.ISoundTriggerHwService",
   "android.hardware.IStreamListener",
   "android.hardware.IStreamSource",
+  "android.input.IInputFlinger",
+  "android.input.ISetInputWindowsListener",
+  "android.media.IAudioFlinger",
+  "android.media.IAudioFlingerClient",
+  "android.media.IAudioPolicyService",
+  "android.media.IAudioPolicyServiceClient",
   "android.media.IAudioService",
+  "android.media.IAudioTrack",
   "android.media.IDataSource",
   "android.media.IDrmClient",
+  "android.media.IEffect",
+  "android.media.IEffectClient",
   "android.media.IMediaCodecList",
   "android.media.IMediaDrmService",
   "android.media.IMediaExtractor",
@@ -267,6 +282,7 @@ constexpr const char* const kManualInterfaces[] = {
   "android.os.IComplexTypeInterface",
   "android.os.IPermissionController",
   "android.os.IPingResponder",
+  "android.os.IPowerManager",
   "android.os.IProcessInfoService",
   "android.os.ISchedulingPolicyService",
   "android.os.IStringConstants",
@@ -319,3 +335,5 @@ constexpr bool allowedManualInterface(const char* name) {
 
 } // namespace internal
 } // namespace android
+
+#endif // ANDROID_IINTERFACE_H

@@ -163,8 +163,7 @@ int main(int argc, char** argv) {
 
     // LOCAL SERVERS
     std::shared_ptr<NdkServer> ndkServer = SharedRefBase::make<NdkServer>();
-    CHECK(STATUS_OK ==
-          AServiceManager_addService(ndkServer->asBinder().get(), kLocalNdkServerName.c_str()));
+    AServiceManager_addService(ndkServer->asBinder().get(), kLocalNdkServerName.c_str());
 
     return RUN_ALL_TESTS();
 }

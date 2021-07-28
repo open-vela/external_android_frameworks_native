@@ -117,28 +117,9 @@ LIBBINDER_NDK31 { # introduced=31
     ABinderProcess_setupPolling; # apex
     AIBinder_getCallingSid; # apex
     AIBinder_setRequestingSid; # apex
-    AParcel_markSensitive; # systemapi llndk
-    AServiceManager_forEachDeclaredInstance; # apex llndk
-    AServiceManager_forceLazyServicesPersist; # llndk
     AServiceManager_isDeclared; # apex llndk
-    AServiceManager_isUpdatableViaApex; # apex
-    AServiceManager_reRegister; # llndk
     AServiceManager_registerLazyService; # llndk
-    AServiceManager_setActiveServicesCallback; # llndk
-    AServiceManager_tryUnregister; # llndk
     AServiceManager_waitForService; # apex llndk
-
-    AIBinder_forceDowngradeToSystemStability; # apex
-    AIBinder_forceDowngradeToVendorStability; # llndk
-
-    AIBinder_Class_getDescriptor;
-    AIBinder_Weak_clone;
-    AIBinder_Weak_lt;
-    AIBinder_lt;
-    AParcel_appendFrom;
-    AParcel_create;
-    AParcel_getDataSize;
-    AParcel_reset;
 };
 
 LIBBINDER_NDK_PLATFORM {

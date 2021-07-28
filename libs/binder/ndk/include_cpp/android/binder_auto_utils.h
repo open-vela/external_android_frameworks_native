@@ -27,7 +27,6 @@
 #pragma once
 
 #include <android/binder_ibinder.h>
-#include <android/binder_internal_logging.h>
 #include <android/binder_parcel.h>
 #include <android/binder_status.h>
 
@@ -45,14 +44,9 @@ namespace ndk {
 class SpAIBinder {
    public:
     /**
-     * Default constructor.
-     */
-    SpAIBinder() : mBinder(nullptr) {}
-
-    /**
      * Takes ownership of one strong refcount of binder.
      */
-    explicit SpAIBinder(AIBinder* binder) : mBinder(binder) {}
+    explicit SpAIBinder(AIBinder* binder = nullptr) : mBinder(binder) {}
 
     /**
      * Convenience operator for implicitly constructing an SpAIBinder from nullptr. This is not
@@ -75,9 +69,6 @@ class SpAIBinder {
      * ownership of that other object.
      */
     SpAIBinder& operator=(const SpAIBinder& other) {
-        if (this == &other) {
-            return *this;
-        }
         AIBinder_incStrong(other.mBinder);
         set(other.mBinder);
         return *this;
@@ -115,13 +106,6 @@ class SpAIBinder {
      */
     AIBinder** getR() { return &mBinder; }
 
-    bool operator!=(const SpAIBinder& rhs) const { return get() != rhs.get(); }
-    bool operator<(const SpAIBinder& rhs) const { return get() < rhs.get(); }
-    bool operator<=(const SpAIBinder& rhs) const { return get() <= rhs.get(); }
-    bool operator==(const SpAIBinder& rhs) const { return get() == rhs.get(); }
-    bool operator>(const SpAIBinder& rhs) const { return get() > rhs.get(); }
-    bool operator>=(const SpAIBinder& rhs) const { return get() >= rhs.get(); }
-
    private:
     AIBinder* mBinder = nullptr;
 };
@@ -131,7 +115,7 @@ namespace impl {
 /**
  * This baseclass owns a single object, used to make various classes RAII.
  */
-template <typename T, void (*Destroy)(T), T DEFAULT>
+template <typename T, typename R, R (*Destroy)(T), T DEFAULT>
 class ScopedAResource {
    public:
     /**
@@ -181,10 +165,8 @@ class ScopedAResource {
     ScopedAResource& operator=(const ScopedAResource&) = delete;
 
     // move-constructing/assignment is okay
-    ScopedAResource(ScopedAResource&& other) noexcept : mT(std::move(other.mT)) {
-        other.mT = DEFAULT;
-    }
-    ScopedAResource& operator=(ScopedAResource&& other) noexcept {
+    ScopedAResource(ScopedAResource&& other) : mT(std::move(other.mT)) { other.mT = DEFAULT; }
+    ScopedAResource& operator=(ScopedAResource&& other) {
         set(other.mT);
         other.mT = DEFAULT;
         return *this;
@@ -199,7 +181,7 @@ class ScopedAResource {
 /**
  * Convenience wrapper. See AParcel.
  */
-class ScopedAParcel : public impl::ScopedAResource<AParcel*, AParcel_delete, nullptr> {
+class ScopedAParcel : public impl::ScopedAResource<AParcel*, void, AParcel_delete, nullptr> {
    public:
     /**
      * Takes ownership of a.
@@ -208,25 +190,15 @@ class ScopedAParcel : public impl::ScopedAResource<AParcel*, AParcel_delete, nul
     ~ScopedAParcel() {}
     ScopedAParcel(ScopedAParcel&&) = default;
     ScopedAParcel& operator=(ScopedAParcel&&) = default;
-
-    bool operator!=(const ScopedAParcel& rhs) const { return get() != rhs.get(); }
-    bool operator<(const ScopedAParcel& rhs) const { return get() < rhs.get(); }
-    bool operator<=(const ScopedAParcel& rhs) const { return get() <= rhs.get(); }
-    bool operator==(const ScopedAParcel& rhs) const { return get() == rhs.get(); }
-    bool operator>(const ScopedAParcel& rhs) const { return get() > rhs.get(); }
-    bool operator>=(const ScopedAParcel& rhs) const { return get() >= rhs.get(); }
 };
 
 /**
  * Convenience wrapper. See AStatus.
  */
-class ScopedAStatus : public impl::ScopedAResource<AStatus*, AStatus_delete, nullptr> {
+class ScopedAStatus : public impl::ScopedAResource<AStatus*, void, AStatus_delete, nullptr> {
    public:
     /**
      * Takes ownership of a.
-     *
-     * WARNING: this constructor is only expected to be used when reading a
-     *     status value. Use `ScopedAStatus::ok()` instead.
      */
     explicit ScopedAStatus(AStatus* a = nullptr) : ScopedAResource(a) {}
     ~ScopedAStatus() {}
@@ -259,24 +231,10 @@ class ScopedAStatus : public impl::ScopedAResource<AStatus*, AStatus_delete, nul
     const char* getMessage() const { return AStatus_getMessage(get()); }
 
     std::string getDescription() const {
-        if (__builtin_available(android 30, *)) {
-            const char* cStr = AStatus_getDescription(get());
-            std::string ret = cStr;
-            AStatus_deleteDescription(cStr);
-            return ret;
-        }
-        binder_exception_t exception = getExceptionCode();
-        std::string desc = std::to_string(exception);
-        if (exception == EX_SERVICE_SPECIFIC) {
-            desc += " (" + std::to_string(getServiceSpecificError()) + ")";
-        } else if (exception == EX_TRANSACTION_FAILED) {
-            desc += " (" + std::to_string(getStatus()) + ")";
-        }
-        if (const char* msg = getMessage(); msg != nullptr) {
-            desc += ": ";
-            desc += msg;
-        }
-        return desc;
+        const char* cStr = AStatus_getDescription(get());
+        std::string ret = cStr;
+        AStatus_deleteDescription(cStr);
+        return ret;
     }
 
     /**
@@ -306,7 +264,7 @@ class ScopedAStatus : public impl::ScopedAResource<AStatus*, AStatus_delete, nul
  * Convenience wrapper. See AIBinder_DeathRecipient.
  */
 class ScopedAIBinder_DeathRecipient
-    : public impl::ScopedAResource<AIBinder_DeathRecipient*, AIBinder_DeathRecipient_delete,
+    : public impl::ScopedAResource<AIBinder_DeathRecipient*, void, AIBinder_DeathRecipient_delete,
                                    nullptr> {
    public:
     /**
@@ -323,7 +281,7 @@ class ScopedAIBinder_DeathRecipient
  * Convenience wrapper. See AIBinder_Weak.
  */
 class ScopedAIBinder_Weak
-    : public impl::ScopedAResource<AIBinder_Weak*, AIBinder_Weak_delete, nullptr> {
+    : public impl::ScopedAResource<AIBinder_Weak*, void, AIBinder_Weak_delete, nullptr> {
    public:
     /**
      * Takes ownership of a.
@@ -339,38 +297,18 @@ class ScopedAIBinder_Weak
     SpAIBinder promote() { return SpAIBinder(AIBinder_Weak_promote(get())); }
 };
 
-namespace internal {
-
-static void closeWithError(int fd) {
-    if (fd == -1) return;
-    int ret = close(fd);
-    if (ret != 0) {
-        syslog(LOG_ERR, "Could not close FD %d: %s", fd, strerror(errno));
-    }
-}
-
-}  // namespace internal
-
 /**
  * Convenience wrapper for a file descriptor.
  */
-class ScopedFileDescriptor : public impl::ScopedAResource<int, internal::closeWithError, -1> {
+class ScopedFileDescriptor : public impl::ScopedAResource<int, int, close, -1> {
    public:
     /**
      * Takes ownership of a.
      */
-    ScopedFileDescriptor() : ScopedFileDescriptor(-1) {}
-    explicit ScopedFileDescriptor(int a) : ScopedAResource(a) {}
+    explicit ScopedFileDescriptor(int a = -1) : ScopedAResource(a) {}
     ~ScopedFileDescriptor() {}
     ScopedFileDescriptor(ScopedFileDescriptor&&) = default;
     ScopedFileDescriptor& operator=(ScopedFileDescriptor&&) = default;
-
-    bool operator!=(const ScopedFileDescriptor& rhs) const { return get() != rhs.get(); }
-    bool operator<(const ScopedFileDescriptor& rhs) const { return get() < rhs.get(); }
-    bool operator<=(const ScopedFileDescriptor& rhs) const { return get() <= rhs.get(); }
-    bool operator==(const ScopedFileDescriptor& rhs) const { return get() == rhs.get(); }
-    bool operator>(const ScopedFileDescriptor& rhs) const { return get() > rhs.get(); }
-    bool operator>=(const ScopedFileDescriptor& rhs) const { return get() >= rhs.get(); }
 };
 
 }  // namespace ndk

@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_MEMORY_HEAP_BASE_H
+#define ANDROID_MEMORY_HEAP_BASE_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -50,8 +51,6 @@ public:
 
     /*
      * maps memory from ashmem, with the given name for debugging
-     * if the READ_ONLY flag is set, the memory will be writeable by the calling process,
-     * but not by others. this is NOT the case with the other ctors.
      */
     explicit MemoryHeapBase(size_t size, uint32_t flags = 0, char const* name = nullptr);
 
@@ -79,7 +78,7 @@ protected:
             int flags = 0, const char* device = nullptr);
 
 private:
-    status_t mapfd(int fd, bool writeableByCaller, size_t size, off_t offset = 0);
+    status_t mapfd(int fd, size_t size, off_t offset = 0);
 
     int         mFD;
     size_t      mSize;
@@ -92,3 +91,5 @@ private:
 
 // ---------------------------------------------------------------------------
 } // namespace android
+
+#endif // ANDROID_MEMORY_HEAP_BASE_H

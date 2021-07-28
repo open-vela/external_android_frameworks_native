@@ -18,9 +18,9 @@
 #include <aidl/BnBinderNdkUnitTest.h>
 #include <aidl/BnEmpty.h>
 #include <android-base/logging.h>
+#include <android/binder_context.h>
 #include <android/binder_ibinder_jni.h>
 #include <android/binder_ibinder_platform.h>
-#include <android/binder_libbinder.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
 #include <gtest/gtest.h>
@@ -39,19 +39,12 @@
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
-#include <thread>
-#include "android/binder_ibinder.h"
 
 using namespace android;
 
 constexpr char kExistingNonNdkService[] = "SurfaceFlinger";
 constexpr char kBinderNdkUnitTestService[] = "BinderNdkUnitTest";
 constexpr char kLazyBinderNdkUnitTestService[] = "LazyBinderNdkUnitTest";
-constexpr char kForcePersistNdkUnitTestService[] = "ForcePersistNdkUnitTestService";
-constexpr char kActiveServicesNdkUnitTestService[] = "ActiveServicesNdkUnitTestService";
-
-constexpr unsigned int kShutdownWaitTime = 10;
-constexpr uint64_t kContextTestValue = 0xb4e42fb4d9a1d715;
 
 class MyBinderNdkUnitTest : public aidl::BnBinderNdkUnitTest {
     ndk::ScopedAStatus repeatInt(int32_t in, int32_t* out) {
@@ -82,46 +75,6 @@ class MyBinderNdkUnitTest : public aidl::BnBinderNdkUnitTest {
         fsync(out);
         return STATUS_OK;
     }
-    ndk::ScopedAStatus forcePersist(bool persist) {
-        AServiceManager_forceLazyServicesPersist(persist);
-        return ndk::ScopedAStatus::ok();
-    }
-    ndk::ScopedAStatus setCustomActiveServicesCallback() {
-        AServiceManager_setActiveServicesCallback(activeServicesCallback, this);
-        return ndk::ScopedAStatus::ok();
-    }
-    static bool activeServicesCallback(bool hasClients, void* context) {
-        if (hasClients) {
-            return false;
-        }
-
-        // Unregister all services
-        if (!AServiceManager_tryUnregister()) {
-            // Prevent shutdown (test will fail)
-            return false;
-        }
-
-        // Re-register all services
-        AServiceManager_reRegister();
-
-        // Unregister again before shutdown
-        if (!AServiceManager_tryUnregister()) {
-            // Prevent shutdown (test will fail)
-            return false;
-        }
-
-        // Check if the context was passed correctly
-        MyBinderNdkUnitTest* service = static_cast<MyBinderNdkUnitTest*>(context);
-        if (service->contextTestValue != kContextTestValue) {
-            // Prevent shutdown (test will fail)
-            return false;
-        }
-
-        exit(EXIT_SUCCESS);
-        // Unreachable
-    }
-
-    uint64_t contextTestValue = kContextTestValue;
 };
 
 int generatedService() {
@@ -214,16 +167,6 @@ int lazyService(const char* instance) {
     return 1;  // should not return
 }
 
-bool isServiceRunning(const char* serviceName) {
-    AIBinder* binder = AServiceManager_checkService(serviceName);
-    if (binder == nullptr) {
-        return false;
-    }
-    AIBinder_decStrong(binder);
-
-    return true;
-}
-
 TEST(NdkBinder, GetServiceThatDoesntExist) {
     sp<IFoo> foo = IFoo::getService("asdfghkl;");
     EXPECT_EQ(nullptr, foo.get());
@@ -242,26 +185,6 @@ TEST(NdkBinder, CheckServiceThatDoesExist) {
     AIBinder_decStrong(binder);
 }
 
-TEST(NdkBinder, UnimplementedDump) {
-    sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
-    ASSERT_NE(foo, nullptr);
-    AIBinder* binder = foo->getBinder();
-    EXPECT_EQ(OK, AIBinder_dump(binder, STDOUT_FILENO, nullptr, 0));
-    AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedShell) {
-    // libbinder_ndk doesn't support calling shell, so we are calling from the
-    // libbinder across processes to the NDK service which doesn't implement
-    // shell
-    static const sp<android::IServiceManager> sm(android::defaultServiceManager());
-    sp<IBinder> testService = sm->getService(String16(IFoo::kSomeInstanceName));
-
-    Vector<String16> argsVec;
-    EXPECT_EQ(OK, IBinder::shellCommand(testService, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-                                        argsVec, nullptr, nullptr));
-}
-
 TEST(NdkBinder, DoubleNumber) {
     sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
     ASSERT_NE(foo, nullptr);
@@ -269,46 +192,6 @@ TEST(NdkBinder, DoubleNumber) {
     int32_t out;
     EXPECT_EQ(STATUS_OK, foo->doubleNumber(1, &out));
     EXPECT_EQ(2, out);
-}
-
-TEST(NdkBinder, GetTestServiceStressTest) {
-    // libbinder has some complicated logic to make sure only one instance of
-    // ABpBinder is associated with each binder.
-
-    constexpr size_t kNumThreads = 10;
-    constexpr size_t kNumCalls = 1000;
-    std::vector<std::thread> threads;
-
-    for (size_t i = 0; i < kNumThreads; i++) {
-        threads.push_back(std::thread([&]() {
-            for (size_t j = 0; j < kNumCalls; j++) {
-                auto binder =
-                        ndk::SpAIBinder(AServiceManager_checkService(IFoo::kSomeInstanceName));
-                EXPECT_EQ(STATUS_OK, AIBinder_ping(binder.get()));
-            }
-        }));
-    }
-
-    for (auto& thread : threads) thread.join();
-}
-
-void defaultInstanceCounter(const char* instance, void* context) {
-    if (strcmp(instance, "default") == 0) {
-        ++*(size_t*)(context);
-    }
-}
-
-TEST(NdkBinder, GetDeclaredInstances) {
-    bool hasLight = AServiceManager_isDeclared("android.hardware.light.ILights/default");
-
-    size_t count;
-    AServiceManager_forEachDeclaredInstance("android.hardware.light.ILights", &count,
-                                            defaultInstanceCounter);
-
-    // At the time of writing this test, there is no good interface guaranteed
-    // to be on all devices. Cuttlefish has light, so this will generally test
-    // things.
-    EXPECT_EQ(count, hasLight ? 1 : 0);
 }
 
 TEST(NdkBinder, GetLazyService) {
@@ -320,11 +203,6 @@ TEST(NdkBinder, GetLazyService) {
     ASSERT_NE(service, nullptr);
 
     EXPECT_EQ(STATUS_OK, AIBinder_ping(binder.get()));
-}
-
-TEST(NdkBinder, IsUpdatable) {
-    bool isUpdatable = AServiceManager_isUpdatableViaApex("android.hardware.light.ILights/default");
-    EXPECT_EQ(isUpdatable, false);
 }
 
 // This is too slow
@@ -339,49 +217,8 @@ TEST(NdkBinder, CheckLazyServiceShutDown) {
     service = nullptr;
     IPCThreadState::self()->flushCommands();
     // Make sure the service is dead after some time of no use
-    sleep(kShutdownWaitTime);
+    sleep(10);
     ASSERT_EQ(nullptr, AServiceManager_checkService(kLazyBinderNdkUnitTestService));
-}
-
-TEST(NdkBinder, ForcedPersistenceTest) {
-    for (int i = 0; i < 2; i++) {
-        ndk::SpAIBinder binder(AServiceManager_waitForService(kForcePersistNdkUnitTestService));
-        std::shared_ptr<aidl::IBinderNdkUnitTest> service =
-                aidl::IBinderNdkUnitTest::fromBinder(binder);
-        ASSERT_NE(service, nullptr);
-        ASSERT_TRUE(service->forcePersist(i == 0).isOk());
-
-        binder = nullptr;
-        service = nullptr;
-        IPCThreadState::self()->flushCommands();
-
-        sleep(kShutdownWaitTime);
-
-        bool isRunning = isServiceRunning(kForcePersistNdkUnitTestService);
-
-        if (i == 0) {
-            ASSERT_TRUE(isRunning) << "Service shut down when it shouldn't have.";
-        } else {
-            ASSERT_FALSE(isRunning) << "Service failed to shut down.";
-        }
-    }
-}
-
-TEST(NdkBinder, ActiveServicesCallbackTest) {
-    ndk::SpAIBinder binder(AServiceManager_waitForService(kActiveServicesNdkUnitTestService));
-    std::shared_ptr<aidl::IBinderNdkUnitTest> service =
-            aidl::IBinderNdkUnitTest::fromBinder(binder);
-    ASSERT_NE(service, nullptr);
-    ASSERT_TRUE(service->setCustomActiveServicesCallback().isOk());
-
-    binder = nullptr;
-    service = nullptr;
-    IPCThreadState::self()->flushCommands();
-
-    sleep(kShutdownWaitTime);
-
-    ASSERT_FALSE(isServiceRunning(kActiveServicesNdkUnitTestService))
-            << "Service failed to shut down.";
 }
 
 void LambdaOnDeath(void* cookie) {
@@ -517,7 +354,8 @@ TEST(NdkBinder, ABpBinderRefCount) {
 
     AIBinder_decStrong(binder);
 
-    ASSERT_EQ(nullptr, AIBinder_Weak_promote(wBinder));
+    // assert because would need to decStrong if non-null and we shouldn't need to add a no-op here
+    ASSERT_NE(nullptr, AIBinder_Weak_promote(wBinder));
 
     AIBinder_Weak_delete(wBinder);
 }
@@ -685,10 +523,6 @@ TEST(NdkBinder, UseHandleShellCommand) {
     EXPECT_EQ("CMD", shellCmdToString(testService, {"C", "M", "D"}));
 }
 
-TEST(NdkBinder, GetClassInterfaceDescriptor) {
-    ASSERT_STREQ(IFoo::kIFooDescriptor, AIBinder_Class_getDescriptor(IFoo::kClass));
-}
-
 int main(int argc, char* argv[]) {
     ::testing::InitGoogleTest(&argc, argv);
 
@@ -706,18 +540,10 @@ int main(int argc, char* argv[]) {
     }
     if (fork() == 0) {
         prctl(PR_SET_PDEATHSIG, SIGHUP);
-        return lazyService(kForcePersistNdkUnitTestService);
-    }
-    if (fork() == 0) {
-        prctl(PR_SET_PDEATHSIG, SIGHUP);
-        return lazyService(kActiveServicesNdkUnitTestService);
-    }
-    if (fork() == 0) {
-        prctl(PR_SET_PDEATHSIG, SIGHUP);
         return generatedService();
     }
 
-    ABinderProcess_setThreadPoolMaxThreadCount(1);  // to receive death notifications/callbacks
+    ABinderProcess_setThreadPoolMaxThreadCount(1);  // to recieve death notifications/callbacks
     ABinderProcess_startThreadPool();
 
     return RUN_ALL_TESTS();

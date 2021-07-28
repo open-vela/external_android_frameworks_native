@@ -82,12 +82,8 @@ class SharedRefBase {
      */
     template <class T, class... Args>
     static std::shared_ptr<T> make(Args&&... args) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         T* t = new T(std::forward<Args>(args)...);
-#pragma clang diagnostic pop
-        // warning: Potential leak of memory pointed to by 't' [clang-analyzer-unix.Malloc]
-        return t->template ref<T>();  // NOLINT(clang-analyzer-unix.Malloc)
+        return t->template ref<T>();
     }
 
     static void operator delete(void* p) { std::free(p); }
@@ -250,7 +246,7 @@ AIBinder_Class* ICInterface::defineClass(const char* interfaceDescriptor,
     // ourselves. The defaults are harmless.
     AIBinder_Class_setOnDump(clazz, ICInterfaceData::onDump);
 #ifdef HAS_BINDER_SHELL_COMMAND
-    if (__builtin_available(android 30, *)) {
+    if (AIBinder_Class_setHandleShellCommand != nullptr) {
         AIBinder_Class_setHandleShellCommand(clazz, ICInterfaceData::handleShellCommand);
     }
 #endif

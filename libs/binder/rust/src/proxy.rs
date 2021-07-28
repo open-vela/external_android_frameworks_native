@@ -48,8 +48,13 @@ impl fmt::Debug for SpIBinder {
 
 /// # Safety
 ///
-/// An `SpIBinder` is a handle to a C++ IBinder, which is thread-safe
+/// An `SpIBinder` is an immutable handle to a C++ IBinder, which is thread-safe
 unsafe impl Send for SpIBinder {}
+
+/// # Safety
+///
+/// An `SpIBinder` is an immutable handle to a C++ IBinder, which is thread-safe
+unsafe impl Sync for SpIBinder {}
 
 impl SpIBinder {
     /// Create an `SpIBinder` wrapper object from a raw `AIBinder` pointer.
@@ -122,6 +127,21 @@ impl SpIBinder {
     /// Creates a new weak reference to this binder object.
     pub fn downgrade(&mut self) -> WpIBinder {
         WpIBinder::new(self)
+    }
+}
+
+pub mod unstable_api {
+    use super::{sys, SpIBinder};
+
+    /// A temporary API to allow the client to create a `SpIBinder` from a `sys::AIBinder`. This is
+    /// needed to bridge RPC binder, which doesn't have Rust API yet.
+    /// TODO(b/184872979): remove once the Rust API is created.
+    ///
+    /// # Safety
+    ///
+    /// See `SpIBinder::from_raw`.
+    pub unsafe fn new_spibinder(ptr: *mut sys::AIBinder) -> Option<SpIBinder> {
+        SpIBinder::from_raw(ptr)
     }
 }
 
@@ -433,8 +453,13 @@ impl fmt::Debug for WpIBinder {
 
 /// # Safety
 ///
-/// A `WpIBinder` is a handle to a C++ IBinder, which is thread-safe.
+/// A `WpIBinder` is an immutable handle to a C++ IBinder, which is thread-safe.
 unsafe impl Send for WpIBinder {}
+
+/// # Safety
+///
+/// A `WpIBinder` is an immutable handle to a C++ IBinder, which is thread-safe.
+unsafe impl Sync for WpIBinder {}
 
 impl WpIBinder {
     /// Create a new weak reference from an object that can be converted into a
@@ -653,10 +678,32 @@ pub fn get_service(name: &str) -> Option<SpIBinder> {
     }
 }
 
+/// Retrieve an existing service, or start it if it is configured as a dynamic
+/// service and isn't yet started.
+pub fn wait_for_service(name: &str) -> Option<SpIBinder> {
+    let name = CString::new(name).ok()?;
+    unsafe {
+        // Safety: `AServiceManager_waitforService` returns either a null
+        // pointer or a valid pointer to an owned `AIBinder`. Either of these
+        // values is safe to pass to `SpIBinder::from_raw`.
+        SpIBinder::from_raw(sys::AServiceManager_waitForService(name.as_ptr()))
+    }
+}
+
 /// Retrieve an existing service for a particular interface, blocking for a few
 /// seconds if it doesn't yet exist.
 pub fn get_interface<T: FromIBinder + ?Sized>(name: &str) -> Result<Strong<T>> {
     let service = get_service(name);
+    match service {
+        Some(service) => FromIBinder::try_from(service),
+        None => Err(StatusCode::NAME_NOT_FOUND),
+    }
+}
+
+/// Retrieve an existing service for a particular interface, or start it if it
+/// is configured as a dynamic service and isn't yet started.
+pub fn wait_for_interface<T: FromIBinder + ?Sized>(name: &str) -> Result<Strong<T>> {
+    let service = wait_for_service(name);
     match service {
         Some(service) => FromIBinder::try_from(service),
         None => Err(StatusCode::NAME_NOT_FOUND),

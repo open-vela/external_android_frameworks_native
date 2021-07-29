@@ -35,6 +35,8 @@
 
 #ifdef __ANDROID__
 #include <cutils/properties.h>
+#else
+#include "ServiceManagerHost.h"
 #endif
 
 #include "Static.h"
@@ -74,6 +76,8 @@ public:
     Vector<String16> listServices(int dumpsysPriority) override;
     sp<IBinder> waitForService(const String16& name16) override;
     bool isDeclared(const String16& name) override;
+    Vector<String16> getDeclaredInstances(const String16& interface) override;
+    std::optional<String16> updatableViaApex(const String16& name) override;
 
     // for legacy ABI
     const String16& getInterfaceDescriptor() const override {
@@ -82,8 +86,19 @@ public:
     IBinder* onAsBinder() override {
         return IInterface::asBinder(mTheRealServiceManager).get();
     }
-private:
+
+protected:
     sp<AidlServiceManager> mTheRealServiceManager;
+
+    // Directly get the service in a way that, for lazy services, requests the service to be started
+    // if it is not currently started. This way, calls directly to ServiceManagerShim::getService
+    // will still have the 5s delay that is expected by a large amount of Android code.
+    //
+    // When implementing ServiceManagerShim, use realGetService instead of
+    // mTheRealServiceManager->getService so that it can be overridden in ServiceManagerHostShim.
+    virtual Status realGetService(const std::string& name, sp<IBinder>* _aidl_return) {
+        return mTheRealServiceManager->getService(name, _aidl_return);
+    }
 };
 
 [[clang::no_destroy]] static std::once_flag gSmOnce;
@@ -101,7 +116,7 @@ sp<IServiceManager> defaultServiceManager()
             }
         }
 
-        gDefaultServiceManager = new ServiceManagerShim(sm);
+        gDefaultServiceManager = sp<ServiceManagerShim>::make(sm);
     });
 
     return gDefaultServiceManager;
@@ -127,8 +142,7 @@ bool checkCallingPermission(const String16& permission)
     return checkCallingPermission(permission, nullptr, nullptr);
 }
 
-static String16 _permission("permission");
-
+static StaticString16 _permission(u"permission");
 
 bool checkCallingPermission(const String16& permission, int32_t* outPid, int32_t* outUid)
 {
@@ -221,7 +235,7 @@ sp<IBinder> ServiceManagerShim::getService(const String16& name) const
 
     const bool isVendorService =
         strcmp(ProcessState::self()->getDriverName().c_str(), "/dev/vndbinder") == 0;
-    const long timeout = 5000;
+    constexpr int64_t timeout = 5000;
     int64_t startTime = uptimeMillis();
     // Vendor code can't access system properties
     if (!gSystemBootCompleted && !isVendorService) {
@@ -234,7 +248,7 @@ sp<IBinder> ServiceManagerShim::getService(const String16& name) const
 #endif
     }
     // retry interval in millisecond; note that vendor services stay at 100ms
-    const long sleepTime = gSystemBootCompleted ? 1000 : 100;
+    const useconds_t sleepTime = gSystemBootCompleted ? 1000 : 100;
 
     ALOGI("Waiting for service '%s' on '%s'...", String8(name).string(),
           ProcessState::self()->getDriverName().c_str());
@@ -310,7 +324,7 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
     // Simple RAII object to ensure a function call immediately before going out of scope
     class Defer {
     public:
-        Defer(std::function<void()>&& f) : mF(std::move(f)) {}
+        explicit Defer(std::function<void()>&& f) : mF(std::move(f)) {}
         ~Defer() { mF(); }
     private:
         std::function<void()> mF;
@@ -319,14 +333,18 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
     const std::string name = String8(name16).c_str();
 
     sp<IBinder> out;
-    if (!mTheRealServiceManager->getService(name, &out).isOk()) {
+    if (Status status = realGetService(name, &out); !status.isOk()) {
+        ALOGW("Failed to getService in waitForService for %s: %s", name.c_str(),
+              status.toString8().c_str());
         return nullptr;
     }
     if (out != nullptr) return out;
 
-    sp<Waiter> waiter = new Waiter;
-    if (!mTheRealServiceManager->registerForNotifications(
-            name, waiter).isOk()) {
+    sp<Waiter> waiter = sp<Waiter>::make();
+    if (Status status = mTheRealServiceManager->registerForNotifications(name, waiter);
+        !status.isOk()) {
+        ALOGW("Failed to registerForNotifications in waitForService for %s: %s", name.c_str(),
+              status.toString8().c_str());
         return nullptr;
     }
     Defer unregister ([&] {
@@ -359,7 +377,9 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
         // - init gets death signal, but doesn't know it needs to restart
         //   the service
         // - we need to request service again to get it to start
-        if (!mTheRealServiceManager->getService(name, &out).isOk()) {
+        if (Status status = realGetService(name, &out); !status.isOk()) {
+            ALOGW("Failed to getService in waitForService on later try for %s: %s", name.c_str(),
+                  status.toString8().c_str());
             return nullptr;
         }
         if (out != nullptr) return out;
@@ -368,10 +388,76 @@ sp<IBinder> ServiceManagerShim::waitForService(const String16& name16)
 
 bool ServiceManagerShim::isDeclared(const String16& name) {
     bool declared;
-    if (!mTheRealServiceManager->isDeclared(String8(name).c_str(), &declared).isOk()) {
+    if (Status status = mTheRealServiceManager->isDeclared(String8(name).c_str(), &declared);
+        !status.isOk()) {
+        ALOGW("Failed to get isDeclard for %s: %s", String8(name).c_str(),
+              status.toString8().c_str());
         return false;
     }
     return declared;
 }
+
+Vector<String16> ServiceManagerShim::getDeclaredInstances(const String16& interface) {
+    std::vector<std::string> out;
+    if (Status status =
+                mTheRealServiceManager->getDeclaredInstances(String8(interface).c_str(), &out);
+        !status.isOk()) {
+        ALOGW("Failed to getDeclaredInstances for %s: %s", String8(interface).c_str(),
+              status.toString8().c_str());
+        return {};
+    }
+
+    Vector<String16> res;
+    res.setCapacity(out.size());
+    for (const std::string& instance : out) {
+        res.push(String16(instance.c_str()));
+    }
+    return res;
+}
+
+std::optional<String16> ServiceManagerShim::updatableViaApex(const String16& name) {
+    std::optional<std::string> declared;
+    if (Status status = mTheRealServiceManager->updatableViaApex(String8(name).c_str(), &declared);
+        !status.isOk()) {
+        ALOGW("Failed to get updatableViaApex for %s: %s", String8(name).c_str(),
+              status.toString8().c_str());
+        return std::nullopt;
+    }
+    return declared ? std::optional<String16>(String16(declared.value().c_str())) : std::nullopt;
+}
+
+#ifndef __ANDROID__
+// ServiceManagerShim for host. Implements the old libbinder android::IServiceManager API.
+// The internal implementation of the AIDL interface android::os::IServiceManager calls into
+// on-device service manager.
+class ServiceManagerHostShim : public ServiceManagerShim {
+public:
+    using ServiceManagerShim::ServiceManagerShim;
+    // ServiceManagerShim::getService is based on checkService, so no need to override it.
+    sp<IBinder> checkService(const String16& name) const override {
+        return getDeviceService({String8(name).c_str()});
+    }
+
+protected:
+    // Override realGetService for ServiceManagerShim::waitForService.
+    Status realGetService(const std::string& name, sp<IBinder>* _aidl_return) {
+        *_aidl_return = getDeviceService({"-g", name});
+        return Status::ok();
+    }
+};
+sp<IServiceManager> createRpcDelegateServiceManager() {
+    auto binder = getDeviceService({"manager"});
+    if (binder == nullptr) {
+        ALOGE("getDeviceService(\"manager\") returns null");
+        return nullptr;
+    }
+    auto interface = AidlServiceManager::asInterface(binder);
+    if (interface == nullptr) {
+        ALOGE("getDeviceService(\"manager\") returns non service manager");
+        return nullptr;
+    }
+    return sp<ServiceManagerHostShim>::make(interface);
+}
+#endif
 
 } // namespace android

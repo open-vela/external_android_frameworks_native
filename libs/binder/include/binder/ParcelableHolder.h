@@ -18,6 +18,7 @@
 
 #include <binder/Parcel.h>
 #include <binder/Parcelable.h>
+#include <utils/String16.h>
 #include <mutex>
 #include <optional>
 #include <tuple>
@@ -30,7 +31,7 @@ namespace os {
 class ParcelableHolder : public android::Parcelable {
 public:
     ParcelableHolder() = delete;
-    explicit ParcelableHolder(Stability stability) : mStability(stability){};
+    explicit ParcelableHolder(Stability stability) : mStability(stability){}
     virtual ~ParcelableHolder() = default;
     ParcelableHolder(const ParcelableHolder& other) {
         mParcelable = other.mParcelable;
@@ -40,7 +41,8 @@ public:
             mParcelPtr->appendFrom(other.mParcelPtr.get(), 0, other.mParcelPtr->dataSize());
         }
         mStability = other.mStability;
-    };
+    }
+    ParcelableHolder(ParcelableHolder&& other) = default;
 
     status_t writeToParcel(Parcel* parcel) const override;
     status_t readFromParcel(const Parcel* parcel) override;
@@ -52,90 +54,87 @@ public:
     }
 
     template <typename T>
-    bool setParcelable(T&& p) {
+    status_t setParcelable(T&& p) {
         using Tt = typename std::decay<T>::type;
         return setParcelable<Tt>(std::make_shared<Tt>(std::forward<T>(p)));
     }
 
     template <typename T>
-    bool setParcelable(std::shared_ptr<T> p) {
-        std::lock_guard<std::mutex> l(mMutex);
+    status_t setParcelable(std::shared_ptr<T> p) {
         static_assert(std::is_base_of<Parcelable, T>::value, "T must be derived from Parcelable");
         if (p && this->getStability() > p->getStability()) {
-            return false;
+            return android::BAD_VALUE;
         }
         this->mParcelable = p;
         this->mParcelableName = T::getParcelableDescriptor();
         this->mParcelPtr = nullptr;
-        return true;
+        return android::OK;
     }
 
     template <typename T>
-    std::shared_ptr<T> getParcelable() const {
+    status_t getParcelable(std::shared_ptr<T>* ret) const {
         static_assert(std::is_base_of<Parcelable, T>::value, "T must be derived from Parcelable");
-        std::lock_guard<std::mutex> l(mMutex);
-        const std::string& parcelableDesc = T::getParcelableDescriptor();
+        const String16& parcelableDesc = T::getParcelableDescriptor();
         if (!this->mParcelPtr) {
             if (!this->mParcelable || !this->mParcelableName) {
                 ALOGD("empty ParcelableHolder");
-                return nullptr;
+                *ret = nullptr;
+                return android::OK;
             } else if (parcelableDesc != *mParcelableName) {
                 ALOGD("extension class name mismatch expected:%s actual:%s",
-                      mParcelableName->c_str(), parcelableDesc.c_str());
-                return nullptr;
+                      String8(*mParcelableName).c_str(), String8(parcelableDesc).c_str());
+                *ret = nullptr;
+                return android::BAD_VALUE;
             }
-            return std::shared_ptr<T>(mParcelable, reinterpret_cast<T*>(mParcelable.get()));
+            *ret = std::shared_ptr<T>(mParcelable, reinterpret_cast<T*>(mParcelable.get()));
+            return android::OK;
         }
         this->mParcelPtr->setDataPosition(0);
-        status_t status = this->mParcelPtr->readUtf8FromUtf16(&this->mParcelableName);
+        status_t status = this->mParcelPtr->readString16(&this->mParcelableName);
         if (status != android::OK || parcelableDesc != this->mParcelableName) {
             this->mParcelableName = std::nullopt;
-            return nullptr;
+            *ret = nullptr;
+            return status;
         }
         this->mParcelable = std::make_shared<T>();
         status = mParcelable.get()->readFromParcel(this->mParcelPtr.get());
         if (status != android::OK) {
             this->mParcelableName = std::nullopt;
             this->mParcelable = nullptr;
-            return nullptr;
+            *ret = nullptr;
+            return status;
         }
         this->mParcelPtr = nullptr;
-        return std::shared_ptr<T>(mParcelable, reinterpret_cast<T*>(mParcelable.get()));
+        *ret = std::shared_ptr<T>(mParcelable, reinterpret_cast<T*>(mParcelable.get()));
+        return android::OK;
     }
 
-    Stability getStability() const override { return mStability; };
+    Stability getStability() const override { return mStability; }
 
     inline bool operator!=(const ParcelableHolder& rhs) const {
-        return std::tie(mParcelable, mParcelPtr, mStability) !=
-                std::tie(rhs.mParcelable, rhs.mParcelPtr, rhs.mStability);
+        return this != &rhs;
     }
     inline bool operator<(const ParcelableHolder& rhs) const {
-        return std::tie(mParcelable, mParcelPtr, mStability) <
-                std::tie(rhs.mParcelable, rhs.mParcelPtr, rhs.mStability);
+        return this < &rhs;
     }
     inline bool operator<=(const ParcelableHolder& rhs) const {
-        return std::tie(mParcelable, mParcelPtr, mStability) <=
-                std::tie(rhs.mParcelable, rhs.mParcelPtr, rhs.mStability);
+        return this <= &rhs;
     }
     inline bool operator==(const ParcelableHolder& rhs) const {
-        return std::tie(mParcelable, mParcelPtr, mStability) ==
-                std::tie(rhs.mParcelable, rhs.mParcelPtr, rhs.mStability);
+        return this == &rhs;
     }
     inline bool operator>(const ParcelableHolder& rhs) const {
-        return std::tie(mParcelable, mParcelPtr, mStability) >
-                std::tie(rhs.mParcelable, rhs.mParcelPtr, rhs.mStability);
+        return this > &rhs;
     }
     inline bool operator>=(const ParcelableHolder& rhs) const {
-        return std::tie(mParcelable, mParcelPtr, mStability) >=
-                std::tie(rhs.mParcelable, rhs.mParcelPtr, rhs.mStability);
+        return this >= &rhs;
     }
 
 private:
     mutable std::shared_ptr<Parcelable> mParcelable;
-    mutable std::optional<std::string> mParcelableName;
+    mutable std::optional<String16> mParcelableName;
     mutable std::unique_ptr<Parcel> mParcelPtr;
     Stability mStability;
-    mutable std::mutex mMutex;
 };
 } // namespace os
 } // namespace android

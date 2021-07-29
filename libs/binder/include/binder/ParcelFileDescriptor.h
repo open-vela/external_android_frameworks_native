@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_PARCEL_FILE_DESCRIPTOR_H_
-#define ANDROID_PARCEL_FILE_DESCRIPTOR_H_
+#pragma once
 
 #include <android-base/unique_fd.h>
 #include <binder/Parcel.h>
@@ -44,22 +43,22 @@ public:
     android::status_t readFromParcel(const android::Parcel* parcel) override;
 
     inline bool operator!=(const ParcelFileDescriptor& rhs) const {
-        return mFd != rhs.mFd;
+        return mFd.get() != rhs.mFd.get();
     }
     inline bool operator<(const ParcelFileDescriptor& rhs) const {
-        return mFd < rhs.mFd;
+        return mFd.get() < rhs.mFd.get();
     }
     inline bool operator<=(const ParcelFileDescriptor& rhs) const {
-        return mFd <= rhs.mFd;
+        return mFd.get() <= rhs.mFd.get();
     }
     inline bool operator==(const ParcelFileDescriptor& rhs) const {
-        return mFd == rhs.mFd;
+        return mFd.get() == rhs.mFd.get();
     }
     inline bool operator>(const ParcelFileDescriptor& rhs) const {
-        return mFd > rhs.mFd;
+        return mFd.get() > rhs.mFd.get();
     }
     inline bool operator>=(const ParcelFileDescriptor& rhs) const {
-        return mFd >= rhs.mFd;
+        return mFd.get() >= rhs.mFd.get();
     }
 private:
     android::base::unique_fd mFd;
@@ -67,5 +66,3 @@ private:
 
 } // namespace os
 } // namespace android
-
-#endif // ANDROID_OS_PARCEL_FILE_DESCRIPTOR_H_

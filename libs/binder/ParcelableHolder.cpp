@@ -27,7 +27,6 @@
 namespace android {
 namespace os {
 status_t ParcelableHolder::writeToParcel(Parcel* p) const {
-    std::lock_guard<std::mutex> l(mMutex);
     RETURN_ON_FAILURE(p->writeInt32(static_cast<int32_t>(this->getStability())));
     if (this->mParcelPtr) {
         RETURN_ON_FAILURE(p->writeInt32(this->mParcelPtr->dataSize()));
@@ -38,7 +37,7 @@ status_t ParcelableHolder::writeToParcel(Parcel* p) const {
         size_t sizePos = p->dataPosition();
         RETURN_ON_FAILURE(p->writeInt32(0));
         size_t dataStartPos = p->dataPosition();
-        RETURN_ON_FAILURE(p->writeUtf8AsUtf16(this->mParcelableName));
+        RETURN_ON_FAILURE(p->writeString16(this->mParcelableName));
         this->mParcelable->writeToParcel(p);
         size_t dataSize = p->dataPosition() - dataStartPos;
 
@@ -53,7 +52,6 @@ status_t ParcelableHolder::writeToParcel(Parcel* p) const {
 }
 
 status_t ParcelableHolder::readFromParcel(const Parcel* p) {
-    std::lock_guard<std::mutex> l(mMutex);
     this->mStability = static_cast<Stability>(p->readInt32());
     this->mParcelable = nullptr;
     this->mParcelableName = std::nullopt;

@@ -22,6 +22,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 #include <binder/Binder.h>
@@ -52,10 +53,14 @@ struct AIBinder : public virtual ::android::RefBase {
     }
 
    private:
+    std::optional<bool> associateClassInternal(const AIBinder_Class* clazz,
+                                               const ::android::String16& newDescriptor, bool set);
+
     // AIBinder instance is instance of this class for a local object. In order to transact on a
     // remote object, this also must be set for simplicity (although right now, only the
     // interfaceDescriptor from it is used).
     const AIBinder_Class* mClazz;
+    std::mutex mClazzMutex;
 };
 
 // This is a local AIBinder object with a known class.
@@ -100,6 +105,7 @@ struct ABpBinder : public AIBinder, public ::android::BpRefBase {
     ABpBinder* asABpBinder() override { return this; }
 
    private:
+    friend android::sp<ABpBinder>;
     explicit ABpBinder(const ::android::sp<::android::IBinder>& binder);
 };
 
@@ -107,7 +113,8 @@ struct AIBinder_Class {
     AIBinder_Class(const char* interfaceDescriptor, AIBinder_Class_onCreate onCreate,
                    AIBinder_Class_onDestroy onDestroy, AIBinder_Class_onTransact onTransact);
 
-    const ::android::String16& getInterfaceDescriptor() const { return mInterfaceDescriptor; }
+    const ::android::String16& getInterfaceDescriptor() const { return mWideInterfaceDescriptor; }
+    const char* getInterfaceDescriptorUtf8() const { return mInterfaceDescriptor.c_str(); }
 
     // required to be non-null, implemented for every class
     const AIBinder_Class_onCreate onCreate;
@@ -119,9 +126,11 @@ struct AIBinder_Class {
     AIBinder_handleShellCommand handleShellCommand;
 
    private:
+    // Copy of the raw char string for when we don't have to return UTF-16
+    const std::string mInterfaceDescriptor;
     // This must be a String16 since BBinder virtual getInterfaceDescriptor returns a reference to
     // one.
-    const ::android::String16 mInterfaceDescriptor;
+    const ::android::String16 mWideInterfaceDescriptor;
 };
 
 // Ownership is like this (when linked to death):
@@ -156,8 +165,8 @@ struct AIBinder_DeathRecipient : ::android::RefBase {
     };
 
     explicit AIBinder_DeathRecipient(AIBinder_DeathRecipient_onBinderDied onDied);
-    binder_status_t linkToDeath(::android::sp<::android::IBinder>, void* cookie);
-    binder_status_t unlinkToDeath(::android::sp<::android::IBinder> binder, void* cookie);
+    binder_status_t linkToDeath(const ::android::sp<::android::IBinder>&, void* cookie);
+    binder_status_t unlinkToDeath(const ::android::sp<::android::IBinder>& binder, void* cookie);
 
    private:
     // When the user of this API deletes a Bp object but not the death recipient, the

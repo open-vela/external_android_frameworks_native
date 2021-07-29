@@ -19,6 +19,7 @@
 #include "ibinder_internal.h"
 #include "status_internal.h"
 
+#include <android-base/logging.h>
 #include <binder/IServiceManager.h>
 #include <binder/LazyServiceRegistrar.h>
 
@@ -28,6 +29,7 @@ using ::android::IServiceManager;
 using ::android::sp;
 using ::android::status_t;
 using ::android::String16;
+using ::android::String8;
 
 binder_exception_t AServiceManager_addService(AIBinder* binder, const char* instance) {
     if (binder == nullptr || instance == nullptr) {
@@ -91,4 +93,42 @@ bool AServiceManager_isDeclared(const char* instance) {
 
     sp<IServiceManager> sm = defaultServiceManager();
     return sm->isDeclared(String16(instance));
+}
+void AServiceManager_forEachDeclaredInstance(const char* interface, void* context,
+                                             void (*callback)(const char*, void*)) {
+    CHECK(interface != nullptr);
+    // context may be nullptr
+    CHECK(callback != nullptr);
+
+    sp<IServiceManager> sm = defaultServiceManager();
+    for (const String16& instance : sm->getDeclaredInstances(String16(interface))) {
+        callback(String8(instance).c_str(), context);
+    }
+}
+bool AServiceManager_isUpdatableViaApex(const char* instance) {
+    if (instance == nullptr) {
+        return false;
+    }
+
+    sp<IServiceManager> sm = defaultServiceManager();
+    return sm->updatableViaApex(String16(instance)) != std::nullopt;
+}
+void AServiceManager_forceLazyServicesPersist(bool persist) {
+    auto serviceRegistrar = android::binder::LazyServiceRegistrar::getInstance();
+    serviceRegistrar.forcePersist(persist);
+}
+void AServiceManager_setActiveServicesCallback(bool (*callback)(bool, void*), void* context) {
+    auto serviceRegistrar = android::binder::LazyServiceRegistrar::getInstance();
+    std::function<bool(bool)> fn = [=](bool hasClients) -> bool {
+        return callback(hasClients, context);
+    };
+    serviceRegistrar.setActiveServicesCallback(fn);
+}
+bool AServiceManager_tryUnregister() {
+    auto serviceRegistrar = android::binder::LazyServiceRegistrar::getInstance();
+    return serviceRegistrar.tryUnregister();
+}
+void AServiceManager_reRegister() {
+    auto serviceRegistrar = android::binder::LazyServiceRegistrar::getInstance();
+    serviceRegistrar.reRegister();
 }

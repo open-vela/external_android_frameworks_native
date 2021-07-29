@@ -21,6 +21,7 @@
 
 import IEmpty;
 
+@SensitiveData
 interface IBinderNdkUnitTest {
     int repeatInt(int a);
 
@@ -28,4 +29,7 @@ interface IBinderNdkUnitTest {
     void forceFlushCommands();
 
     boolean getsRequestedSid();
+
+    void forcePersist(boolean persist);
+    void setCustomActiveServicesCallback();
 }

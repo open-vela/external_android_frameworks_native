@@ -18,8 +18,14 @@
 
 use binder::declare_binder_interface;
 use binder::parcel::Parcel;
-use binder::{Binder, IBinder, Interface, SpIBinder, StatusCode, ThreadState, TransactionCode};
+use binder::{
+    Binder, BinderFeatures, IBinderInternal, Interface, StatusCode, ThreadState, TransactionCode,
+    FIRST_CALL_TRANSACTION,
+};
 use std::convert::{TryFrom, TryInto};
+use std::ffi::CStr;
+use std::fs::File;
+use std::sync::Mutex;
 
 /// Name of service runner.
 ///
@@ -47,12 +53,11 @@ fn main() -> Result<(), &'static str> {
     let extension_name = args.next();
 
     {
-        let mut service = Binder::new(BnTest(Box::new(TestService {
-            s: service_name.clone(),
-        })));
+        let mut service = Binder::new(BnTest(Box::new(TestService::new(&service_name))));
         service.set_requesting_sid(true);
         if let Some(extension_name) = extension_name {
-            let extension = BnTest::new_binder(TestService { s: extension_name });
+            let extension =
+                BnTest::new_binder(TestService::new(&extension_name), BinderFeatures::default());
             service
                 .set_extension(&mut extension.as_binder())
                 .expect("Could not add extension");
@@ -76,14 +81,24 @@ fn print_usage() {
     ));
 }
 
-#[derive(Clone)]
 struct TestService {
     s: String,
+    dump_args: Mutex<Vec<String>>,
+}
+
+impl TestService {
+    fn new(s: &str) -> Self {
+        Self {
+            s: s.to_string(),
+            dump_args: Mutex::new(Vec::new()),
+        }
+    }
 }
 
 #[repr(u32)]
 enum TestTransactionCode {
-    Test = SpIBinder::FIRST_CALL_TRANSACTION,
+    Test = FIRST_CALL_TRANSACTION,
+    GetDumpArgs,
     GetSelinuxContext,
 }
 
@@ -93,6 +108,7 @@ impl TryFrom<u32> for TestTransactionCode {
     fn try_from(c: u32) -> Result<Self, Self::Error> {
         match c {
             _ if c == TestTransactionCode::Test as u32 => Ok(TestTransactionCode::Test),
+            _ if c == TestTransactionCode::GetDumpArgs as u32 => Ok(TestTransactionCode::GetDumpArgs),
             _ if c == TestTransactionCode::GetSelinuxContext as u32 => {
                 Ok(TestTransactionCode::GetSelinuxContext)
             }
@@ -101,11 +117,22 @@ impl TryFrom<u32> for TestTransactionCode {
     }
 }
 
-impl Interface for TestService {}
+impl Interface for TestService {
+    fn dump(&self, _file: &File, args: &[&CStr]) -> binder::Result<()> {
+        let mut dump_args = self.dump_args.lock().unwrap();
+        dump_args.extend(args.iter().map(|s| s.to_str().unwrap().to_owned()));
+        Ok(())
+    }
+}
 
 impl ITest for TestService {
     fn test(&self) -> binder::Result<String> {
         Ok(self.s.clone())
+    }
+
+    fn get_dump_args(&self) -> binder::Result<Vec<String>> {
+        let args = self.dump_args.lock().unwrap().clone();
+        Ok(args)
     }
 
     fn get_selinux_context(&self) -> binder::Result<String> {
@@ -119,6 +146,9 @@ impl ITest for TestService {
 pub trait ITest: Interface {
     /// Returns a test string
     fn test(&self) -> binder::Result<String>;
+
+    /// Return the arguments sent via dump
+    fn get_dump_args(&self) -> binder::Result<Vec<String>>;
 
     /// Returns the caller's SELinux context
     fn get_selinux_context(&self) -> binder::Result<String>;
@@ -141,6 +171,7 @@ fn on_transact(
 ) -> binder::Result<()> {
     match code.try_into()? {
         TestTransactionCode::Test => reply.write(&service.test()?),
+        TestTransactionCode::GetDumpArgs => reply.write(&service.get_dump_args()?),
         TestTransactionCode::GetSelinuxContext => reply.write(&service.get_selinux_context()?),
     }
 }
@@ -150,6 +181,13 @@ impl ITest for BpTest {
         let reply =
             self.binder
                 .transact(TestTransactionCode::Test as TransactionCode, 0, |_| Ok(()))?;
+        reply.read()
+    }
+
+    fn get_dump_args(&self) -> binder::Result<Vec<String>> {
+        let reply =
+            self.binder
+                .transact(TestTransactionCode::GetDumpArgs as TransactionCode, 0, |_| Ok(()))?;
         reply.read()
     }
 
@@ -168,10 +206,37 @@ impl ITest for Binder<BnTest> {
         self.0.test()
     }
 
+    fn get_dump_args(&self) -> binder::Result<Vec<String>> {
+        self.0.get_dump_args()
+    }
+
     fn get_selinux_context(&self) -> binder::Result<String> {
         self.0.get_selinux_context()
     }
 }
+
+/// Trivial testing binder interface
+pub trait ITestSameDescriptor: Interface {}
+
+declare_binder_interface! {
+    ITestSameDescriptor["android.os.ITest"] {
+        native: BnTestSameDescriptor(on_transact_same_descriptor),
+        proxy: BpTestSameDescriptor,
+    }
+}
+
+fn on_transact_same_descriptor(
+    _service: &dyn ITestSameDescriptor,
+    _code: TransactionCode,
+    _data: &Parcel,
+    _reply: &mut Parcel,
+) -> binder::Result<()> {
+    Ok(())
+}
+
+impl ITestSameDescriptor for BpTestSameDescriptor {}
+
+impl ITestSameDescriptor for Binder<BnTestSameDescriptor> {}
 
 #[cfg(test)]
 mod tests {
@@ -185,9 +250,12 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use binder::{DeathRecipient, FromIBinder, IBinder, SpIBinder, StatusCode};
+    use binder::{
+        Binder, BinderFeatures, DeathRecipient, FromIBinder, IBinder, IBinderInternal, Interface,
+        SpIBinder, StatusCode, Strong,
+    };
 
-    use super::{ITest, RUST_SERVICE_BINARY};
+    use super::{BnTest, ITest, ITestSameDescriptor, TestService, RUST_SERVICE_BINARY};
 
     pub struct ScopedServiceProcess(Child);
 
@@ -244,19 +312,42 @@ mod tests {
     }
 
     #[test]
+    fn check_wait_for_service() {
+        let mut sm =
+            binder::wait_for_service("manager").expect("Did not get manager binder service");
+        assert!(sm.is_binder_alive());
+        assert!(sm.ping_binder().is_ok());
+
+        // The service manager service isn't an ITest, so this must fail.
+        assert_eq!(
+            binder::wait_for_interface::<dyn ITest>("manager").err(),
+            Some(StatusCode::BAD_TYPE)
+        );
+    }
+
+    #[test]
     fn trivial_client() {
         let service_name = "trivial_client_test";
         let _process = ScopedServiceProcess::new(service_name);
-        let test_client: Box<dyn ITest> =
+        let test_client: Strong<dyn ITest> =
             binder::get_interface(service_name).expect("Did not get manager binder service");
         assert_eq!(test_client.test().unwrap(), "trivial_client_test");
+    }
+
+    #[test]
+    fn wait_for_trivial_client() {
+        let service_name = "wait_for_trivial_client_test";
+        let _process = ScopedServiceProcess::new(service_name);
+        let test_client: Strong<dyn ITest> =
+            binder::wait_for_interface(service_name).expect("Did not get manager binder service");
+        assert_eq!(test_client.test().unwrap(), "wait_for_trivial_client_test");
     }
 
     #[test]
     fn get_selinux_context() {
         let service_name = "get_selinux_context";
         let _process = ScopedServiceProcess::new(service_name);
-        let test_client: Box<dyn ITest> =
+        let test_client: Strong<dyn ITest> =
             binder::get_interface(service_name).expect("Did not get manager binder service");
         let expected_context = unsafe {
             let mut out_ptr = ptr::null_mut();
@@ -266,7 +357,9 @@ mod tests {
         };
         assert_eq!(
             test_client.get_selinux_context().unwrap(),
-            expected_context.to_str().expect("context was invalid UTF-8"),
+            expected_context
+                .to_str()
+                .expect("context was invalid UTF-8"),
         );
     }
 
@@ -377,18 +470,22 @@ mod tests {
         {
             let _process = ScopedServiceProcess::new(service_name);
 
-            let mut remote = binder::get_service(service_name);
+            let test_client: Strong<dyn ITest> =
+                binder::get_interface(service_name)
+                .expect("Did not get test binder service");
+            let mut remote = test_client.as_binder();
             assert!(remote.is_binder_alive());
             remote.ping_binder().expect("Could not ping remote service");
 
-            // We're not testing the output of dump here, as that's really a
-            // property of the C++ implementation. There is the risk that the
-            // method just does nothing, but we don't want to depend on any
-            // particular output from the underlying library.
+            let dump_args = ["dump", "args", "for", "testing"];
+
             let null_out = File::open("/dev/null").expect("Could not open /dev/null");
             remote
-                .dump(&null_out, &[])
+                .dump(&null_out, &dump_args)
                 .expect("Could not dump remote service");
+
+            let remote_args = test_client.get_dump_args().expect("Could not fetched dumped args");
+            assert_eq!(dump_args, remote_args[..], "Remote args don't match call to dump");
         }
 
         // get/set_extensions is tested in test_extensions()
@@ -429,10 +526,115 @@ mod tests {
 
             let extension = maybe_extension.expect("Remote binder did not have an extension");
 
-            let extension: Box<dyn ITest> = FromIBinder::try_from(extension)
+            let extension: Strong<dyn ITest> = FromIBinder::try_from(extension)
                 .expect("Extension could not be converted to the expected interface");
 
             assert_eq!(extension.test().unwrap(), extension_name);
         }
+    }
+
+    /// Test re-associating a local binder object with a different class.
+    ///
+    /// This is needed because different binder service (e.g. NDK vs Rust)
+    /// implementations are incompatible and must not be interchanged. A local
+    /// service with the same descriptor string but a different class pointer
+    /// may have been created by an NDK service and is therefore incompatible
+    /// with the Rust service implementation. It must be treated as remote and
+    /// all API calls parceled and sent through transactions.
+    ///
+    /// Further tests of this behavior with the C NDK and Rust API are in
+    /// rust_ndk_interop.rs
+    #[test]
+    fn associate_existing_class() {
+        let service = Binder::new(BnTest(Box::new(TestService::new("testing_service"))));
+
+        // This should succeed although we will have to treat the service as
+        // remote.
+        let _interface: Strong<dyn ITestSameDescriptor> =
+            FromIBinder::try_from(service.as_binder())
+                .expect("Could not re-interpret service as the ITestSameDescriptor interface");
+    }
+
+    /// Test that we can round-trip a rust service through a generic IBinder
+    #[test]
+    fn reassociate_rust_binder() {
+        let service_name = "testing_service";
+        let service_ibinder = BnTest::new_binder(
+            TestService::new(service_name),
+            BinderFeatures::default(),
+        )
+        .as_binder();
+
+        let service: Strong<dyn ITest> = service_ibinder
+            .into_interface()
+            .expect("Could not reassociate the generic ibinder");
+
+        assert_eq!(service.test().unwrap(), service_name);
+    }
+
+    #[test]
+    fn weak_binder_upgrade() {
+        let service_name = "testing_service";
+        let service = BnTest::new_binder(
+            TestService::new(service_name),
+            BinderFeatures::default(),
+        );
+
+        let weak = Strong::downgrade(&service);
+
+        let upgraded = weak.upgrade().expect("Could not upgrade weak binder");
+
+        assert_eq!(service, upgraded);
+    }
+
+    #[test]
+    fn weak_binder_upgrade_dead() {
+        let service_name = "testing_service";
+        let weak = {
+            let service = BnTest::new_binder(
+                TestService::new(service_name),
+                BinderFeatures::default(),
+            );
+
+            Strong::downgrade(&service)
+        };
+
+        assert_eq!(weak.upgrade(), Err(StatusCode::DEAD_OBJECT));
+    }
+
+    #[test]
+    fn weak_binder_clone() {
+        let service_name = "testing_service";
+        let service = BnTest::new_binder(
+            TestService::new(service_name),
+            BinderFeatures::default(),
+        );
+
+        let weak = Strong::downgrade(&service);
+        let cloned = weak.clone();
+        assert_eq!(weak, cloned);
+
+        let upgraded = weak.upgrade().expect("Could not upgrade weak binder");
+        let clone_upgraded = cloned.upgrade().expect("Could not upgrade weak binder");
+
+        assert_eq!(service, upgraded);
+        assert_eq!(service, clone_upgraded);
+    }
+
+    #[test]
+    #[allow(clippy::eq_op)]
+    fn binder_ord() {
+        let service1 = BnTest::new_binder(
+            TestService::new("testing_service1"),
+            BinderFeatures::default(),
+        );
+        let service2 = BnTest::new_binder(
+            TestService::new("testing_service2"),
+            BinderFeatures::default(),
+        );
+
+        assert!(!(service1 < service1));
+        assert!(!(service1 > service1));
+        assert_eq!(service1 < service2, !(service2 < service1));
     }
 }

@@ -54,15 +54,6 @@ constexpr unsigned int kShutdownWaitTime = 10;
 constexpr uint64_t kContextTestValue = 0xb4e42fb4d9a1d715;
 
 class MyBinderNdkUnitTest : public aidl::BnBinderNdkUnitTest {
-   public:
-    MyBinderNdkUnitTest() = default;
-    MyBinderNdkUnitTest(bool* deleted) : deleted(deleted) {}
-    ~MyBinderNdkUnitTest() {
-        if (deleted) {
-            *deleted = true;
-        }
-    }
-
     ndk::ScopedAStatus repeatInt(int32_t in, int32_t* out) {
         *out = in;
         return ndk::ScopedAStatus::ok();
@@ -131,7 +122,6 @@ class MyBinderNdkUnitTest : public aidl::BnBinderNdkUnitTest {
     }
 
     uint64_t contextTestValue = kContextTestValue;
-    bool* deleted = nullptr;
 };
 
 int generatedService() {
@@ -234,27 +224,6 @@ bool isServiceRunning(const char* serviceName) {
     return true;
 }
 
-TEST(NdkBinder, MakeShared) {
-    const char* kInstance = "make_shared_test_instance";
-    bool deleted = false;
-
-    {
-        auto service = std::make_shared<MyBinderNdkUnitTest>(&deleted);
-        auto binder = service->asBinder();
-        ASSERT_EQ(EX_NONE, AServiceManager_addService(binder.get(), kInstance));
-        auto binder2 = ndk::SpAIBinder(AServiceManager_checkService(kInstance));
-        ASSERT_EQ(binder.get(), binder2.get());
-
-        // overwrite service
-        ASSERT_EQ(EX_NONE,
-                  AServiceManager_addService(
-                          std::make_shared<MyBinderNdkUnitTest>(&deleted)->asBinder().get(),
-                          kInstance));
-    }
-
-    EXPECT_TRUE(deleted);
-}
-
 TEST(NdkBinder, GetServiceThatDoesntExist) {
     sp<IFoo> foo = IFoo::getService("asdfghkl;");
     EXPECT_EQ(nullptr, foo.get());
@@ -271,26 +240,6 @@ TEST(NdkBinder, CheckServiceThatDoesExist) {
     EXPECT_EQ(STATUS_OK, AIBinder_ping(binder));
 
     AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedDump) {
-    sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
-    ASSERT_NE(foo, nullptr);
-    AIBinder* binder = foo->getBinder();
-    EXPECT_EQ(OK, AIBinder_dump(binder, STDOUT_FILENO, nullptr, 0));
-    AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, UnimplementedShell) {
-    // libbinder_ndk doesn't support calling shell, so we are calling from the
-    // libbinder across processes to the NDK service which doesn't implement
-    // shell
-    static const sp<android::IServiceManager> sm(android::defaultServiceManager());
-    sp<IBinder> testService = sm->getService(String16(IFoo::kSomeInstanceName));
-
-    Vector<String16> argsVec;
-    EXPECT_EQ(OK, IBinder::shellCommand(testService, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
-                                        argsVec, nullptr, nullptr));
 }
 
 TEST(NdkBinder, DoubleNumber) {

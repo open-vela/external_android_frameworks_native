@@ -18,8 +18,6 @@
 #include <android-base/unique_fd.h>
 #include <binder/IBinder.h>
 #include <binder/RpcAddress.h>
-#include <binder/RpcSession.h>
-#include <binder/RpcTransport.h>
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
 
@@ -38,7 +36,6 @@ class Parcel;
 class RpcServer;
 class RpcSocketAddress;
 class RpcState;
-class RpcTransport;
 
 constexpr uint32_t RPC_WIRE_PROTOCOL_VERSION_NEXT = 0;
 constexpr uint32_t RPC_WIRE_PROTOCOL_VERSION_EXPERIMENTAL = 0xF0000000;
@@ -51,8 +48,7 @@ constexpr uint32_t RPC_WIRE_PROTOCOL_VERSION = RPC_WIRE_PROTOCOL_VERSION_EXPERIM
  */
 class RpcSession final : public virtual RefBase {
 public:
-    static sp<RpcSession> make(
-            std::unique_ptr<RpcTransportCtxFactory> rpcTransportCtxFactory = nullptr);
+    static sp<RpcSession> make();
 
     /**
      * Set the maximum number of threads allowed to be made (for things like callbacks).
@@ -146,7 +142,7 @@ private:
     friend sp<RpcSession>;
     friend RpcServer;
     friend RpcState;
-    explicit RpcSession(std::unique_ptr<RpcTransportCtxFactory> rpcTransportCtxFactory);
+    RpcSession();
 
     /** This is not a pipe. */
     struct FdTrigger {
@@ -182,12 +178,10 @@ private:
          *   true - succeeded in completely processing 'size'
          *   false - interrupted (failure or trigger)
          */
-        status_t interruptableReadFully(RpcTransport* rpcTransport, void* data, size_t size);
-        status_t interruptableWriteFully(RpcTransport* rpcTransport, const void* data, size_t size);
+        status_t interruptableReadFully(base::borrowed_fd fd, void* data, size_t size);
+        status_t interruptableWriteFully(base::borrowed_fd fd, const void* data, size_t size);
 
     private:
-        status_t triggerablePoll(RpcTransport* rpcTransport, int16_t event);
-
         base::unique_fd mWrite;
         base::unique_fd mRead;
     };
@@ -210,7 +204,7 @@ private:
     };
 
     struct RpcConnection : public RefBase {
-        std::unique_ptr<RpcTransport> rpcTransport;
+        base::unique_fd fd;
 
         // whether this or another thread is currently using this fd to make
         // or receive transactions.
@@ -236,20 +230,19 @@ private:
         // Status of setup
         status_t status;
     };
-    PreJoinSetupResult preJoinSetup(std::unique_ptr<RpcTransport> rpcTransport);
+    PreJoinSetupResult preJoinSetup(base::unique_fd fd);
     // join on thread passed to preJoinThreadOwnership
     static void join(sp<RpcSession>&& session, PreJoinSetupResult&& result);
 
     [[nodiscard]] bool setupSocketClient(const RpcSocketAddress& address);
     [[nodiscard]] bool setupOneSocketConnection(const RpcSocketAddress& address,
                                                 const RpcAddress& sessionId, bool server);
-    [[nodiscard]] bool addIncomingConnection(std::unique_ptr<RpcTransport> rpcTransport);
-    [[nodiscard]] bool addOutgoingConnection(std::unique_ptr<RpcTransport> rpcTransport, bool init);
+    [[nodiscard]] bool addIncomingConnection(base::unique_fd fd);
+    [[nodiscard]] bool addOutgoingConnection(base::unique_fd fd, bool init);
     [[nodiscard]] bool setForServer(const wp<RpcServer>& server,
                                     const wp<RpcSession::EventListener>& eventListener,
                                     const RpcAddress& sessionId);
-    sp<RpcConnection> assignIncomingConnectionToThisThread(
-            std::unique_ptr<RpcTransport> rpcTransport);
+    sp<RpcConnection> assignIncomingConnectionToThisThread(base::unique_fd fd);
     [[nodiscard]] bool removeIncomingConnection(const sp<RpcConnection>& connection);
 
     enum class ConnectionUse {
@@ -281,8 +274,6 @@ private:
         // the wire protocol is constructed guarantees this is safe).
         bool mReentrant = false;
     };
-
-    const std::unique_ptr<RpcTransportCtxFactory> mRpcTransportCtxFactory;
 
     // On the other side of a session, for each of mOutgoingConnections here, there should
     // be one of mIncomingConnections on the other side (and vice versa).

@@ -30,7 +30,6 @@
 #include <android_runtime/vm.h>
 #include <binder/Parcel.h>
 #include <binder/RpcServer.h>
-#include <binder/RpcTransportRaw.h>
 #include <binder/Stability.h>
 #include <jni.h>
 #include <utils/String8.h>
@@ -47,8 +46,7 @@ namespace android {
 
 using base::unique_fd;
 
-RpcSession::RpcSession(std::unique_ptr<RpcTransportCtxFactory> rpcTransportCtxFactory)
-      : mRpcTransportCtxFactory(std::move(rpcTransportCtxFactory)) {
+RpcSession::RpcSession() {
     LOG_RPC_DETAIL("RpcSession created %p", this);
 
     mState = std::make_unique<RpcState>();
@@ -61,11 +59,8 @@ RpcSession::~RpcSession() {
                         "Should not be able to destroy a session with servers in use.");
 }
 
-sp<RpcSession> RpcSession::make(std::unique_ptr<RpcTransportCtxFactory> rpcTransportCtxFactory) {
-    // Default is without TLS.
-    if (rpcTransportCtxFactory == nullptr)
-        rpcTransportCtxFactory = RpcTransportCtxFactoryRaw::make();
-    return sp<RpcSession>::make(std::move(rpcTransportCtxFactory));
+sp<RpcSession> RpcSession::make() {
+    return sp<RpcSession>::make();
 }
 
 void RpcSession::setMaxThreads(size_t threads) {
@@ -127,7 +122,6 @@ bool RpcSession::setupInetClient(const char* addr, unsigned int port) {
 }
 
 bool RpcSession::addNullDebuggingClient() {
-    // Note: only works on raw sockets.
     unique_fd serverFd(TEMP_FAILURE_RETRY(open("/dev/null", O_WRONLY | O_CLOEXEC)));
 
     if (serverFd == -1) {
@@ -135,17 +129,7 @@ bool RpcSession::addNullDebuggingClient() {
         return false;
     }
 
-    auto ctx = mRpcTransportCtxFactory->newClientCtx();
-    if (ctx == nullptr) {
-        ALOGE("Unable to create RpcTransportCtx for null debugging client");
-        return false;
-    }
-    auto server = ctx->newTransport(std::move(serverFd));
-    if (server == nullptr) {
-        ALOGE("Unable to set up RpcTransport");
-        return false;
-    }
-    return addOutgoingConnection(std::move(server), false);
+    return addOutgoingConnection(std::move(serverFd), false);
 }
 
 sp<IBinder> RpcSession::getRootObject() {
@@ -221,10 +205,6 @@ bool RpcSession::FdTrigger::isTriggered() {
     return mWrite == -1;
 }
 
-status_t RpcSession::FdTrigger::triggerablePoll(RpcTransport* rpcTransport, int16_t event) {
-    return triggerablePoll(rpcTransport->pollSocket(), event);
-}
-
 status_t RpcSession::FdTrigger::triggerablePoll(base::borrowed_fd fd, int16_t event) {
     while (true) {
         pollfd pfd[]{{.fd = fd.get(), .events = static_cast<int16_t>(event), .revents = 0},
@@ -243,30 +223,28 @@ status_t RpcSession::FdTrigger::triggerablePoll(base::borrowed_fd fd, int16_t ev
     }
 }
 
-status_t RpcSession::FdTrigger::interruptableWriteFully(RpcTransport* rpcTransport,
-                                                        const void* data, size_t size) {
+status_t RpcSession::FdTrigger::interruptableWriteFully(base::borrowed_fd fd, const void* data,
+                                                        size_t size) {
     const uint8_t* buffer = reinterpret_cast<const uint8_t*>(data);
     const uint8_t* end = buffer + size;
 
     MAYBE_WAIT_IN_FLAKE_MODE;
 
     status_t status;
-    while ((status = triggerablePoll(rpcTransport, POLLOUT)) == OK) {
-        auto writeSize = rpcTransport->send(buffer, end - buffer);
-        if (!writeSize.ok()) {
-            LOG_RPC_DETAIL("RpcTransport::send(): %s", writeSize.error().message().c_str());
-            return writeSize.error().code() == 0 ? UNKNOWN_ERROR : -writeSize.error().code();
+    while ((status = triggerablePoll(fd, POLLOUT)) == OK) {
+        ssize_t writeSize = TEMP_FAILURE_RETRY(send(fd.get(), buffer, end - buffer, MSG_NOSIGNAL));
+        if (writeSize == 0) return DEAD_OBJECT;
+
+        if (writeSize < 0) {
+            return -errno;
         }
-
-        if (*writeSize == 0) return DEAD_OBJECT;
-
-        buffer += *writeSize;
+        buffer += writeSize;
         if (buffer == end) return OK;
     }
     return status;
 }
 
-status_t RpcSession::FdTrigger::interruptableReadFully(RpcTransport* rpcTransport, void* data,
+status_t RpcSession::FdTrigger::interruptableReadFully(base::borrowed_fd fd, void* data,
                                                        size_t size) {
     uint8_t* buffer = reinterpret_cast<uint8_t*>(data);
     uint8_t* end = buffer + size;
@@ -274,16 +252,14 @@ status_t RpcSession::FdTrigger::interruptableReadFully(RpcTransport* rpcTranspor
     MAYBE_WAIT_IN_FLAKE_MODE;
 
     status_t status;
-    while ((status = triggerablePoll(rpcTransport, POLLIN)) == OK) {
-        auto readSize = rpcTransport->recv(buffer, end - buffer);
-        if (!readSize.ok()) {
-            LOG_RPC_DETAIL("RpcTransport::recv(): %s", readSize.error().message().c_str());
-            return readSize.error().code() == 0 ? UNKNOWN_ERROR : -readSize.error().code();
+    while ((status = triggerablePoll(fd, POLLIN)) == OK) {
+        ssize_t readSize = TEMP_FAILURE_RETRY(recv(fd.get(), buffer, end - buffer, MSG_NOSIGNAL));
+        if (readSize == 0) return DEAD_OBJECT; // EOF
+
+        if (readSize < 0) {
+            return -errno;
         }
-
-        if (*readSize == 0) return DEAD_OBJECT; // EOF
-
-        buffer += *readSize;
+        buffer += readSize;
         if (buffer == end) return OK;
     }
     return status;
@@ -336,11 +312,10 @@ void RpcSession::preJoinThreadOwnership(std::thread thread) {
     }
 }
 
-RpcSession::PreJoinSetupResult RpcSession::preJoinSetup(
-        std::unique_ptr<RpcTransport> rpcTransport) {
+RpcSession::PreJoinSetupResult RpcSession::preJoinSetup(base::unique_fd fd) {
     // must be registered to allow arbitrary client code executing commands to
     // be able to do nested calls (we can't only read from it)
-    sp<RpcConnection> connection = assignIncomingConnectionToThisThread(std::move(rpcTransport));
+    sp<RpcConnection> connection = assignIncomingConnectionToThisThread(std::move(fd));
 
     status_t status;
 
@@ -545,22 +520,6 @@ bool RpcSession::setupOneSocketConnection(const RpcSocketAddress& addr, const Rp
                   strerror(savedErrno));
             return false;
         }
-        LOG_RPC_DETAIL("Socket at %s client with fd %d", addr.toString().c_str(), serverFd.get());
-
-        auto ctx = mRpcTransportCtxFactory->newClientCtx();
-        if (ctx == nullptr) {
-            ALOGE("Unable to create client RpcTransportCtx with %s sockets",
-                  mRpcTransportCtxFactory->toCString());
-            return false;
-        }
-        auto server = ctx->newTransport(std::move(serverFd));
-        if (server == nullptr) {
-            ALOGE("Unable to set up RpcTransport for %s", addr.toString().c_str());
-            return false;
-        }
-
-        LOG_RPC_DETAIL("Socket at %s client with RpcTransport %p", addr.toString().c_str(),
-                       server.get());
 
         RpcConnectionHeader header{
                 .version = mProtocolVersion.value_or(RPC_WIRE_PROTOCOL_VERSION),
@@ -570,24 +529,19 @@ bool RpcSession::setupOneSocketConnection(const RpcSocketAddress& addr, const Rp
 
         if (incoming) header.options |= RPC_CONNECTION_OPTION_INCOMING;
 
-        auto sentHeader = server->send(&header, sizeof(header));
-        if (!sentHeader.ok()) {
+        if (sizeof(header) != TEMP_FAILURE_RETRY(write(serverFd.get(), &header, sizeof(header)))) {
+            int savedErrno = errno;
             ALOGE("Could not write connection header to socket at %s: %s", addr.toString().c_str(),
-                  sentHeader.error().message().c_str());
-            return false;
-        }
-        if (*sentHeader != sizeof(header)) {
-            ALOGE("Could not write connection header to socket at %s: sent %zd bytes, expected %zd",
-                  addr.toString().c_str(), *sentHeader, sizeof(header));
+                  strerror(savedErrno));
             return false;
         }
 
-        LOG_RPC_DETAIL("Socket at %s client: header sent", addr.toString().c_str());
+        LOG_RPC_DETAIL("Socket at %s client with fd %d", addr.toString().c_str(), serverFd.get());
 
         if (incoming) {
-            return addIncomingConnection(std::move(server));
+            return addIncomingConnection(std::move(serverFd));
         } else {
-            return addOutgoingConnection(std::move(server), true);
+            return addOutgoingConnection(std::move(serverFd), true);
         }
     }
 
@@ -595,7 +549,7 @@ bool RpcSession::setupOneSocketConnection(const RpcSocketAddress& addr, const Rp
     return false;
 }
 
-bool RpcSession::addIncomingConnection(std::unique_ptr<RpcTransport> rpcTransport) {
+bool RpcSession::addIncomingConnection(unique_fd fd) {
     std::mutex mutex;
     std::condition_variable joinCv;
     std::unique_lock<std::mutex> lock(mutex);
@@ -604,13 +558,13 @@ bool RpcSession::addIncomingConnection(std::unique_ptr<RpcTransport> rpcTranspor
     bool ownershipTransferred = false;
     thread = std::thread([&]() {
         std::unique_lock<std::mutex> threadLock(mutex);
-        std::unique_ptr<RpcTransport> movedRpcTransport = std::move(rpcTransport);
+        unique_fd movedFd = std::move(fd);
         // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
         sp<RpcSession> session = thiz;
         session->preJoinThreadOwnership(std::move(thread));
 
         // only continue once we have a response or the connection fails
-        auto setupResult = session->preJoinSetup(std::move(movedRpcTransport));
+        auto setupResult = session->preJoinSetup(std::move(movedFd));
 
         ownershipTransferred = true;
         threadLock.unlock();
@@ -624,7 +578,7 @@ bool RpcSession::addIncomingConnection(std::unique_ptr<RpcTransport> rpcTranspor
     return true;
 }
 
-bool RpcSession::addOutgoingConnection(std::unique_ptr<RpcTransport> rpcTransport, bool init) {
+bool RpcSession::addOutgoingConnection(unique_fd fd, bool init) {
     sp<RpcConnection> connection = sp<RpcConnection>::make();
     {
         std::lock_guard<std::mutex> _l(mMutex);
@@ -637,7 +591,7 @@ bool RpcSession::addOutgoingConnection(std::unique_ptr<RpcTransport> rpcTranspor
             if (mShutdownTrigger == nullptr) return false;
         }
 
-        connection->rpcTransport = std::move(rpcTransport);
+        connection->fd = std::move(fd);
         connection->exclusiveTid = gettid();
         mOutgoingConnections.push_back(connection);
     }
@@ -672,8 +626,7 @@ bool RpcSession::setForServer(const wp<RpcServer>& server, const wp<EventListene
     return true;
 }
 
-sp<RpcSession::RpcConnection> RpcSession::assignIncomingConnectionToThisThread(
-        std::unique_ptr<RpcTransport> rpcTransport) {
+sp<RpcSession::RpcConnection> RpcSession::assignIncomingConnectionToThisThread(unique_fd fd) {
     std::lock_guard<std::mutex> _l(mMutex);
 
     // Don't accept any more connections, some have shutdown. Usually this
@@ -685,7 +638,7 @@ sp<RpcSession::RpcConnection> RpcSession::assignIncomingConnectionToThisThread(
     }
 
     sp<RpcConnection> session = sp<RpcConnection>::make();
-    session->rpcTransport = std::move(rpcTransport);
+    session->fd = std::move(fd);
     session->exclusiveTid = gettid();
 
     mIncomingConnections.push_back(session);

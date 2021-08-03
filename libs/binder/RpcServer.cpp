@@ -61,13 +61,14 @@ bool RpcServer::setupVsockServer(unsigned int port) {
     return setupSocketServer(VsockSocketAddress(kAnyCid, port));
 }
 
-bool RpcServer::setupInetServer(const char* address, unsigned int port,
-                                unsigned int* assignedPort) {
+bool RpcServer::setupInetServer(unsigned int port, unsigned int* assignedPort) {
+    const char* kAddr = "127.0.0.1";
+
     if (assignedPort != nullptr) *assignedPort = 0;
-    auto aiStart = InetSocketAddress::getAddrInfo(address, port);
+    auto aiStart = InetSocketAddress::getAddrInfo(kAddr, port);
     if (aiStart == nullptr) return false;
     for (auto ai = aiStart.get(); ai != nullptr; ai = ai->ai_next) {
-        InetSocketAddress socketAddress(ai->ai_addr, ai->ai_addrlen, address, port);
+        InetSocketAddress socketAddress(ai->ai_addr, ai->ai_addrlen, kAddr, port);
         if (!setupSocketServer(socketAddress)) {
             continue;
         }
@@ -94,7 +95,7 @@ bool RpcServer::setupInetServer(const char* address, unsigned int port,
 
         return true;
     }
-    ALOGE("None of the socket address resolved for %s:%u can be set up as inet server.", address,
+    ALOGE("None of the socket address resolved for %s:%u can be set up as inet server.", kAddr,
           port);
     return false;
 }

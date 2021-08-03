@@ -19,7 +19,6 @@
 #include <binder/IBinder.h>
 #include <binder/RpcAddress.h>
 #include <binder/RpcSession.h>
-#include <binder/RpcTransport.h>
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
 
@@ -48,8 +47,7 @@ class RpcSocketAddress;
  */
 class RpcServer final : public virtual RefBase, private RpcSession::EventListener {
 public:
-    static sp<RpcServer> make(
-            std::unique_ptr<RpcTransportCtxFactory> rpcTransportCtxFactory = nullptr);
+    static sp<RpcServer> make();
 
     /**
      * This represents a session for responses, e.g.:
@@ -163,7 +161,7 @@ public:
 
 private:
     friend sp<RpcServer>;
-    explicit RpcServer(std::unique_ptr<RpcTransportCtxFactory> rpcTransportCtxFactory);
+    RpcServer();
 
     void onSessionAllIncomingThreadsEnded(const sp<RpcSession>& session) override;
     void onSessionIncomingThreadEnded() override;
@@ -171,7 +169,6 @@ private:
     static void establishConnection(sp<RpcServer>&& server, base::unique_fd clientFd);
     bool setupSocketServer(const RpcSocketAddress& address);
 
-    const std::unique_ptr<RpcTransportCtxFactory> mRpcTransportCtxFactory;
     bool mAgreedExperimental = false;
     size_t mMaxThreads = 1;
     std::optional<uint32_t> mProtocolVersion;
@@ -186,7 +183,6 @@ private:
     std::map<RpcAddress, sp<RpcSession>> mSessions;
     std::unique_ptr<RpcSession::FdTrigger> mShutdownTrigger;
     std::condition_variable mShutdownCv;
-    std::unique_ptr<RpcTransportCtx> mCtx;
 };
 
 } // namespace android

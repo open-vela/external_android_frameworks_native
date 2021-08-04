@@ -42,7 +42,6 @@
 #include <sys/prctl.h>
 #include <unistd.h>
 
-#include "../RpcSocketAddress.h" // for testing preconnected clients
 #include "../RpcState.h"   // for debugging
 #include "../vm_sockets.h" // for VMADDR_*
 
@@ -410,15 +409,12 @@ struct BinderRpcTestProcessSession {
 };
 
 enum class SocketType {
-    PRECONNECTED,
     UNIX,
     VSOCK,
     INET,
 };
 static inline std::string PrintToString(SocketType socketType) {
     switch (socketType) {
-        case SocketType::PRECONNECTED:
-            return "preconnected_uds";
         case SocketType::UNIX:
             return "unix_domain_socket";
         case SocketType::VSOCK:
@@ -429,20 +425,6 @@ static inline std::string PrintToString(SocketType socketType) {
             LOG_ALWAYS_FATAL("Unknown socket type");
             return "";
     }
-}
-
-static base::unique_fd connectToUds(const char* addrStr) {
-    UnixSocketAddress addr(addrStr);
-    base::unique_fd serverFd(
-            TEMP_FAILURE_RETRY(socket(addr.addr()->sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0)));
-    int savedErrno = errno;
-    CHECK(serverFd.ok()) << "Could not create socket " << addrStr << ": " << strerror(savedErrno);
-
-    if (0 != TEMP_FAILURE_RETRY(connect(serverFd.get(), addr.addr(), addr.addrSize()))) {
-        int savedErrno = errno;
-        LOG(FATAL) << "Could not connect to socket " << addrStr << ": " << strerror(savedErrno);
-    }
-    return serverFd;
 }
 
 class BinderRpc : public ::testing::TestWithParam<std::tuple<SocketType, RpcSecurity>> {
@@ -481,8 +463,6 @@ public:
                     unsigned int outPort = 0;
 
                     switch (socketType) {
-                        case SocketType::PRECONNECTED:
-                            [[fallthrough]];
                         case SocketType::UNIX:
                             CHECK(server->setupUnixDomainServer(addr.c_str())) << addr;
                             break;
@@ -521,12 +501,6 @@ public:
             session->setMaxThreads(options.numIncomingConnections);
 
             switch (socketType) {
-                case SocketType::PRECONNECTED:
-                    if (session->setupPreconnectedClient({}, [=]() {
-                            return connectToUds(addr.c_str());
-                        }))
-                        goto success;
-                    break;
                 case SocketType::UNIX:
                     if (session->setupUnixDomainClient(addr.c_str())) goto success;
                     break;
@@ -1202,7 +1176,7 @@ static bool testSupportVsockLoopback() {
 }
 
 static std::vector<SocketType> testSocketTypes() {
-    std::vector<SocketType> ret = {SocketType::PRECONNECTED, SocketType::UNIX, SocketType::INET};
+    std::vector<SocketType> ret = {SocketType::UNIX, SocketType::INET};
 
     static bool hasVsockLoopback = testSupportVsockLoopback();
 

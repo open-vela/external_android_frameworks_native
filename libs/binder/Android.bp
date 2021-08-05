@@ -94,6 +94,9 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
+        // TODO(b/166468760) remove these three
+        "com.android.media.swcodec",
+        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -249,9 +252,6 @@ filegroup {
         "aidl/android/content/pm/IPackageChangeObserver.aidl",
         "aidl/android/content/pm/IPackageManagerNative.aidl",
         "aidl/android/content/pm/PackageChangeEvent.aidl",
-        "aidl/android/content/pm/IStagedApexObserver.aidl",
-        "aidl/android/content/pm/ApexStagedEvent.aidl",
-        "aidl/android/content/pm/StagedApexInfo.aidl",
     ],
     path: "aidl",
 }

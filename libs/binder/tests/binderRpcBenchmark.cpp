@@ -50,12 +50,8 @@ class MyBinderRpcBenchmark : public BnBinderRpcBenchmark {
         *out = str;
         return Status::ok();
     }
-    Status repeatBinder(const sp<IBinder>& binder, sp<IBinder>* out) override {
-        *out = binder;
-        return Status::ok();
-    }
-    Status repeatBytes(const std::vector<uint8_t>& bytes, std::vector<uint8_t>* out) override {
-        *out = bytes;
+    Status repeatBinder(const sp<IBinder>& str, sp<IBinder>* out) override {
+        *out = str;
         return Status::ok();
     }
 };
@@ -65,11 +61,12 @@ enum Transport {
     RPC,
 };
 
-static const std::initializer_list<int64_t> kTransportList = {
+static void EachTransport(benchmark::internal::Benchmark* b) {
 #ifdef __BIONIC__
-        Transport::KERNEL,
+    b->Args({Transport::KERNEL});
 #endif
-        Transport::RPC};
+    b->Args({Transport::RPC});
+}
 
 static sp<RpcSession> gSession = RpcSession::make();
 #ifdef __BIONIC__
@@ -99,9 +96,9 @@ void BM_pingTransaction(benchmark::State& state) {
         CHECK_EQ(OK, binder->pingBinder());
     }
 }
-BENCHMARK(BM_pingTransaction)->ArgsProduct({kTransportList});
+BENCHMARK(BM_pingTransaction)->Apply(EachTransport);
 
-void BM_repeatTwoPageString(benchmark::State& state) {
+void BM_repeatString(benchmark::State& state) {
     sp<IBinder> binder = getBinderForOptions(state);
 
     sp<IBinderRpcBenchmark> iface = interface_cast<IBinderRpcBenchmark>(binder);
@@ -128,27 +125,7 @@ void BM_repeatTwoPageString(benchmark::State& state) {
         CHECK(ret.isOk()) << ret;
     }
 }
-BENCHMARK(BM_repeatTwoPageString)->ArgsProduct({kTransportList});
-
-void BM_throughputForTransportAndBytes(benchmark::State& state) {
-    sp<IBinder> binder = getBinderForOptions(state);
-    sp<IBinderRpcBenchmark> iface = interface_cast<IBinderRpcBenchmark>(binder);
-    CHECK(iface != nullptr);
-
-    std::vector<uint8_t> bytes = std::vector<uint8_t>(state.range(1));
-    for (size_t i = 0; i < bytes.size(); i++) {
-        bytes[i] = i % 256;
-    }
-
-    while (state.KeepRunning()) {
-        std::vector<uint8_t> out;
-        Status ret = iface->repeatBytes(bytes, &out);
-        CHECK(ret.isOk()) << ret;
-    }
-}
-BENCHMARK(BM_throughputForTransportAndBytes)
-        ->ArgsProduct({kTransportList,
-                       {64, 1024, 2048, 4096, 8182, 16364, 32728, 65535, 65536, 65537}});
+BENCHMARK(BM_repeatString)->Apply(EachTransport);
 
 void BM_repeatBinder(benchmark::State& state) {
     sp<IBinder> binder = gSession->getRootObject();
@@ -165,7 +142,7 @@ void BM_repeatBinder(benchmark::State& state) {
         CHECK(ret.isOk()) << ret;
     }
 }
-BENCHMARK(BM_repeatBinder)->ArgsProduct({kTransportList});
+BENCHMARK(BM_repeatBinder)->Apply(EachTransport);
 
 int main(int argc, char** argv) {
     ::benchmark::Initialize(&argc, argv);
@@ -175,8 +152,8 @@ int main(int argc, char** argv) {
     (void)unlink(addr.c_str());
 
     std::cerr << "Tests suffixes:" << std::endl;
-    std::cerr << "\t.../" << Transport::KERNEL << " is KERNEL" << std::endl;
-    std::cerr << "\t.../" << Transport::RPC << " is RPC" << std::endl;
+    std::cerr << "\t\\" << Transport::KERNEL << " is KERNEL" << std::endl;
+    std::cerr << "\t\\" << Transport::RPC << " is RPC" << std::endl;
 
     if (0 == fork()) {
         prctl(PR_SET_PDEATHSIG, SIGHUP); // racey, okay

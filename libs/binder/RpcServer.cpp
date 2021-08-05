@@ -167,7 +167,7 @@ void RpcServer::join() {
     status_t status;
     while ((status = mShutdownTrigger->triggerablePoll(mServer, POLLIN)) == OK) {
         unique_fd clientFd(TEMP_FAILURE_RETRY(
-                accept4(mServer.get(), nullptr, nullptr /*length*/, SOCK_CLOEXEC)));
+                accept4(mServer.get(), nullptr, nullptr /*length*/, SOCK_CLOEXEC | SOCK_NONBLOCK)));
 
         if (clientFd < 0) {
             ALOGE("Could not accept4 socket: %s", strerror(errno));
@@ -387,8 +387,8 @@ bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
     LOG_RPC_DETAIL("Setting up socket server %s", addr.toString().c_str());
     LOG_ALWAYS_FATAL_IF(hasServer(), "Each RpcServer can only have one server.");
 
-    unique_fd serverFd(
-            TEMP_FAILURE_RETRY(socket(addr.addr()->sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0)));
+    unique_fd serverFd(TEMP_FAILURE_RETRY(
+            socket(addr.addr()->sa_family, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0)));
     if (serverFd == -1) {
         ALOGE("Could not create socket: %s", strerror(errno));
         return false;

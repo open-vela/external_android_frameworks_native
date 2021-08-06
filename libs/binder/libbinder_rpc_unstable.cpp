@@ -19,20 +19,16 @@
 #include <binder/RpcServer.h>
 #include <binder/RpcSession.h>
 
-using android::OK;
 using android::RpcServer;
 using android::RpcSession;
-using android::status_t;
-using android::statusToString;
 
 extern "C" {
 
 bool RunRpcServer(AIBinder* service, unsigned int port) {
     auto server = RpcServer::make();
     server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
-    if (status_t status = server->setupVsockServer(port); status != OK) {
-        LOG(ERROR) << "Failed to set up vsock server with port " << port
-                   << " error: " << statusToString(status).c_str();
+    if (!server->setupVsockServer(port)) {
+        LOG(ERROR) << "Failed to set up vsock server with port " << port;
         return false;
     }
     server->setRootObject(AIBinder_toPlatformBinder(service));
@@ -45,9 +41,8 @@ bool RunRpcServer(AIBinder* service, unsigned int port) {
 
 AIBinder* RpcClient(unsigned int cid, unsigned int port) {
     auto session = RpcSession::make();
-    if (status_t status = session->setupVsockClient(cid, port); status != OK) {
-        LOG(ERROR) << "Failed to set up vsock client with CID " << cid << " and port " << port
-                   << " error: " << statusToString(status).c_str();
+    if (!session->setupVsockClient(cid, port)) {
+        LOG(ERROR) << "Failed to set up vsock client with CID " << cid << " and port " << port;
         return nullptr;
     }
     return AIBinder_fromPlatformBinder(session->getRootObject());

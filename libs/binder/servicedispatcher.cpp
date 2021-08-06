@@ -33,7 +33,6 @@ using android::defaultServiceManager;
 using android::OK;
 using android::RpcServer;
 using android::sp;
-using android::status_t;
 using android::statusToString;
 using android::String16;
 using android::base::Basename;
@@ -88,8 +87,8 @@ int Dispatch(const char* name, const ServiceRetriever& serviceRetriever) {
     }
     rpcServer->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
     unsigned int port;
-    if (status_t status = rpcServer->setupInetServer(kLocalInetAddress, 0, &port); status != OK) {
-        LOG(ERROR) << "setupInetServer failed: " << statusToString(status);
+    if (!rpcServer->setupInetServer(kLocalInetAddress, 0, &port)) {
+        LOG(ERROR) << "setupInetServer failed";
         return EX_SOFTWARE;
     }
     auto socket = rpcServer->releaseServer();
@@ -201,8 +200,8 @@ int wrapServiceManager(const ServiceRetriever& serviceRetriever) {
     rpcServer->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
     rpcServer->setRootObject(service);
     unsigned int port;
-    if (status_t status = rpcServer->setupInetServer(kLocalInetAddress, 0, &port); status != OK) {
-        LOG(ERROR) << "Unable to set up inet server: " << statusToString(status);
+    if (!rpcServer->setupInetServer(kLocalInetAddress, 0, &port)) {
+        LOG(ERROR) << "Unable to set up inet server";
         return EX_SOFTWARE;
     }
     LOG(INFO) << "Finish wrapping servicemanager with RPC on port " << port;

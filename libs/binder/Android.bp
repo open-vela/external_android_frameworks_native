@@ -104,7 +104,6 @@ cc_library {
         "BpBinder.cpp",
         "BufferedTextOutput.cpp",
         "Debug.cpp",
-        "FdTrigger.cpp",
         "IInterface.cpp",
         "IMemory.cpp",
         "IPCThreadState.cpp",

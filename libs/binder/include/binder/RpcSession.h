@@ -39,7 +39,6 @@ class RpcServer;
 class RpcSocketAddress;
 class RpcState;
 class RpcTransport;
-class FdTrigger;
 
 constexpr uint32_t RPC_WIRE_PROTOCOL_VERSION_NEXT = 0;
 constexpr uint32_t RPC_WIRE_PROTOCOL_VERSION_EXPERIMENTAL = 0xF0000000;
@@ -79,17 +78,17 @@ public:
      * This should be called once per thread, matching 'join' in the remote
      * process.
      */
-    [[nodiscard]] status_t setupUnixDomainClient(const char* path);
+    [[nodiscard]] bool setupUnixDomainClient(const char* path);
 
     /**
      * Connects to an RPC server at the CVD & port.
      */
-    [[nodiscard]] status_t setupVsockClient(unsigned int cvd, unsigned int port);
+    [[nodiscard]] bool setupVsockClient(unsigned int cvd, unsigned int port);
 
     /**
      * Connects to an RPC server at the given address and port.
      */
-    [[nodiscard]] status_t setupInetClient(const char* addr, unsigned int port);
+    [[nodiscard]] bool setupInetClient(const char* addr, unsigned int port);
 
     /**
      * Starts talking to an RPC server which has already been connected to. This
@@ -101,8 +100,8 @@ public:
      *
      * For future compatibility, 'request' should not reference any stack data.
      */
-    [[nodiscard]] status_t setupPreconnectedClient(base::unique_fd fd,
-                                                   std::function<base::unique_fd()>&& request);
+    [[nodiscard]] bool setupPreconnectedClient(base::unique_fd fd,
+                                               std::function<base::unique_fd()>&& request);
 
     /**
      * For debugging!
@@ -111,7 +110,7 @@ public:
      * response will never be satisfied. All data sent here will be
      * unceremoniously cast down the bottomless pit, /dev/null.
      */
-    [[nodiscard]] status_t addNullDebuggingClient();
+    [[nodiscard]] bool addNullDebuggingClient();
 
     /**
      * Query the other side of the session for the root object hosted by that
@@ -162,6 +161,50 @@ private:
     friend RpcState;
     explicit RpcSession(std::unique_ptr<RpcTransportCtxFactory> rpcTransportCtxFactory);
 
+    /** This is not a pipe. */
+    struct FdTrigger {
+        /** Returns nullptr for error case */
+        static std::unique_ptr<FdTrigger> make();
+
+        /**
+         * Close the write end of the pipe so that the read end receives POLLHUP.
+         * Not threadsafe.
+         */
+        void trigger();
+
+        /**
+         * Whether this has been triggered.
+         */
+        bool isTriggered();
+
+        /**
+         * Poll for a read event.
+         *
+         * event - for pollfd
+         *
+         * Return:
+         *   true - time to read!
+         *   false - trigger happened
+         */
+        status_t triggerablePoll(base::borrowed_fd fd, int16_t event);
+
+        /**
+         * Read (or write), but allow to be interrupted by this trigger.
+         *
+         * Return:
+         *   true - succeeded in completely processing 'size'
+         *   false - interrupted (failure or trigger)
+         */
+        status_t interruptableReadFully(RpcTransport* rpcTransport, void* data, size_t size);
+        status_t interruptableWriteFully(RpcTransport* rpcTransport, const void* data, size_t size);
+
+    private:
+        status_t triggerablePoll(RpcTransport* rpcTransport, int16_t event);
+
+        base::unique_fd mWrite;
+        base::unique_fd mRead;
+    };
+
     class EventListener : public virtual RefBase {
     public:
         virtual void onSessionAllIncomingThreadsEnded(const sp<RpcSession>& session) = 0;
@@ -210,25 +253,21 @@ private:
     // join on thread passed to preJoinThreadOwnership
     static void join(sp<RpcSession>&& session, PreJoinSetupResult&& result);
 
-    [[nodiscard]] status_t setupClient(
-            const std::function<status_t(const RpcAddress& sessionId, bool incoming)>&
-                    connectAndInit);
-    [[nodiscard]] status_t setupSocketClient(const RpcSocketAddress& address);
-    [[nodiscard]] status_t setupOneSocketConnection(const RpcSocketAddress& address,
-                                                    const RpcAddress& sessionId, bool incoming);
-    [[nodiscard]] status_t initAndAddConnection(base::unique_fd fd, const RpcAddress& sessionId,
-                                                bool incoming);
-    [[nodiscard]] status_t addIncomingConnection(std::unique_ptr<RpcTransport> rpcTransport);
-    [[nodiscard]] status_t addOutgoingConnection(std::unique_ptr<RpcTransport> rpcTransport,
-                                                 bool init);
+    [[nodiscard]] bool setupClient(
+            const std::function<bool(const RpcAddress& sessionId, bool incoming)>& connectAndInit);
+    [[nodiscard]] bool setupSocketClient(const RpcSocketAddress& address);
+    [[nodiscard]] bool setupOneSocketConnection(const RpcSocketAddress& address,
+                                                const RpcAddress& sessionId, bool incoming);
+    [[nodiscard]] bool initAndAddConnection(base::unique_fd fd, const RpcAddress& sessionId,
+                                            bool incoming);
+    [[nodiscard]] bool addIncomingConnection(std::unique_ptr<RpcTransport> rpcTransport);
+    [[nodiscard]] bool addOutgoingConnection(std::unique_ptr<RpcTransport> rpcTransport, bool init);
     [[nodiscard]] bool setForServer(const wp<RpcServer>& server,
                                     const wp<RpcSession::EventListener>& eventListener,
                                     const RpcAddress& sessionId);
     sp<RpcConnection> assignIncomingConnectionToThisThread(
             std::unique_ptr<RpcTransport> rpcTransport);
     [[nodiscard]] bool removeIncomingConnection(const sp<RpcConnection>& connection);
-
-    status_t initShutdownTrigger();
 
     enum class ConnectionUse {
         CLIENT,

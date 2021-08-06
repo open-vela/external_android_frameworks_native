@@ -55,25 +55,25 @@ void RpcServer::iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction() 
     mAgreedExperimental = true;
 }
 
-status_t RpcServer::setupUnixDomainServer(const char* path) {
+bool RpcServer::setupUnixDomainServer(const char* path) {
     return setupSocketServer(UnixSocketAddress(path));
 }
 
-status_t RpcServer::setupVsockServer(unsigned int port) {
+bool RpcServer::setupVsockServer(unsigned int port) {
     // realizing value w/ this type at compile time to avoid ubsan abort
     constexpr unsigned int kAnyCid = VMADDR_CID_ANY;
 
     return setupSocketServer(VsockSocketAddress(kAnyCid, port));
 }
 
-status_t RpcServer::setupInetServer(const char* address, unsigned int port,
-                                    unsigned int* assignedPort) {
+bool RpcServer::setupInetServer(const char* address, unsigned int port,
+                                unsigned int* assignedPort) {
     if (assignedPort != nullptr) *assignedPort = 0;
     auto aiStart = InetSocketAddress::getAddrInfo(address, port);
-    if (aiStart == nullptr) return UNKNOWN_ERROR;
+    if (aiStart == nullptr) return false;
     for (auto ai = aiStart.get(); ai != nullptr; ai = ai->ai_next) {
         InetSocketAddress socketAddress(ai->ai_addr, ai->ai_addrlen, address, port);
-        if (status_t status = setupSocketServer(socketAddress); status != OK) {
+        if (!setupSocketServer(socketAddress)) {
             continue;
         }
 
@@ -84,7 +84,7 @@ status_t RpcServer::setupInetServer(const char* address, unsigned int port,
             int savedErrno = errno;
             ALOGE("Could not getsockname at %s: %s", socketAddress.toString().c_str(),
                   strerror(savedErrno));
-            return -savedErrno;
+            return false;
         }
         LOG_ALWAYS_FATAL_IF(len != sizeof(addr), "Wrong socket type: len %zu vs len %zu",
                             static_cast<size_t>(len), sizeof(addr));
@@ -97,11 +97,11 @@ status_t RpcServer::setupInetServer(const char* address, unsigned int port,
             *assignedPort = realPort;
         }
 
-        return OK;
+        return true;
     }
     ALOGE("None of the socket address resolved for %s:%u can be set up as inet server.", address,
           port);
-    return UNKNOWN_ERROR;
+    return false;
 }
 
 void RpcServer::setMaxThreads(size_t threads) {
@@ -366,7 +366,7 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
         }
 
         if (incoming) {
-            LOG_ALWAYS_FATAL_IF(OK != session->addOutgoingConnection(std::move(client), true),
+            LOG_ALWAYS_FATAL_IF(!session->addOutgoingConnection(std::move(client), true),
                                 "server state must already be initialized");
             return;
         }
@@ -383,22 +383,21 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
     RpcSession::join(std::move(session), std::move(setupResult));
 }
 
-status_t RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
+bool RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
     LOG_RPC_DETAIL("Setting up socket server %s", addr.toString().c_str());
     LOG_ALWAYS_FATAL_IF(hasServer(), "Each RpcServer can only have one server.");
 
     unique_fd serverFd(
             TEMP_FAILURE_RETRY(socket(addr.addr()->sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0)));
     if (serverFd == -1) {
-        int savedErrno = errno;
-        ALOGE("Could not create socket: %s", strerror(savedErrno));
-        return -savedErrno;
+        ALOGE("Could not create socket: %s", strerror(errno));
+        return false;
     }
 
     if (0 != TEMP_FAILURE_RETRY(bind(serverFd.get(), addr.addr(), addr.addrSize()))) {
         int savedErrno = errno;
         ALOGE("Could not bind socket at %s: %s", addr.toString().c_str(), strerror(savedErrno));
-        return -savedErrno;
+        return false;
     }
 
     // Right now, we create all threads at once, making accept4 slow. To avoid hanging the client,
@@ -408,16 +407,16 @@ status_t RpcServer::setupSocketServer(const RpcSocketAddress& addr) {
     if (0 != TEMP_FAILURE_RETRY(listen(serverFd.get(), 50 /*backlog*/))) {
         int savedErrno = errno;
         ALOGE("Could not listen socket at %s: %s", addr.toString().c_str(), strerror(savedErrno));
-        return -savedErrno;
+        return false;
     }
 
     LOG_RPC_DETAIL("Successfully setup socket server %s", addr.toString().c_str());
 
-    if (status_t status = setupExternalServer(std::move(serverFd)); status != OK) {
+    if (!setupExternalServer(std::move(serverFd))) {
         ALOGE("Another thread has set up server while calling setupSocketServer. Race?");
-        return status;
+        return false;
     }
-    return OK;
+    return true;
 }
 
 void RpcServer::onSessionAllIncomingThreadsEnded(const sp<RpcSession>& session) {
@@ -450,15 +449,15 @@ unique_fd RpcServer::releaseServer() {
     return std::move(mServer);
 }
 
-status_t RpcServer::setupExternalServer(base::unique_fd serverFd) {
+bool RpcServer::setupExternalServer(base::unique_fd serverFd) {
     LOG_ALWAYS_FATAL_IF(!mAgreedExperimental, "no!");
     std::lock_guard<std::mutex> _l(mLock);
     if (mServer.ok()) {
         ALOGE("Each RpcServer can only have one server.");
-        return INVALID_OPERATION;
+        return false;
     }
     mServer = std::move(serverFd);
-    return OK;
+    return true;
 }
 
 } // namespace android

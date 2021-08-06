@@ -555,9 +555,7 @@ status_t BBinder::setRpcClientDebug(android::base::unique_fd socketFd,
         return status;
     }
     rpcServer->setRootObjectWeak(weakThis);
-    if (auto status = rpcServer->setupExternalServer(std::move(socketFd)); status != OK) {
-        return status;
-    }
+    rpcServer->setupExternalServer(std::move(socketFd));
     rpcServer->setMaxThreads(binderThreadPoolMaxCount);
     rpcServer->start();
     e->mRpcServerLinks.emplace(link);

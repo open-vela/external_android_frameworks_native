@@ -1196,12 +1196,7 @@ static bool testSupportVsockLoopback() {
     unsigned int vsockPort = allocateVsockPort();
     sp<RpcServer> server = RpcServer::make(RpcTransportCtxFactoryRaw::make());
     server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
-    if (status_t status = server->setupVsockServer(vsockPort); status != OK) {
-        if (status == -EAFNOSUPPORT) {
-            return false;
-        }
-        LOG_ALWAYS_FATAL("Could not setup vsock server: %s", statusToString(status).c_str());
-    }
+    CHECK_EQ(OK, server->setupVsockServer(vsockPort));
     server->start();
 
     sp<RpcSession> session = RpcSession::make(RpcTransportCtxFactoryRaw::make());

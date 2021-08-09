@@ -50,7 +50,7 @@ cc_test {
         "libbinder_ndk",
     ],
     static_libs: [
-        "IBinderRustNdkInteropTest-ndk",
+        "IBinderRustNdkInteropTest-ndk_platform",
         "libbinder_ndk_rust_interop",
     ],
     test_suites: ["general-tests"],

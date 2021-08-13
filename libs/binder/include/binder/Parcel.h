@@ -245,9 +245,10 @@ public:
     template<typename T>
     status_t            writeNullableParcelable(const std::optional<T>& parcelable)
             { return writeData(parcelable); }
-    template<typename T>
-    status_t            writeNullableParcelable(const std::unique_ptr<T>& parcelable) __attribute__((deprecated("use std::optional version instead")))
-            { return writeData(parcelable); }
+    template <typename T>
+    status_t writeNullableParcelable(const std::unique_ptr<T>& parcelable) {
+        return writeData(parcelable);
+    }
 
     status_t            writeParcelable(const Parcelable& parcelable);
 
@@ -401,9 +402,10 @@ public:
     template<typename T>
     status_t            readParcelable(std::optional<T>* parcelable) const
             { return readData(parcelable); }
-    template<typename T>
-    status_t            readParcelable(std::unique_ptr<T>* parcelable) const __attribute__((deprecated("use std::optional version instead")))
-            { return readData(parcelable); }
+    template <typename T>
+    status_t readParcelable(std::unique_ptr<T>* parcelable) const {
+        return readData(parcelable);
+    }
 
     // If strong binder would be nullptr, readStrongBinder() returns an error.
     // TODO: T must be derived from IInterface, fix for clarity.
@@ -560,6 +562,8 @@ private:
     status_t            finishUnflattenBinder(const sp<IBinder>& binder, sp<IBinder>* out) const;
     status_t            flattenBinder(const sp<IBinder>& binder);
     status_t            unflattenBinder(sp<IBinder>* out) const;
+
+    status_t readOutVectorSizeWithCheck(size_t elmSize, int32_t* size) const;
 
     template<class T>
     status_t            readAligned(T *pArg) const;
@@ -1315,7 +1319,7 @@ status_t Parcel::writeVectorSize(const std::unique_ptr<std::vector<T>>& val) {
 template<typename T>
 status_t Parcel::resizeOutVector(std::vector<T>* val) const {
     int32_t size;
-    status_t err = readInt32(&size);
+    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
     if (err != NO_ERROR) {
         return err;
     }
@@ -1330,7 +1334,7 @@ status_t Parcel::resizeOutVector(std::vector<T>* val) const {
 template<typename T>
 status_t Parcel::resizeOutVector(std::optional<std::vector<T>>* val) const {
     int32_t size;
-    status_t err = readInt32(&size);
+    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
     if (err != NO_ERROR) {
         return err;
     }
@@ -1346,7 +1350,7 @@ status_t Parcel::resizeOutVector(std::optional<std::vector<T>>* val) const {
 template<typename T>
 status_t Parcel::resizeOutVector(std::unique_ptr<std::vector<T>>* val) const {
     int32_t size;
-    status_t err = readInt32(&size);
+    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
     if (err != NO_ERROR) {
         return err;
     }

@@ -21,9 +21,13 @@ use crate::proxy::SpIBinder;
 use crate::sys;
 
 use std::convert::TryFrom;
-use std::ffi::{c_void, CString};
+use std::ffi::{c_void, CStr, CString};
+use std::fs::File;
 use std::mem::ManuallyDrop;
 use std::ops::Deref;
+use std::os::raw::c_char;
+use std::os::unix::io::FromRawFd;
+use std::slice;
 
 /// Rust wrapper around Binder remotable objects.
 ///
@@ -46,6 +50,25 @@ pub struct Binder<T: Remotable> {
 /// the box-like object inherits `Send` from the two inner values, similarly
 /// to how `Box<T>` is `Send` if `T` is `Send`.
 unsafe impl<T: Remotable> Send for Binder<T> {}
+
+/// # Safety
+///
+/// A `Binder<T>` is a pair of unique owning pointers to two values:
+///   * a C++ ABBinder which is thread-safe, i.e. `Send + Sync`
+///   * a Rust object which implements `Remotable`; this trait requires `Send + Sync`
+///
+/// `ABBinder` contains an immutable `mUserData` pointer, which is actually a
+/// pointer to a boxed `T: Remotable`, which is `Sync`. `ABBinder` also contains
+/// a mutable pointer to its class, but mutation of this field is controlled by
+/// a mutex and it is only allowed to be set once, therefore we can concurrently
+/// access this field safely. `ABBinder` inherits from `BBinder`, which is also
+/// thread-safe. Thus `ABBinder` is thread-safe.
+///
+/// Both pointers are unique (never escape the `Binder<T>` object and are not copied)
+/// so we can essentially treat `Binder<T>` as a box-like containing the two objects;
+/// the box-like object inherits `Sync` from the two inner values, similarly
+/// to how `Box<T>` is `Sync` if `T` is `Sync`.
+unsafe impl<T: Remotable> Sync for Binder<T> {}
 
 impl<T: Remotable> Binder<T> {
     /// Create a new Binder remotable object with default stability
@@ -289,6 +312,37 @@ impl<T: Remotable> InterfaceClassMethods for Binder<T> {
         // object created by Box.
         args
     }
+
+    /// Called to handle the `dump` transaction.
+    ///
+    /// # Safety
+    ///
+    /// Must be called with a non-null, valid pointer to a local `AIBinder` that
+    /// contains a `T` pointer in its user data. fd should be a non-owned file
+    /// descriptor, and args must be an array of null-terminated string
+    /// poiinters with length num_args.
+    unsafe extern "C" fn on_dump(binder: *mut sys::AIBinder, fd: i32, args: *mut *const c_char, num_args: u32) -> status_t {
+        if fd < 0 {
+            return StatusCode::UNEXPECTED_NULL as status_t;
+        }
+        // We don't own this file, so we need to be careful not to drop it.
+        let file = ManuallyDrop::new(File::from_raw_fd(fd));
+
+        if args.is_null() {
+            return StatusCode::UNEXPECTED_NULL as status_t;
+        }
+        let args = slice::from_raw_parts(args, num_args as usize);
+        let args: Vec<_> = args.iter().map(|s| CStr::from_ptr(*s)).collect();
+
+        let object = sys::AIBinder_getUserData(binder);
+        let binder: &T = &*(object as *const T);
+        let res = binder.on_dump(&file, &args);
+
+        match res {
+            Ok(()) => 0,
+            Err(e) => e as status_t,
+        }
+    }
 }
 
 impl<T: Remotable> Drop for Binder<T> {
@@ -406,6 +460,10 @@ impl Remotable for () {
         _data: &Parcel,
         _reply: &mut Parcel,
     ) -> Result<()> {
+        Ok(())
+    }
+
+    fn on_dump(&self, _file: &File, _args: &[&CStr]) -> Result<()> {
         Ok(())
     }
 

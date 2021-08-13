@@ -173,8 +173,8 @@ static void release_object(const sp<ProcessState>& proc,
 status_t Parcel::finishFlattenBinder(const sp<IBinder>& binder)
 {
     internal::Stability::tryMarkCompilationUnit(binder.get());
-    auto category = internal::Stability::getCategory(binder.get());
-    return writeInt32(category.repr());
+    int16_t rep = internal::Stability::getRepr(binder.get());
+    return writeInt32(rep);
 }
 
 status_t Parcel::finishUnflattenBinder(
@@ -184,7 +184,8 @@ status_t Parcel::finishUnflattenBinder(
     status_t status = readInt32(&stability);
     if (status != OK) return status;
 
-    status = internal::Stability::setRepr(binder.get(), stability, true /*log*/);
+    status = internal::Stability::setRepr(binder.get(), static_cast<int16_t>(stability),
+                                          true /*log*/);
     if (status != OK) return status;
 
     *out = binder;
@@ -195,13 +196,17 @@ static constexpr inline int schedPolicyMask(int policy, int priority) {
     return (priority & FLAT_BINDER_FLAG_PRIORITY_MASK) | ((policy & 3) << FLAT_BINDER_FLAG_SCHED_POLICY_SHIFT);
 }
 
-status_t Parcel::flattenBinder(const sp<IBinder>& binder)
-{
+status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
+    BBinder* local = nullptr;
+    if (binder) local = binder->localBinder();
+    if (local) local->setParceled();
+
     if (isForRpc()) {
         if (binder) {
             status_t status = writeInt32(1); // non-null
             if (status != OK) return status;
             RpcAddress address = RpcAddress::zero();
+            // TODO(b/167966510): need to undo this if the Parcel is not sent
             status = mSession->state()->onBinderLeaving(mSession, binder, &address);
             if (status != OK) return status;
             status = address.writeToParcel(this);
@@ -222,7 +227,6 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder)
     }
 
     if (binder != nullptr) {
-        BBinder *local = binder->localBinder();
         if (!local) {
             BpBinder *proxy = binder->remoteBinder();
             if (proxy == nullptr) {
@@ -283,9 +287,10 @@ status_t Parcel::unflattenBinder(sp<IBinder>* out) const
 
         if (isNull & 1) {
             auto addr = RpcAddress::zero();
-            status_t status = addr.readFromParcel(*this);
-            if (status != OK) return status;
-            binder = mSession->state()->onBinderEntering(mSession, addr);
+            if (status_t status = addr.readFromParcel(*this); status != OK) return status;
+            if (status_t status = mSession->state()->onBinderEntering(mSession, addr, &binder);
+                status != OK)
+                return status;
         }
 
         return finishUnflattenBinder(binder, out);
@@ -1464,6 +1469,29 @@ const void* Parcel::readInplace(size_t len) const
         return data;
     }
     return nullptr;
+}
+
+status_t Parcel::readOutVectorSizeWithCheck(size_t elmSize, int32_t* size) const {
+    if (status_t status = readInt32(size); status != OK) return status;
+    if (*size < 0) return OK; // may be null, client to handle
+
+    LOG_ALWAYS_FATAL_IF(elmSize > INT32_MAX, "Cannot have element as big as %zu", elmSize);
+
+    // approximation, can't know max element size (e.g. if it makes heap
+    // allocations)
+    static_assert(sizeof(int) == sizeof(int32_t), "Android is LP64");
+    int32_t allocationSize;
+    if (__builtin_smul_overflow(elmSize, *size, &allocationSize)) return NO_MEMORY;
+
+    // High limit of 1MB since something this big could never be returned. Could
+    // probably scope this down, but might impact very specific usecases.
+    constexpr int32_t kMaxAllocationSize = 1 * 1000 * 1000;
+
+    if (allocationSize >= kMaxAllocationSize) {
+        return NO_MEMORY;
+    }
+
+    return OK;
 }
 
 template<class T>

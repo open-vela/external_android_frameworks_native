@@ -17,5 +17,4 @@
 interface IBinderRpcBenchmark {
     @utf8InCpp String repeatString(@utf8InCpp String str);
     IBinder repeatBinder(IBinder binder);
-    byte[] repeatBytes(in byte[] bytes);
 }

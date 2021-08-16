@@ -14,14 +14,25 @@
  * limitations under the License.
  */
 
-package android.content.pm;
+// Wraps the transport layer of RPC. Implementation uses TLS.
 
-/**
- * This event is designed for notification to native code listener about
- * any changes to set of apex packages staged for installation on next boot.
- *
- * @hide
- */
-parcelable ApexStagedEvent {
-  @utf8InCpp String[] stagedApexModuleNames;
-}
+#pragma once
+
+#include <binder/RpcTransport.h>
+
+namespace android {
+
+// RpcTransportCtxFactory with TLS enabled with self-signed certificate.
+class RpcTransportCtxFactoryTls : public RpcTransportCtxFactory {
+public:
+    static std::unique_ptr<RpcTransportCtxFactory> make();
+
+    std::unique_ptr<RpcTransportCtx> newServerCtx() const override;
+    std::unique_ptr<RpcTransportCtx> newClientCtx() const override;
+    const char* toCString() const override;
+
+private:
+    RpcTransportCtxFactoryTls() = default;
+};
+
+} // namespace android

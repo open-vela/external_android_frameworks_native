@@ -115,12 +115,12 @@ struct RpcWireTransaction {
 
     uint32_t reserved[4];
 
-    uint8_t data[];
+    uint8_t data[0];
 };
 
 struct RpcWireReply {
     int32_t status; // transact return
-    uint8_t data[];
+    uint8_t data[0];
 };
 
 #pragma clang diagnostic pop

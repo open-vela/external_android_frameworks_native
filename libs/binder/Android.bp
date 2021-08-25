@@ -94,6 +94,9 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
+        // TODO(b/166468760) remove these three
+        "com.android.media.swcodec",
+        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -266,6 +269,15 @@ cc_defaults {
 cc_library_shared {
     name: "libbinder_tls",
     defaults: ["libbinder_tls_defaults"],
+}
+
+// For testing
+cc_library_static {
+    name: "libbinder_tls_static",
+    defaults: ["libbinder_tls_defaults"],
+    visibility: [
+        ":__subpackages__",
+    ],
 }
 
 // AIDL interface between libbinder and framework.jar

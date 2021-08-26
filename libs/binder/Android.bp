@@ -246,14 +246,16 @@ filegroup {
     path: "aidl",
 }
 
-filegroup {
+aidl_interface {
     name: "packagemanager_aidl",
+    unstable: true,
+    local_include_dir: "aidl",
+    host_supported: true,
     srcs: [
         "aidl/android/content/pm/IPackageChangeObserver.aidl",
         "aidl/android/content/pm/IPackageManagerNative.aidl",
         "aidl/android/content/pm/PackageChangeEvent.aidl",
     ],
-    path: "aidl",
 }
 
 aidl_interface {

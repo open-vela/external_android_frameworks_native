@@ -35,13 +35,9 @@ public:
     void trigger();
 
     /**
-     * Check whether this has been triggered by checking the write end. Note:
-     * this has no internal locking, and it is inherently racey, but this is
-     * okay, because if we accidentally return false when a trigger has already
-     * happened, we can imagine that instead, the scheduler actually executed
-     * the code which is polling isTriggered earlier.
+     * Check whether this has been triggered by checking the write end.
      */
-    [[nodiscard]] bool isTriggered();
+    bool isTriggered();
 
     /**
      * Poll for a read event.
@@ -52,7 +48,17 @@ public:
      *   true - time to read!
      *   false - trigger happened
      */
-    [[nodiscard]] status_t triggerablePoll(base::borrowed_fd fd, int16_t event);
+    status_t triggerablePoll(base::borrowed_fd fd, int16_t event);
+
+    /**
+     * Check whether this has been triggered by poll()ing the read end.
+     *
+     * Return:
+     *   true - triggered
+     *   false - not triggered
+     *   error - error when polling
+     */
+    android::base::Result<bool> isTriggeredPolled();
 
 private:
     base::unique_fd mWrite;

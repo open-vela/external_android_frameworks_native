@@ -34,9 +34,6 @@
       "name": "binderStabilityTest"
     },
     {
-      "name": "binderRpcWireProtocolTest"
-    },
-    {
       "name": "binderUtilsHostTest"
     },
     {

@@ -104,7 +104,7 @@ static void acquire_object(const sp<ProcessState>& proc,
     switch (obj.hdr.type) {
         case BINDER_TYPE_BINDER:
             if (obj.binder) {
-                LOG_REFS("Parcel %p acquiring reference on local %p", who, obj.cookie);
+                LOG_REFS("Parcel %p acquiring reference on local %llu", who, obj.cookie);
                 reinterpret_cast<IBinder*>(obj.cookie)->incStrong(who);
             }
             return;
@@ -137,7 +137,7 @@ static void release_object(const sp<ProcessState>& proc,
     switch (obj.hdr.type) {
         case BINDER_TYPE_BINDER:
             if (obj.binder) {
-                LOG_REFS("Parcel %p releasing reference on local %p", who, obj.cookie);
+                LOG_REFS("Parcel %p releasing reference on local %llu", who, obj.cookie);
                 reinterpret_cast<IBinder*>(obj.cookie)->decStrong(who);
             }
             return;
@@ -597,7 +597,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__)
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

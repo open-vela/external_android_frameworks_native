@@ -31,7 +31,6 @@
 #include <binder/RpcSession.h>
 #include <binder/RpcTransport.h>
 #include <binder/RpcTransportRaw.h>
-#include <binder/RpcTransportTls.h>
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -55,18 +54,16 @@ static_assert(RPC_WIRE_PROTOCOL_VERSION + 1 == RPC_WIRE_PROTOCOL_VERSION_NEXT ||
               RPC_WIRE_PROTOCOL_VERSION == RPC_WIRE_PROTOCOL_VERSION_EXPERIMENTAL);
 const char* kLocalInetAddress = "127.0.0.1";
 
-enum class RpcSecurity { RAW, TLS };
+enum class RpcSecurity { RAW };
 
 static inline std::vector<RpcSecurity> RpcSecurityValues() {
-    return {RpcSecurity::RAW, RpcSecurity::TLS};
+    return {RpcSecurity::RAW};
 }
 
 static inline std::unique_ptr<RpcTransportCtxFactory> newFactory(RpcSecurity rpcSecurity) {
     switch (rpcSecurity) {
         case RpcSecurity::RAW:
             return RpcTransportCtxFactoryRaw::make();
-        case RpcSecurity::TLS:
-            return RpcTransportCtxFactoryTls::make();
         default:
             LOG_ALWAYS_FATAL("Unknown RpcSecurity %d", rpcSecurity);
     }

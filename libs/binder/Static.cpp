@@ -17,9 +17,9 @@
 // All static variables go here, to control initialization and
 // destruction order in the library.
 
-#include <private/binder/Static.h>
+#include "Static.h"
 
-#include <binder/BufferedTextOutput.h>
+#include "BufferedTextOutput.h"
 #include <binder/IPCThreadState.h>
 #include <utils/Log.h>
 
@@ -33,7 +33,7 @@ class LogTextOutput : public BufferedTextOutput
 {
 public:
     LogTextOutput() : BufferedTextOutput(MULTITHREADED) { }
-    virtual ~LogTextOutput() { };
+    virtual ~LogTextOutput() { }
 
 protected:
     virtual status_t writeLines(const struct iovec& vec, size_t N)
@@ -49,12 +49,14 @@ class FdTextOutput : public BufferedTextOutput
 {
 public:
     explicit FdTextOutput(int fd) : BufferedTextOutput(MULTITHREADED), mFD(fd) { }
-    virtual ~FdTextOutput() { };
+    virtual ~FdTextOutput() { }
 
 protected:
     virtual status_t writeLines(const struct iovec& vec, size_t N)
     {
-        writev(mFD, &vec, N);
+        ssize_t ret = writev(mFD, &vec, N);
+        if (ret == -1) return -errno;
+        if (static_cast<size_t>(ret) != N) return UNKNOWN_ERROR;
         return NO_ERROR;
     }
 
@@ -62,41 +64,8 @@ private:
     int mFD;
 };
 
-static LogTextOutput gLogTextOutput;
-static FdTextOutput gStdoutTextOutput(STDOUT_FILENO);
-static FdTextOutput gStderrTextOutput(STDERR_FILENO);
-
-TextOutput& alog(gLogTextOutput);
-TextOutput& aout(gStdoutTextOutput);
-TextOutput& aerr(gStderrTextOutput);
-
-// ------------ ProcessState.cpp
-
-Mutex& gProcessMutex = *new Mutex;
-sp<ProcessState> gProcess;
-
-class LibBinderIPCtStatics
-{
-public:
-    LibBinderIPCtStatics()
-    {
-    }
-    
-    ~LibBinderIPCtStatics()
-    {
-        IPCThreadState::shutdown();
-    }
-};
-
-static LibBinderIPCtStatics gIPCStatics;
-
-// ------------ IServiceManager.cpp
-
-Mutex gDefaultServiceManagerLock;
-sp<IServiceManager> gDefaultServiceManager;
-#ifndef __ANDROID_VNDK__
-sp<IPermissionController> gPermissionController;
-#endif
-bool gSystemBootCompleted = false;
+TextOutput& alog(*new LogTextOutput());
+TextOutput& aout(*new FdTextOutput(STDOUT_FILENO));
+TextOutput& aerr(*new FdTextOutput(STDERR_FILENO));
 
 }   // namespace android

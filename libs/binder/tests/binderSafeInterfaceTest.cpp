@@ -36,11 +36,14 @@
 #include <optional>
 
 #include <sys/eventfd.h>
+#include <sys/prctl.h>
 
 using namespace std::chrono_literals; // NOLINT - google-build-using-namespace
 
 namespace android {
 namespace tests {
+
+static const String16 kServiceName("SafeInterfaceTest");
 
 enum class TestEnum : uint32_t {
     INVALID = 0,
@@ -75,7 +78,7 @@ public:
 
 private:
     int32_t mValue = 0;
-    uint8_t mPadding[4] = {}; // Avoids a warning from -Wpadded
+    __attribute__((unused)) uint8_t mPadding[4] = {}; // Avoids a warning from -Wpadded
 };
 
 struct TestFlattenable : Flattenable<TestFlattenable> {
@@ -184,7 +187,7 @@ private:
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
-IMPLEMENT_META_INTERFACE(Callback, "android.gfx.tests.ICallback");
+IMPLEMENT_META_INTERFACE(Callback, "android.gfx.tests.ICallback")
 #pragma clang diagnostic pop
 
 class BnCallback : public SafeBnInterface<ICallback> {
@@ -223,12 +226,13 @@ public:
         IncrementNativeHandle,
         IncrementNoCopyNoMove,
         IncrementParcelableVector,
-        ToUpper,
+        DoubleString,
         CallMeBack,
         IncrementInt32,
         IncrementUint32,
         IncrementInt64,
         IncrementUint64,
+        IncrementFloat,
         IncrementTwo,
         Last,
     };
@@ -252,13 +256,14 @@ public:
     virtual status_t increment(const NoCopyNoMove& a, NoCopyNoMove* aPlusOne) const = 0;
     virtual status_t increment(const std::vector<TestParcelable>& a,
                                std::vector<TestParcelable>* aPlusOne) const = 0;
-    virtual status_t toUpper(const String8& str, String8* upperStr) const = 0;
+    virtual status_t doubleString(const String8& str, String8* doubleStr) const = 0;
     // As mentioned above, sp<IBinder> is already tested by setDeathToken
     virtual void callMeBack(const sp<ICallback>& callback, int32_t a) const = 0;
     virtual status_t increment(int32_t a, int32_t* aPlusOne) const = 0;
     virtual status_t increment(uint32_t a, uint32_t* aPlusOne) const = 0;
     virtual status_t increment(int64_t a, int64_t* aPlusOne) const = 0;
     virtual status_t increment(uint64_t a, uint64_t* aPlusOne) const = 0;
+    virtual status_t increment(float a, float* aPlusOne) const = 0;
 
     // This tests that input/output parameter interleaving works correctly
     virtual status_t increment(int32_t a, int32_t* aPlusOne, int32_t b,
@@ -324,9 +329,10 @@ public:
                                                            std::vector<TestParcelable>*);
         return callRemote<Signature>(Tag::IncrementParcelableVector, a, aPlusOne);
     }
-    status_t toUpper(const String8& str, String8* upperStr) const override {
+    status_t doubleString(const String8& str, String8* doubleStr) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        return callRemote<decltype(&ISafeInterfaceTest::toUpper)>(Tag::ToUpper, str, upperStr);
+        return callRemote<decltype(&ISafeInterfaceTest::doubleString)>(Tag::DoubleString, str,
+                                                                       doubleStr);
     }
     void callMeBack(const sp<ICallback>& callback, int32_t a) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
@@ -353,6 +359,11 @@ public:
         using Signature = status_t (ISafeInterfaceTest::*)(uint64_t, uint64_t*) const;
         return callRemote<Signature>(Tag::IncrementUint64, a, aPlusOne);
     }
+    status_t increment(float a, float* aPlusOne) const override {
+        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
+        using Signature = status_t (ISafeInterfaceTest::*)(float, float*) const;
+        return callRemote<Signature>(Tag::IncrementFloat, a, aPlusOne);
+    }
     status_t increment(int32_t a, int32_t* aPlusOne, int32_t b, int32_t* bPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         using Signature =
@@ -366,7 +377,7 @@ private:
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
-IMPLEMENT_META_INTERFACE(SafeInterfaceTest, "android.gfx.tests.ISafeInterfaceTest");
+IMPLEMENT_META_INTERFACE(SafeInterfaceTest, "android.gfx.tests.ISafeInterfaceTest")
 
 static sp<IBinder::DeathRecipient> getDeathRecipient() {
     static sp<IBinder::DeathRecipient> recipient = new ExitOnDeath;
@@ -444,10 +455,9 @@ public:
         }
         return NO_ERROR;
     }
-    status_t toUpper(const String8& str, String8* upperStr) const override {
+    status_t doubleString(const String8& str, String8* doubleStr) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
-        *upperStr = str;
-        upperStr->toUpper();
+        *doubleStr = str + str;
         return NO_ERROR;
     }
     void callMeBack(const sp<ICallback>& callback, int32_t a) const override {
@@ -472,6 +482,11 @@ public:
     status_t increment(uint64_t a, uint64_t* aPlusOne) const override {
         ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
         *aPlusOne = a + 1;
+        return NO_ERROR;
+    }
+    status_t increment(float a, float* aPlusOne) const override {
+        ALOG(LOG_INFO, getLogTag(), "%s", __PRETTY_FUNCTION__);
+        *aPlusOne = a + 1.0f;
         return NO_ERROR;
     }
     status_t increment(int32_t a, int32_t* aPlusOne, int32_t b, int32_t* bPlusOne) const override {
@@ -533,8 +548,8 @@ public:
                                                          std::vector<TestParcelable>*) const;
                 return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
             }
-            case ISafeInterfaceTest::Tag::ToUpper: {
-                return callLocal(data, reply, &ISafeInterfaceTest::toUpper);
+            case ISafeInterfaceTest::Tag::DoubleString: {
+                return callLocal(data, reply, &ISafeInterfaceTest::doubleString);
             }
             case ISafeInterfaceTest::Tag::CallMeBack: {
                 return callLocalAsync(data, reply, &ISafeInterfaceTest::callMeBack);
@@ -553,6 +568,10 @@ public:
             }
             case ISafeInterfaceTest::Tag::IncrementUint64: {
                 using Signature = status_t (ISafeInterfaceTest::*)(uint64_t, uint64_t*) const;
+                return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
+            }
+            case ISafeInterfaceTest::Tag::IncrementFloat: {
+                using Signature = status_t (ISafeInterfaceTest::*)(float, float*) const;
                 return callLocal<Signature>(data, reply, &ISafeInterfaceTest::increment);
             }
             case ISafeInterfaceTest::Tag::IncrementTwo: {
@@ -585,40 +604,13 @@ private:
     static constexpr const char* getLogTag() { return "SafeInterfaceTest"; }
 
     sp<ISafeInterfaceTest> getRemoteService() {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wexit-time-destructors"
-        static std::mutex sMutex;
-        static sp<ISafeInterfaceTest> sService;
-        static sp<IBinder> sDeathToken = new BBinder;
-#pragma clang diagnostic pop
+        sp<IBinder> binder = defaultServiceManager()->getService(kServiceName);
+        sp<ISafeInterfaceTest> iface = interface_cast<ISafeInterfaceTest>(binder);
+        EXPECT_TRUE(iface != nullptr);
 
-        std::unique_lock<decltype(sMutex)> lock;
-        if (sService == nullptr) {
-            ALOG(LOG_INFO, getLogTag(), "Forking remote process");
-            pid_t forkPid = fork();
-            EXPECT_NE(forkPid, -1);
+        iface->setDeathToken(new BBinder);
 
-            const String16 serviceName("SafeInterfaceTest");
-
-            if (forkPid == 0) {
-                ALOG(LOG_INFO, getLogTag(), "Remote process checking in");
-                sp<ISafeInterfaceTest> nativeService = new BnSafeInterfaceTest;
-                defaultServiceManager()->addService(serviceName,
-                                                    IInterface::asBinder(nativeService));
-                ProcessState::self()->startThreadPool();
-                IPCThreadState::self()->joinThreadPool();
-                // We shouldn't get to this point
-                [&]() { FAIL(); }();
-            }
-
-            sp<IBinder> binder = defaultServiceManager()->getService(serviceName);
-            sService = interface_cast<ISafeInterfaceTest>(binder);
-            EXPECT_TRUE(sService != nullptr);
-
-            sService->setDeathToken(sDeathToken);
-        }
-
-        return sService;
+        return iface;
     }
 };
 
@@ -727,18 +719,19 @@ TEST_F(SafeInterfaceTest, TestIncremementParcelableVector) {
     const std::vector<TestParcelable> a{TestParcelable{1}, TestParcelable{2}};
     std::vector<TestParcelable> aPlusOne;
     status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
+    ASSERT_EQ(NO_ERROR, result);
     ASSERT_EQ(a.size(), aPlusOne.size());
     for (size_t i = 0; i < a.size(); ++i) {
         ASSERT_EQ(a[i].getValue() + 1, aPlusOne[i].getValue());
     }
 }
 
-TEST_F(SafeInterfaceTest, TestToUpper) {
-    const String8 str{"Hello, world!"};
-    String8 upperStr;
-    status_t result = mSafeInterfaceTest->toUpper(str, &upperStr);
+TEST_F(SafeInterfaceTest, TestDoubleString) {
+    const String8 str{"asdf"};
+    String8 doubleStr;
+    status_t result = mSafeInterfaceTest->doubleString(str, &doubleStr);
     ASSERT_EQ(NO_ERROR, result);
-    ASSERT_TRUE(upperStr == String8{"HELLO, WORLD!"});
+    ASSERT_TRUE(doubleStr == String8{"asdfasdf"});
 }
 
 TEST_F(SafeInterfaceTest, TestCallMeBack) {
@@ -804,6 +797,14 @@ TEST_F(SafeInterfaceTest, TestIncrementUint64) {
     ASSERT_EQ(a + 1, aPlusOne);
 }
 
+TEST_F(SafeInterfaceTest, TestIncrementFloat) {
+    const float a = 1.0f;
+    float aPlusOne = 0.0f;
+    status_t result = mSafeInterfaceTest->increment(a, &aPlusOne);
+    ASSERT_EQ(NO_ERROR, result);
+    ASSERT_EQ(a + 1.0f, aPlusOne);
+}
+
 TEST_F(SafeInterfaceTest, TestIncrementTwo) {
     const int32_t a = 1;
     int32_t aPlusOne = 0;
@@ -813,6 +814,24 @@ TEST_F(SafeInterfaceTest, TestIncrementTwo) {
     ASSERT_EQ(NO_ERROR, result);
     ASSERT_EQ(a + 1, aPlusOne);
     ASSERT_EQ(b + 1, bPlusOne);
+}
+
+extern "C" int main(int argc, char **argv) {
+    testing::InitGoogleTest(&argc, argv);
+
+    if (fork() == 0) {
+        prctl(PR_SET_PDEATHSIG, SIGHUP);
+        sp<BnSafeInterfaceTest> nativeService = new BnSafeInterfaceTest;
+        status_t status = defaultServiceManager()->addService(kServiceName, nativeService);
+        if (status != OK) {
+            ALOG(LOG_INFO, "SafeInterfaceServer", "could not register");
+            return EXIT_FAILURE;
+        }
+        IPCThreadState::self()->joinThreadPool();
+        return EXIT_FAILURE;
+    }
+
+    return RUN_ALL_TESTS();
 }
 
 } // namespace tests

@@ -15,8 +15,19 @@
 //
 // Static library used in testing and executables
 //
+package {
+    // See: http://go/android-license-faq
+    // A large-scale-change added 'default_applicable_licenses' to import
+    // all of the 'license_kinds' from "frameworks_native_license"
+    // to get the below license kinds:
+    //   SPDX-license-identifier-Apache-2.0
+    default_applicable_licenses: ["frameworks_native_license"],
+}
+
 cc_library_static {
     name: "libserviceutils",
+
+    vendor_available: true,
 
     cflags: [
         "-Wall",
@@ -27,8 +38,13 @@ cc_library_static {
         "PriorityDumper.cpp",
     ],
 
-    clang: true,
+    header_libs: [
+        "libutils_headers",
+    ],
+
+    export_header_lib_headers: [
+        "libutils_headers",
+    ],
+
     export_include_dirs: ["include"],
 }
-
-subdirs = ["tests"]

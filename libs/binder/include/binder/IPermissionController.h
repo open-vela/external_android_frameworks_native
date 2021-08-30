@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-//
-#ifndef ANDROID_IPERMISSION_CONTROLLER_H
-#define ANDROID_IPERMISSION_CONTROLLER_H
+#pragma once
 
 #ifndef __ANDROID_VNDK__
 
@@ -56,6 +54,7 @@ public:
 class BnPermissionController : public BnInterface<IPermissionController>
 {
 public:
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
@@ -64,11 +63,8 @@ public:
 
 // ----------------------------------------------------------------------
 
-}; // namespace android
+} // namespace android
 
 #else // __ANDROID_VNDK__
 #error "This header is not visible to vendors"
 #endif // __ANDROID_VNDK__
-
-#endif // ANDROID_IPERMISSION_CONTROLLER_H
-

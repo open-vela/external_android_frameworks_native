@@ -18,10 +18,12 @@
 #define ANDROID_BINDER_STATUS_H
 
 #include <cstdint>
-#include <sstream>
+#include <sstream> // historical
+#include <ostream>
 
 #include <binder/Parcel.h>
 #include <utils/String8.h>
+#include <string>
 
 namespace android {
 namespace binder {
@@ -89,6 +91,9 @@ public:
     static Status fromExceptionCode(int32_t exceptionCode,
                                     const char* message);
 
+    // warning: this is still considered an error if it is constructed with a
+    // zero value error code. Please use Status::ok() instead and avoid zero
+    // error codes
     static Status fromServiceSpecificError(int32_t serviceSpecificErrorCode);
     static Status fromServiceSpecificError(int32_t serviceSpecificErrorCode,
                                            const String8& message);
@@ -96,6 +101,8 @@ public:
                                            const char* message);
 
     static Status fromStatusT(status_t status);
+
+    static std::string exceptionToString(status_t exceptionCode);
 
     Status() = default;
     ~Status() = default;
@@ -150,8 +157,9 @@ private:
     String8 mMessage;
 };  // class Status
 
-// For gtest output logging
-std::stringstream& operator<< (std::stringstream& stream, const Status& s);
+static inline std::ostream& operator<< (std::ostream& o, const Status& s) {
+    return o << s.toString8();
+}
 
 }  // namespace binder
 }  // namespace android

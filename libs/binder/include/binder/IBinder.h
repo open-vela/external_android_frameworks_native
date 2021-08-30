@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_IBINDER_H
-#define ANDROID_IBINDER_H
+#pragma once
 
+#include <android-base/unique_fd.h>
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
 #include <utils/String16.h>
 #include <utils/Vector.h>
 
+#include <functional>
 
-// linux/binder.h already defines this, but we can't just include it from there
-// because there are host builds that include this file.
+// linux/binder.h defines this, but we don't want to include it here in order to
+// avoid exporting the kernel headers
 #ifndef B_PACK_CHARS
 #define B_PACK_CHARS(c1, c2, c3, c4) \
     ((((c1)<<24)) | (((c2)<<16)) | (((c3)<<8)) | (c4))
@@ -47,24 +48,44 @@ class IShellCallback;
  * (method calls, property get and set) is down through a low-level
  * protocol implemented on top of the transact() API.
  */
-class IBinder : public virtual RefBase
+class [[clang::lto_visibility_public]] IBinder : public virtual RefBase
 {
 public:
     enum {
-        FIRST_CALL_TRANSACTION  = 0x00000001,
-        LAST_CALL_TRANSACTION   = 0x00ffffff,
+        FIRST_CALL_TRANSACTION = 0x00000001,
+        LAST_CALL_TRANSACTION = 0x00ffffff,
 
-        PING_TRANSACTION        = B_PACK_CHARS('_','P','N','G'),
-        DUMP_TRANSACTION        = B_PACK_CHARS('_','D','M','P'),
-        SHELL_COMMAND_TRANSACTION = B_PACK_CHARS('_','C','M','D'),
-        INTERFACE_TRANSACTION   = B_PACK_CHARS('_', 'N', 'T', 'F'),
-        SYSPROPS_TRANSACTION    = B_PACK_CHARS('_', 'S', 'P', 'R'),
+        PING_TRANSACTION = B_PACK_CHARS('_', 'P', 'N', 'G'),
+        DUMP_TRANSACTION = B_PACK_CHARS('_', 'D', 'M', 'P'),
+        SHELL_COMMAND_TRANSACTION = B_PACK_CHARS('_', 'C', 'M', 'D'),
+        INTERFACE_TRANSACTION = B_PACK_CHARS('_', 'N', 'T', 'F'),
+        SYSPROPS_TRANSACTION = B_PACK_CHARS('_', 'S', 'P', 'R'),
+        EXTENSION_TRANSACTION = B_PACK_CHARS('_', 'E', 'X', 'T'),
+        DEBUG_PID_TRANSACTION = B_PACK_CHARS('_', 'P', 'I', 'D'),
+        SET_RPC_CLIENT_TRANSACTION = B_PACK_CHARS('_', 'R', 'P', 'C'),
+
+        // See android.os.IBinder.TWEET_TRANSACTION
+        // Most importantly, messages can be anything not exceeding 130 UTF-8
+        // characters, and callees should exclaim "jolly good message old boy!"
+        TWEET_TRANSACTION = B_PACK_CHARS('_', 'T', 'W', 'T'),
+
+        // See android.os.IBinder.LIKE_TRANSACTION
+        // Improve binder self-esteem.
+        LIKE_TRANSACTION = B_PACK_CHARS('_', 'L', 'I', 'K'),
 
         // Corresponds to TF_ONE_WAY -- an asynchronous call.
-        FLAG_ONEWAY             = 0x00000001
+        FLAG_ONEWAY = 0x00000001,
+
+        // Corresponds to TF_CLEAR_BUF -- clear transaction buffers after call
+        // is made
+        FLAG_CLEAR_BUF = 0x00000020,
+
+        // Private userspace flag for transaction which is being requested from
+        // a vendor context.
+        FLAG_PRIVATE_VENDOR = 0x10000000,
     };
 
-                          IBinder();
+    IBinder();
 
     /**
      * Check if this IBinder implements the interface named by
@@ -86,6 +107,76 @@ public:
                                          Vector<String16>& args, const sp<IShellCallback>& callback,
                                          const sp<IResultReceiver>& resultReceiver);
 
+    /**
+     * This allows someone to add their own additions to an interface without
+     * having to modify the original interface.
+     *
+     * For instance, imagine if we have this interface:
+     *     interface IFoo { void doFoo(); }
+     *
+     * If an unrelated owner (perhaps in a downstream codebase) wants to make a
+     * change to the interface, they have two options:
+     *
+     * A). Historical option that has proven to be BAD! Only the original
+     *     author of an interface should change an interface. If someone
+     *     downstream wants additional functionality, they should not ever
+     *     change the interface or use this method.
+     *
+     *    BAD TO DO:  interface IFoo {                       BAD TO DO
+     *    BAD TO DO:      void doFoo();                      BAD TO DO
+     *    BAD TO DO: +    void doBar(); // adding a method   BAD TO DO
+     *    BAD TO DO:  }                                      BAD TO DO
+     *
+     * B). Option that this method enables!
+     *     Leave the original interface unchanged (do not change IFoo!).
+     *     Instead, create a new interface in a downstream package:
+     *
+     *         package com.<name>; // new functionality in a new package
+     *         interface IBar { void doBar(); }
+     *
+     *     When registering the interface, add:
+     *         sp<MyFoo> foo = new MyFoo; // class in AOSP codebase
+     *         sp<MyBar> bar = new MyBar; // custom extension class
+     *         foo->setExtension(bar);    // use method in BBinder
+     *
+     *     Then, clients of IFoo can get this extension:
+     *         sp<IBinder> binder = ...;
+     *         sp<IFoo> foo = interface_cast<IFoo>(binder); // handle if null
+     *         sp<IBinder> barBinder;
+     *         ... handle error ... = binder->getExtension(&barBinder);
+     *         sp<IBar> bar = interface_cast<IBar>(barBinder);
+     *         // if bar is null, then there is no extension or a different
+     *         // type of extension
+     */
+    status_t                getExtension(sp<IBinder>* out);
+
+    /**
+     * Dump PID for a binder, for debugging.
+     */
+    status_t                getDebugPid(pid_t* outPid);
+
+    /**
+     * Set the RPC client fd to this binder service, for debugging. This is only available on
+     * debuggable builds.
+     *
+     * When this is called on a binder service, the service:
+     * 1. sets up RPC server
+     * 2. spawns 1 new thread that calls RpcServer::join()
+     *    - join() spawns some number of threads that accept() connections; see RpcServer
+     *
+     * setRpcClientDebug() may be called multiple times. Each call will add a new RpcServer
+     * and opens up a TCP port.
+     *
+     * Note: A thread is spawned for each accept()'ed fd, which may call into functions of the
+     * interface freely. See RpcServer::join(). To avoid such race conditions, implement the service
+     * functions with multithreading support.
+     *
+     * On death of @a keepAliveBinder, the RpcServer shuts down.
+     */
+    [[nodiscard]] status_t setRpcClientDebug(android::base::unique_fd socketFd,
+                                             const sp<IBinder>& keepAliveBinder);
+
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        transact(   uint32_t code,
                                         const Parcel& data,
                                         Parcel* reply,
@@ -119,6 +210,10 @@ public:
      * The @a cookie is optional -- if non-NULL, it should be a
      * memory address that you own (that is, you know it is unique).
      *
+     * @note When all references to the binder being linked to are dropped, the
+     * recipient is automatically unlinked. So, you must hold onto a binder in
+     * order to receive death notifications about it.
+     *
      * @note You will only receive death notifications for remote binders,
      * as local binders by definition can't die without you dying as well.
      * Trying to use this function on a local binder will result in an
@@ -131,8 +226,9 @@ public:
      * (Nor should you need to, as there is nothing useful you can
      * directly do with it now that it has passed on.)
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        linkToDeath(const sp<DeathRecipient>& recipient,
-                                        void* cookie = NULL,
+                                        void* cookie = nullptr,
                                         uint32_t flags = 0) = 0;
 
     /**
@@ -141,22 +237,50 @@ public:
      * dies.  The @a cookie is optional.  If non-NULL, you can
      * supply a NULL @a recipient, and the recipient previously
      * added with that cookie will be unlinked.
+     *
+     * If the binder is dead, this will return DEAD_OBJECT. Deleting
+     * the object will also unlink all death recipients.
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t        unlinkToDeath(  const wp<DeathRecipient>& recipient,
-                                            void* cookie = NULL,
+                                            void* cookie = nullptr,
                                             uint32_t flags = 0,
-                                            wp<DeathRecipient>* outRecipient = NULL) = 0;
+                                            wp<DeathRecipient>* outRecipient = nullptr) = 0;
 
     virtual bool            checkSubclass(const void* subclassID) const;
 
     typedef void (*object_cleanup_func)(const void* id, void* obj, void* cleanupCookie);
 
-    virtual void            attachObject(   const void* objectID,
-                                            void* object,
-                                            void* cleanupCookie,
-                                            object_cleanup_func func) = 0;
-    virtual void*           findObject(const void* objectID) const = 0;
-    virtual void            detachObject(const void* objectID) = 0;
+    /**
+     * This object is attached for the lifetime of this binder object. When
+     * this binder object is destructed, the cleanup function of all attached
+     * objects are invoked with their respective objectID, object, and
+     * cleanupCookie. Access to these APIs can be made from multiple threads,
+     * but calls from different threads are allowed to be interleaved.
+     *
+     * This returns the object which is already attached. If this returns a
+     * non-null value, it means that attachObject failed (a given objectID can
+     * only be used once).
+     */
+    [[nodiscard]] virtual void* attachObject(const void* objectID, void* object,
+                                             void* cleanupCookie, object_cleanup_func func) = 0;
+    /**
+     * Returns object attached with attachObject.
+     */
+    [[nodiscard]] virtual void* findObject(const void* objectID) const = 0;
+    /**
+     * Returns object attached with attachObject, and detaches it. This does not
+     * delete the object.
+     */
+    [[nodiscard]] virtual void* detachObject(const void* objectID) = 0;
+
+    /**
+     * Use the lock that this binder contains internally. For instance, this can
+     * be used to modify an attached object without needing to add an additional
+     * lock (though, that attached object must be retrieved before calling this
+     * method). Calling (most) IBinder methods inside this will deadlock.
+     */
+    void withLock(const std::function<void()>& doWithLock);
 
     virtual BBinder*        localBinder();
     virtual BpBinder*       remoteBinder();
@@ -167,8 +291,6 @@ protected:
 private:
 };
 
-}; // namespace android
+} // namespace android
 
 // ---------------------------------------------------------------------------
-
-#endif // ANDROID_IBINDER_H

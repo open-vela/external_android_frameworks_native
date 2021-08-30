@@ -17,6 +17,7 @@
 #include <mutex>
 #include <unistd.h>
 
+#include <android/permission_manager.h>
 #include <binder/ActivityManager.h>
 #include <binder/Binder.h>
 #include <binder/IServiceManager.h>
@@ -34,16 +35,16 @@ sp<IActivityManager> ActivityManager::getService()
     std::lock_guard<Mutex> scoped_lock(mLock);
     int64_t startTime = 0;
     sp<IActivityManager> service = mService;
-    while (service == NULL || !IInterface::asBinder(service)->isBinderAlive()) {
+    while (service == nullptr || !IInterface::asBinder(service)->isBinderAlive()) {
         sp<IBinder> binder = defaultServiceManager()->checkService(String16("activity"));
-        if (binder == NULL) {
+        if (binder == nullptr) {
             // Wait for the activity service to come back...
             if (startTime == 0) {
                 startTime = uptimeMillis();
                 ALOGI("Waiting for activity service");
             } else if ((uptimeMillis() - startTime) > 1000000) {
                 ALOGW("Waiting too long for activity service, giving up");
-                service = NULL;
+                service = nullptr;
                 break;
             }
             usleep(25000);
@@ -58,40 +59,65 @@ sp<IActivityManager> ActivityManager::getService()
 int ActivityManager::openContentUri(const String16& stringUri)
 {
     sp<IActivityManager> service = getService();
-    return service != NULL ? service->openContentUri(stringUri) : -1;
+    return service != nullptr ? service->openContentUri(stringUri) : -1;
 }
 
-void ActivityManager::registerUidObserver(const sp<IUidObserver>& observer,
+status_t ActivityManager::registerUidObserver(const sp<IUidObserver>& observer,
                                           const int32_t event,
                                           const int32_t cutpoint,
                                           const String16& callingPackage)
 {
     sp<IActivityManager> service = getService();
-    if (service != NULL) {
-        service->registerUidObserver(observer, event, cutpoint, callingPackage);
+    if (service != nullptr) {
+        return service->registerUidObserver(observer, event, cutpoint, callingPackage);
     }
+    // ActivityManagerService appears dead. Return usual error code for dead service.
+    return DEAD_OBJECT;
 }
 
-void ActivityManager::unregisterUidObserver(const sp<IUidObserver>& observer)
+status_t ActivityManager::unregisterUidObserver(const sp<IUidObserver>& observer)
 {
     sp<IActivityManager> service = getService();
-    if (service != NULL) {
-        service->unregisterUidObserver(observer);
+    if (service != nullptr) {
+        return service->unregisterUidObserver(observer);
     }
+    // ActivityManagerService appears dead. Return usual error code for dead service.
+    return DEAD_OBJECT;
 }
 
 bool ActivityManager::isUidActive(const uid_t uid, const String16& callingPackage)
 {
     sp<IActivityManager> service = getService();
-    if (service != NULL) {
+    if (service != nullptr) {
         return service->isUidActive(uid, callingPackage);
     }
     return false;
 }
 
+int32_t ActivityManager::getUidProcessState(const uid_t uid, const String16& callingPackage)
+{
+    sp<IActivityManager> service = getService();
+    if (service != nullptr) {
+        return service->getUidProcessState(uid, callingPackage);
+    }
+    return PROCESS_STATE_UNKNOWN;
+}
+
+status_t ActivityManager::checkPermission(const String16& permission,
+                                     const pid_t pid,
+                                     const uid_t uid,
+                                     int32_t* outResult) {
+    sp<IActivityManager> service = getService();
+    if (service != nullptr) {
+        return service->checkPermission(permission, pid, uid, outResult);
+    }
+    // ActivityManagerService appears dead. Return usual error code for dead service.
+    return DEAD_OBJECT;
+}
+
 status_t ActivityManager::linkToDeath(const sp<IBinder::DeathRecipient>& recipient) {
     sp<IActivityManager> service = getService();
-    if (service != NULL) {
+    if (service != nullptr) {
         return IInterface::asBinder(service)->linkToDeath(recipient);
     }
     return INVALID_OPERATION;
@@ -99,10 +125,10 @@ status_t ActivityManager::linkToDeath(const sp<IBinder::DeathRecipient>& recipie
 
 status_t ActivityManager::unlinkToDeath(const sp<IBinder::DeathRecipient>& recipient) {
     sp<IActivityManager> service = getService();
-    if (service != NULL) {
+    if (service != nullptr) {
         return IInterface::asBinder(service)->unlinkToDeath(recipient);
     }
     return INVALID_OPERATION;
 }
 
-}; // namespace android
+} // namespace android

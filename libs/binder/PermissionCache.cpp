@@ -27,7 +27,7 @@ namespace android {
 
 // ----------------------------------------------------------------------------
 
-ANDROID_SINGLETON_STATIC_INSTANCE(PermissionCache) ;
+ANDROID_SINGLETON_STATIC_INSTANCE(PermissionCache)
 
 // ----------------------------------------------------------------------------
 
@@ -75,7 +75,7 @@ void PermissionCache::purge() {
 }
 
 bool PermissionCache::checkCallingPermission(const String16& permission) {
-    return PermissionCache::checkCallingPermission(permission, NULL, NULL);
+    return PermissionCache::checkCallingPermission(permission, nullptr, nullptr);
 }
 
 bool PermissionCache::checkCallingPermission(
@@ -109,5 +109,10 @@ bool PermissionCache::checkPermission(
     return granted;
 }
 
+void PermissionCache::purgeCache() {
+    PermissionCache& pc(PermissionCache::getInstance());
+    pc.purge();
+}
+
 // ---------------------------------------------------------------------------
-}; // namespace android
+} // namespace android

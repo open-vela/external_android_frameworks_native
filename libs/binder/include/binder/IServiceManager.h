@@ -14,24 +14,34 @@
  * limitations under the License.
  */
 
-//
-#ifndef ANDROID_ISERVICE_MANAGER_H
-#define ANDROID_ISERVICE_MANAGER_H
+#pragma once
 
 #include <binder/IInterface.h>
 #include <utils/Vector.h>
 #include <utils/String16.h>
 
+#include <optional>
+
 namespace android {
 
 // ----------------------------------------------------------------------
 
+/**
+ * Service manager for C++ services.
+ *
+ * IInterface is only for legacy ABI compatibility
+ */
 class IServiceManager : public IInterface
 {
 public:
-    DECLARE_META_INTERFACE(ServiceManager)
+    // for ABI compatibility
+    virtual const String16& getInterfaceDescriptor() const;
+
+    IServiceManager();
+    virtual ~IServiceManager();
+
     /**
-     * Must match values in IServiceManager.java
+     * Must match values in IServiceManager.aidl
      */
     /* Allows services to dump sections according to priorities. */
     static const int DUMP_FLAG_PRIORITY_CRITICAL = 1 << 0;
@@ -61,6 +71,7 @@ public:
     /**
      * Register a service.
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t addService(const String16& name, const sp<IBinder>& service,
                                 bool allowIsolated = false,
                                 int dumpsysFlags = DUMP_FLAG_PRIORITY_DEFAULT) = 0;
@@ -68,25 +79,87 @@ public:
     /**
      * Return list of all existing services.
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual Vector<String16> listServices(int dumpsysFlags = DUMP_FLAG_PRIORITY_ALL) = 0;
 
-    enum {
-        GET_SERVICE_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
-        CHECK_SERVICE_TRANSACTION,
-        ADD_SERVICE_TRANSACTION,
-        LIST_SERVICES_TRANSACTION,
-    };
+    /**
+     * Efficiently wait for a service.
+     *
+     * Returns nullptr only for permission problem or fatal error.
+     */
+    virtual sp<IBinder> waitForService(const String16& name) = 0;
+
+    /**
+     * Check if a service is declared (e.g. VINTF manifest).
+     *
+     * If this returns true, waitForService should always be able to return the
+     * service.
+     */
+    virtual bool isDeclared(const String16& name) = 0;
+
+    /**
+     * Get all instances of a service as declared in the VINTF manifest
+     */
+    virtual Vector<String16> getDeclaredInstances(const String16& interface) = 0;
+
+    /**
+     * If this instance is updatable via an APEX, returns the APEX with which
+     * this can be updated.
+     */
+    virtual std::optional<String16> updatableViaApex(const String16& name) = 0;
 };
 
 sp<IServiceManager> defaultServiceManager();
+
+/**
+ * Directly set the default service manager. Only used for testing.
+ * Note that the caller is responsible for caling this method
+ * *before* any call to defaultServiceManager(); if the latter is
+ * called first, setDefaultServiceManager() will abort.
+ */
+void setDefaultServiceManager(const sp<IServiceManager>& sm);
+
+template<typename INTERFACE>
+sp<INTERFACE> waitForService(const String16& name) {
+    const sp<IServiceManager> sm = defaultServiceManager();
+    return interface_cast<INTERFACE>(sm->waitForService(name));
+}
+
+template<typename INTERFACE>
+sp<INTERFACE> waitForDeclaredService(const String16& name) {
+    const sp<IServiceManager> sm = defaultServiceManager();
+    if (!sm->isDeclared(name)) return nullptr;
+    return interface_cast<INTERFACE>(sm->waitForService(name));
+}
+
+template <typename INTERFACE>
+sp<INTERFACE> checkDeclaredService(const String16& name) {
+    const sp<IServiceManager> sm = defaultServiceManager();
+    if (!sm->isDeclared(name)) return nullptr;
+    return interface_cast<INTERFACE>(sm->checkService(name));
+}
+
+template<typename INTERFACE>
+sp<INTERFACE> waitForVintfService(
+        const String16& instance = String16("default")) {
+    return waitForDeclaredService<INTERFACE>(
+        INTERFACE::descriptor + String16("/") + instance);
+}
+
+template<typename INTERFACE>
+sp<INTERFACE> checkVintfService(
+        const String16& instance = String16("default")) {
+    return checkDeclaredService<INTERFACE>(
+        INTERFACE::descriptor + String16("/") + instance);
+}
 
 template<typename INTERFACE>
 status_t getService(const String16& name, sp<INTERFACE>* outService)
 {
     const sp<IServiceManager> sm = defaultServiceManager();
-    if (sm != NULL) {
+    if (sm != nullptr) {
         *outService = interface_cast<INTERFACE>(sm->getService(name));
-        if ((*outService) != NULL) return NO_ERROR;
+        if ((*outService) != nullptr) return NO_ERROR;
     }
     return NAME_NOT_FOUND;
 }
@@ -94,9 +167,20 @@ status_t getService(const String16& name, sp<INTERFACE>* outService)
 bool checkCallingPermission(const String16& permission);
 bool checkCallingPermission(const String16& permission,
                             int32_t* outPid, int32_t* outUid);
-bool checkPermission(const String16& permission, pid_t pid, uid_t uid);
+bool checkPermission(const String16& permission, pid_t pid, uid_t uid,
+                     bool logPermissionFailure = true);
 
-}; // namespace android
+#ifndef __ANDROID__
+// Create an IServiceManager that delegates the service manager on the device via adb.
+// This is can be set as the default service manager at program start, so that
+// defaultServiceManager() returns it:
+//    int main() {
+//        setDefaultServiceManager(createRpcDelegateServiceManager());
+//        auto sm = defaultServiceManager();
+//        // ...
+//    }
+// Resources are cleaned up when the object is destroyed.
+sp<IServiceManager> createRpcDelegateServiceManager();
+#endif
 
-#endif // ANDROID_ISERVICE_MANAGER_H
-
+} // namespace android

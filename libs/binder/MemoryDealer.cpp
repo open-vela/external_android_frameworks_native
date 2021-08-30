@@ -52,8 +52,8 @@ class LinkedList
     NODE*  mLast;
 
 public:
-                LinkedList() : mFirst(0), mLast(0) { }
-    bool        isEmpty() const { return mFirst == 0; }
+                LinkedList() : mFirst(nullptr), mLast(nullptr) { }
+    bool        isEmpty() const { return mFirst == nullptr; }
     NODE const* head() const { return mFirst; }
     NODE*       head() { return mFirst; }
     NODE const* tail() const { return mLast; }
@@ -62,7 +62,7 @@ public:
     void insertAfter(NODE* node, NODE* newNode) {
         newNode->prev = node;
         newNode->next = node->next;
-        if (node->next == 0) mLast = newNode;
+        if (node->next == nullptr) mLast = newNode;
         else                 node->next->prev = newNode;
         node->next = newNode;
     }
@@ -70,17 +70,17 @@ public:
     void insertBefore(NODE* node, NODE* newNode) {
          newNode->prev = node->prev;
          newNode->next = node;
-         if (node->prev == 0)   mFirst = newNode;
+         if (node->prev == nullptr)   mFirst = newNode;
          else                   node->prev->next = newNode;
          node->prev = newNode;
     }
 
     void insertHead(NODE* newNode) {
-        if (mFirst == 0) {
+        if (mFirst == nullptr) {
             mFirst = mLast = newNode;
-            newNode->prev = newNode->next = 0;
+            newNode->prev = newNode->next = nullptr;
         } else {
-            newNode->prev = 0;
+            newNode->prev = nullptr;
             newNode->next = mFirst;
             mFirst->prev = newNode;
             mFirst = newNode;
@@ -99,9 +99,9 @@ public:
     }
 
     NODE* remove(NODE* node) {
-        if (node->prev == 0)    mFirst = node->next;
+        if (node->prev == nullptr)    mFirst = node->next;
         else                    node->prev->next = node->next;
-        if (node->next == 0)    mLast = node->prev;
+        if (node->next == nullptr)    mLast = node->prev;
         else                    node->next->prev = node->prev;
         return node;
     }
@@ -141,7 +141,7 @@ private:
 
     struct chunk_t {
         chunk_t(size_t start, size_t size)
-        : start(start), size(size), free(1), prev(0), next(0) {
+        : start(start), size(size), free(1), prev(nullptr), next(nullptr) {
         }
         size_t              start;
         size_t              size : 28;
@@ -228,10 +228,8 @@ Allocation::~Allocation()
 // ----------------------------------------------------------------------------
 
 MemoryDealer::MemoryDealer(size_t size, const char* name, uint32_t flags)
-    : mHeap(new MemoryHeapBase(size, flags, name)),
-    mAllocator(new SimpleBestFitAllocator(size))
-{    
-}
+      : mHeap(sp<MemoryHeapBase>::make(size, flags, name)),
+        mAllocator(new SimpleBestFitAllocator(size)) {}
 
 MemoryDealer::~MemoryDealer()
 {
@@ -243,7 +241,7 @@ sp<IMemory> MemoryDealer::allocate(size_t size)
     sp<IMemory> memory;
     const ssize_t offset = allocator()->allocate(size);
     if (offset >= 0) {
-        memory = new Allocation(this, heap(), offset, size);
+        memory = sp<Allocation>::make(sp<MemoryDealer>::fromExisting(this), heap(), offset, size);
     }
     return memory;
 }
@@ -329,7 +327,7 @@ ssize_t SimpleBestFitAllocator::alloc(size_t size, uint32_t flags)
         return 0;
     }
     size = (size + kMemoryAlign-1) / kMemoryAlign;
-    chunk_t* free_chunk = 0;
+    chunk_t* free_chunk = nullptr;
     chunk_t* cur = mList.head();
 
     size_t pagesize = getpagesize();
@@ -387,7 +385,7 @@ SimpleBestFitAllocator::chunk_t* SimpleBestFitAllocator::dealloc(size_t start)
     while (cur) {
         if (cur->start == start) {
             LOG_FATAL_IF(cur->free,
-                "block at offset 0x%08lX of size 0x%08lX already freed",
+                "block at offset 0x%08lX of size 0x%08X already freed",
                 cur->start*kMemoryAlign, cur->size*kMemoryAlign);
 
             // merge freed blocks together
@@ -411,14 +409,14 @@ SimpleBestFitAllocator::chunk_t* SimpleBestFitAllocator::dealloc(size_t start)
                 }
             #endif
             LOG_FATAL_IF(!freed->free,
-                "freed block at offset 0x%08lX of size 0x%08lX is not free!",
+                "freed block at offset 0x%08lX of size 0x%08X is not free!",
                 freed->start * kMemoryAlign, freed->size * kMemoryAlign);
 
             return freed;
         }
         cur = cur->next;
     }
-    return 0;
+    return nullptr;
 }
 
 void SimpleBestFitAllocator::dump(const char* what) const
@@ -481,4 +479,4 @@ void SimpleBestFitAllocator::dump_l(String8& result,
 }
 
 
-}; // namespace android
+} // namespace android

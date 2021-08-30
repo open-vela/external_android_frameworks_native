@@ -218,7 +218,7 @@ struct Results {
   uint64_t m_total_time = 0;
   uint64_t m_miss = 0;
   bool tracing;
-  explicit Results(bool _tracing) : tracing(_tracing) {
+  Results(bool _tracing) : tracing(_tracing) {
   }
   inline bool miss_deadline(uint64_t nano) {
     return nano > deadline_us * 1000;
@@ -245,7 +245,7 @@ struct Results {
     double best = (double)m_best / 1.0E6;
     double worst = (double)m_worst / 1.0E6;
     double average = (double)m_total_time / m_transactions / 1.0E6;
-    // TODO: libjson?
+    // FIXME: libjson?
     int W = DUMP_PRESICION + 2;
     cout << setprecision(DUMP_PRESICION) << "{ \"avg\":" << setw(W) << left
          << average << ",\"wst\":" << setw(W) << left << worst
@@ -290,13 +290,12 @@ static void* thread_start(void* p) {
 
   sta = tickNow();
   status_t ret = workers[target]->transact(BINDER_NOP, data, &reply);
-  ASSERT(ret == NO_ERROR);
   end = tickNow();
   results_fifo->add_time(tickNano(sta, end));
 
   no_inherent += reply.readInt32();
   no_sync += reply.readInt32();
-  return nullptr;
+  return 0;
 }
 
 // create a fifo thread to transact and wait it to finished
@@ -376,7 +375,7 @@ void worker_fx(int num, int no_process, int iterations, int payload_size,
   if (is_client(num)) {
     int no_trans = iterations * 2;
     double sync_ratio = (1.0 - (double)no_sync / no_trans);
-    // TODO: libjson?
+    // FIXME: libjson?
     cout << "\"P" << (num - server_count) << "\":{\"SYNC\":\""
          << ((sync_ratio > GOOD_SYNC_MIN) ? "GOOD" : "POOR") << "\","
          << "\"S\":" << (no_trans - no_sync) << ",\"I\":" << no_trans << ","
@@ -466,7 +465,7 @@ int main(int argc, char** argv) {
   }
   vector<Pipe> pipes;
   thread_dump("main");
-  // TODO: libjson?
+  // FIXME: libjson?
   cout << "{" << endl;
   cout << "\"cfg\":{\"pair\":" << (no_process / 2)
        << ",\"iterations\":" << iterations << ",\"deadline_us\":" << deadline_us
@@ -495,7 +494,7 @@ int main(int argc, char** argv) {
     // detected in the child process
     no_inherent += status;
   }
-  // TODO: libjson?
+  // FIXME: libjson?
   cout << "\"inheritance\": " << (no_inherent == 0 ? "\"PASS\"" : "\"FAIL\"")
        << endl;
   cout << "}" << endl;

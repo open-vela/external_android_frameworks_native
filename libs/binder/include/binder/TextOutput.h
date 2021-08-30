@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_TEXTOUTPUT_H
+#define ANDROID_TEXTOUTPUT_H
 
 #include <utils/Errors.h>
 #include <utils/String8.h>
@@ -37,7 +38,7 @@ public:
     
     class Bundle {
     public:
-        inline explicit Bundle(TextOutput& to) : mTO(to) { to.pushBundle(); }
+        inline Bundle(TextOutput& to) : mTO(to) { to.pushBundle(); }
         inline ~Bundle() { mTO.popBundle(); }
     private:
         TextOutput&     mTO;
@@ -49,18 +50,12 @@ public:
 
 // ---------------------------------------------------------------------------
 
-// DO NOT USE: prefer libutils/libbase logs, which don't require static data to
-// be allocated.
 // Text output stream for printing to the log (via utils/Log.h).
 extern TextOutput& alog;
 
-// DO NOT USE: prefer libutils/libbase logs, which don't require static data to
-// be allocated.
 // Text output stream for printing to stdout.
 extern TextOutput& aout;
 
-// DO NOT USE: prefer libutils/libbase logs, which don't require static data to
-// be allocated.
 // Text output stream for printing to stderr.
 extern TextOutput& aerr;
 
@@ -85,7 +80,7 @@ TextOutput& operator<<(TextOutput& to, TextOutputManipFunc func);
 class TypeCode
 {
 public:
-    inline explicit TypeCode(uint32_t code);
+    inline TypeCode(uint32_t code);
     inline ~TypeCode();
 
     inline uint32_t typeCode() const;
@@ -204,4 +199,6 @@ inline size_t HexDump::alignment() const { return mAlignment; }
 inline bool HexDump::carrayStyle() const { return mCArrayStyle; }
 
 // ---------------------------------------------------------------------------
-} // namespace android
+}; // namespace android
+
+#endif // ANDROID_TEXTOUTPUT_H

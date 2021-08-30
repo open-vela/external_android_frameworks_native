@@ -14,19 +14,19 @@
  * limitations under the License.
  */
 
-#include "BufferedTextOutput.h"
+#include <binder/BufferedTextOutput.h>
+#include <binder/Debug.h>
 
 #include <cutils/atomic.h>
+#include <cutils/threads.h>
 #include <utils/Log.h>
 #include <utils/RefBase.h>
 #include <utils/Vector.h>
 
-#include <pthread.h>
+#include <private/binder/Static.h>
+
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "Debug.h"
-#include "Static.h"
 
 // ---------------------------------------------------------------------------
 
@@ -36,7 +36,7 @@ struct BufferedTextOutput::BufferState : public RefBase
 {
     explicit BufferState(int32_t _seq)
         : seq(_seq)
-        , buffer(nullptr)
+        , buffer(NULL)
         , bufferPos(0)
         , bufferSize(0)
         , atFront(true)
@@ -48,10 +48,9 @@ struct BufferedTextOutput::BufferState : public RefBase
     }
     
     status_t append(const char* txt, size_t len) {
-        if (len > SIZE_MAX - bufferPos) return NO_MEMORY; // overflow
         if ((len+bufferPos) > bufferSize) {
-            if ((len + bufferPos) > SIZE_MAX / 3) return NO_MEMORY; // overflow
             size_t newSize = ((len+bufferPos)*3)/2;
+            if (newSize < (len+bufferPos)) return NO_MEMORY;    // overflow
             void* b = realloc(buffer, newSize);
             if (!b) return NO_MEMORY;
             buffer = (char*)b;
@@ -88,7 +87,23 @@ struct BufferedTextOutput::ThreadState
     Vector<sp<BufferedTextOutput::BufferState> > states;
 };
 
-static pthread_mutex_t gMutex = PTHREAD_MUTEX_INITIALIZER;
+static mutex_t          gMutex;
+
+static thread_store_t   tls;
+
+BufferedTextOutput::ThreadState* BufferedTextOutput::getThreadState()
+{
+    ThreadState*  ts = (ThreadState*) thread_store_get( &tls );
+    if (ts) return ts;
+    ts = new ThreadState;
+    thread_store_set( &tls, ts, threadDestructor );
+    return ts;
+}
+
+void BufferedTextOutput::threadDestructor(void *st)
+{
+    delete ((ThreadState*)st);
+}
 
 static volatile int32_t gSequence = 0;
 
@@ -98,7 +113,7 @@ static int32_t allocBufferIndex()
 {
     int32_t res = -1;
     
-    pthread_mutex_lock(&gMutex);
+    mutex_lock(&gMutex);
     
     if (gFreeBufferIndex >= 0) {
         res = gFreeBufferIndex;
@@ -110,17 +125,17 @@ static int32_t allocBufferIndex()
         gTextBuffers.add(-1);
     }
 
-    pthread_mutex_unlock(&gMutex);
+    mutex_unlock(&gMutex);
     
     return res;
 }
 
 static void freeBufferIndex(int32_t idx)
 {
-    pthread_mutex_lock(&gMutex);
+    mutex_lock(&gMutex);
     gTextBuffers.editItemAt(idx) = gFreeBufferIndex;
     gFreeBufferIndex = idx;
-    pthread_mutex_unlock(&gMutex);
+    mutex_unlock(&gMutex);
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +188,7 @@ status_t BufferedTextOutput::print(const char* txt, size_t len)
                 // them out without going through the buffer.
                 
                 // Slurp up all of the lines.
-                const char* lastLine = txt;
+                const char* lastLine = txt+1;
                 while (txt < end) {
                     if (*txt++ == '\n') lastLine = txt;
                 }
@@ -249,17 +264,19 @@ void BufferedTextOutput::popBundle()
 BufferedTextOutput::BufferState* BufferedTextOutput::getBuffer() const
 {
     if ((mFlags&MULTITHREADED) != 0) {
-        thread_local ThreadState ts;
-        while (ts.states.size() <= (size_t)mIndex) ts.states.add(nullptr);
-        BufferState* bs = ts.states[mIndex].get();
-        if (bs != nullptr && bs->seq == mSeq) return bs;
-
-        ts.states.editItemAt(mIndex) = sp<BufferState>::make(mIndex);
-        bs = ts.states[mIndex].get();
-        if (bs != nullptr) return bs;
+        ThreadState* ts = getThreadState();
+        if (ts) {
+            while (ts->states.size() <= (size_t)mIndex) ts->states.add(NULL);
+            BufferState* bs = ts->states[mIndex].get();
+            if (bs != NULL && bs->seq == mSeq) return bs;
+            
+            ts->states.editItemAt(mIndex) = new BufferState(mIndex);
+            bs = ts->states[mIndex].get();
+            if (bs != NULL) return bs;
+        }
     }
     
     return mGlobalState;
 }
 
-} // namespace android
+}; // namespace android

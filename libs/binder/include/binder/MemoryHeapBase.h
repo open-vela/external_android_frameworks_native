@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_MEMORY_HEAP_BASE_H
+#define ANDROID_MEMORY_HEAP_BASE_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -41,45 +42,51 @@ public:
      * maps the memory referenced by fd. but DOESN'T take ownership
      * of the filedescriptor (it makes a copy with dup()
      */
-    MemoryHeapBase(int fd, size_t size, uint32_t flags = 0, off_t offset = 0);
+    MemoryHeapBase(int fd, size_t size, uint32_t flags = 0, uint32_t offset = 0);
 
     /*
      * maps memory from the given device
      */
-    explicit MemoryHeapBase(const char* device, size_t size = 0, uint32_t flags = 0);
+    MemoryHeapBase(const char* device, size_t size = 0, uint32_t flags = 0);
 
     /*
      * maps memory from ashmem, with the given name for debugging
-     * if the READ_ONLY flag is set, the memory will be writeable by the calling process,
-     * but not by others. this is NOT the case with the other ctors.
      */
-    explicit MemoryHeapBase(size_t size, uint32_t flags = 0, char const* name = nullptr);
+    MemoryHeapBase(size_t size, uint32_t flags = 0, char const* name = NULL);
 
     virtual ~MemoryHeapBase();
 
     /* implement IMemoryHeap interface */
-    int         getHeapID() const override;
+    virtual int         getHeapID() const;
 
     /* virtual address of the heap. returns MAP_FAILED in case of error */
-    void*       getBase() const override;
+    virtual void*       getBase() const;
 
-    size_t      getSize() const override;
-    uint32_t    getFlags() const override;
-    off_t       getOffset() const override;
+    virtual size_t      getSize() const;
+    virtual uint32_t    getFlags() const;
+    virtual uint32_t    getOffset() const;
 
     const char*         getDevice() const;
 
     /* this closes this heap -- use carefully */
     void dispose();
 
+    /* this is only needed as a workaround, use only if you know
+     * what you are doing */
+    status_t setDevice(const char* device) {
+        if (mDevice == 0)
+            mDevice = device;
+        return mDevice ? NO_ERROR : ALREADY_EXISTS;
+    }
+
 protected:
             MemoryHeapBase();
     // init() takes ownership of fd
-    status_t init(int fd, void *base, size_t size,
-            int flags = 0, const char* device = nullptr);
+    status_t init(int fd, void *base, int size,
+            int flags = 0, const char* device = NULL);
 
 private:
-    status_t mapfd(int fd, bool writeableByCaller, size_t size, off_t offset = 0);
+    status_t mapfd(int fd, size_t size, uint32_t offset = 0);
 
     int         mFD;
     size_t      mSize;
@@ -87,8 +94,10 @@ private:
     uint32_t    mFlags;
     const char* mDevice;
     bool        mNeedUnmap;
-    off_t       mOffset;
+    uint32_t    mOffset;
 };
 
 // ---------------------------------------------------------------------------
-} // namespace android
+}; // namespace android
+
+#endif // ANDROID_MEMORY_HEAP_BASE_H

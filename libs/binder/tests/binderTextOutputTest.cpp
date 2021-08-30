@@ -26,15 +26,17 @@
 
 #include <binder/Parcel.h>
 #include <binder/TextOutput.h>
+#include <binder/Debug.h>
 
-static void CheckMessage(CapturedStderr& cap,
+static void CheckMessage(const CapturedStderr& cap,
                          const char* expected,
                          bool singleline) {
-    cap.Stop();
-    std::string output = cap.str();
+    std::string output;
+    ASSERT_EQ(0, lseek(cap.fd(), 0, SEEK_SET));
+    android::base::ReadFdToString(cap.fd(), &output);
     if (singleline)
         output.erase(std::remove(output.begin(), output.end(), '\n'));
-    ASSERT_EQ(output, expected);
+    ASSERT_STREQ(output.c_str(), expected);
 }
 
 #define CHECK_LOG_(input, expect, singleline)    \
@@ -58,22 +60,28 @@ static void CheckMessage(CapturedStderr& cap,
 TEST(TextOutput, HandlesStdEndl) {
     CapturedStderr cap;
     android::aerr << "foobar" << std::endl;
-    cap.Stop();
-    ASSERT_EQ(cap.str(), "foobar\n");
+    std::string output;
+    ASSERT_EQ(0, lseek(cap.fd(), 0, SEEK_SET));
+    android::base::ReadFdToString(cap.fd(), &output);
+    ASSERT_STREQ(output.c_str(), "foobar\n");
 }
 
 TEST(TextOutput, HandlesCEndl) {
     CapturedStderr cap;
     android::aerr << "foobar" << "\n";
-    cap.Stop();
-    ASSERT_EQ(cap.str(), "foobar\n");
+    std::string output;
+    ASSERT_EQ(0, lseek(cap.fd(), 0, SEEK_SET));
+    android::base::ReadFdToString(cap.fd(), &output);
+    ASSERT_STREQ(output.c_str(), "foobar\n");
 }
 
 TEST(TextOutput, HandlesAndroidEndl) {
     CapturedStderr cap;
     android::aerr << "foobar" << android::endl;
-    cap.Stop();
-    ASSERT_EQ(cap.str(), "foobar\n");
+    std::string output;
+    ASSERT_EQ(0, lseek(cap.fd(), 0, SEEK_SET));
+    android::base::ReadFdToString(cap.fd(), &output);
+    ASSERT_STREQ(output.c_str(), "foobar\n");
 }
 
 TEST(TextOutput, HandleEmptyString) {

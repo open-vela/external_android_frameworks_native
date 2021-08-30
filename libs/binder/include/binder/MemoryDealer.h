@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_MEMORY_DEALER_H
+#define ANDROID_MEMORY_DEALER_H
+
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -32,7 +34,7 @@ class SimpleBestFitAllocator;
 class MemoryDealer : public RefBase
 {
 public:
-    explicit MemoryDealer(size_t size, const char* name = nullptr,
+    MemoryDealer(size_t size, const char* name = 0,
             uint32_t flags = 0 /* or bits such as MemoryHeapBase::READ_ONLY */ );
 
     virtual sp<IMemory> allocate(size_t size);
@@ -57,4 +59,6 @@ private:
 
 
 // ----------------------------------------------------------------------------
-} // namespace android
+}; // namespace android
+
+#endif // ANDROID_MEMORY_DEALER_H

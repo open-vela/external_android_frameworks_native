@@ -94,9 +94,6 @@ cc_library {
     // or dessert updates. Instead, apex users should use libbinder_ndk.
     apex_available: [
         "//apex_available:platform",
-        // TODO(b/166468760) remove these three
-        "com.android.media.swcodec",
-        "test_com.android.media.swcodec",
     ],
 
     srcs: [
@@ -271,6 +268,15 @@ cc_library_shared {
     defaults: ["libbinder_tls_defaults"],
 }
 
+// For testing
+cc_library_static {
+    name: "libbinder_tls_static",
+    defaults: ["libbinder_tls_defaults"],
+    visibility: [
+        ":__subpackages__",
+    ],
+}
+
 // AIDL interface between libbinder and framework.jar
 filegroup {
     name: "libbinder_aidl",
@@ -289,6 +295,9 @@ filegroup {
         "aidl/android/content/pm/IPackageChangeObserver.aidl",
         "aidl/android/content/pm/IPackageManagerNative.aidl",
         "aidl/android/content/pm/PackageChangeEvent.aidl",
+        "aidl/android/content/pm/IStagedApexObserver.aidl",
+        "aidl/android/content/pm/ApexStagedEvent.aidl",
+        "aidl/android/content/pm/StagedApexInfo.aidl",
     ],
     path: "aidl",
 }
@@ -329,6 +338,8 @@ cc_library {
         "//packages/modules/Virtualization/authfs:__subpackages__",
         "//packages/modules/Virtualization/compos:__subpackages__",
         "//packages/modules/Virtualization/microdroid",
+        "//packages/modules/Virtualization/microdroid_manager",
+        "//packages/modules/Virtualization/virtualizationservice",
     ],
 }
 

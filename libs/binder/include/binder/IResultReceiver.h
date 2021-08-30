@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-#pragma once
+//
+#ifndef ANDROID_IRESULT_RECEIVER_H
+#define ANDROID_IRESULT_RECEIVER_H
 
 #include <binder/IInterface.h>
 
@@ -39,7 +41,6 @@ public:
 class BnResultReceiver : public BnInterface<IResultReceiver>
 {
 public:
-    // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    onTransact( uint32_t code,
                                     const Parcel& data,
                                     Parcel* reply,
@@ -48,4 +49,7 @@ public:
 
 // ----------------------------------------------------------------------
 
-} // namespace android
+}; // namespace android
+
+#endif // ANDROID_IRESULT_RECEIVER_H
+

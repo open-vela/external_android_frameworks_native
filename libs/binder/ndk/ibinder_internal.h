@@ -116,17 +116,14 @@ struct AIBinder_Class {
     const ::android::String16& getInterfaceDescriptor() const { return mWideInterfaceDescriptor; }
     const char* getInterfaceDescriptorUtf8() const { return mInterfaceDescriptor.c_str(); }
 
-    // whether a transaction header should be written
-    bool writeHeader = true;
-
     // required to be non-null, implemented for every class
-    const AIBinder_Class_onCreate onCreate = nullptr;
-    const AIBinder_Class_onDestroy onDestroy = nullptr;
-    const AIBinder_Class_onTransact onTransact = nullptr;
+    const AIBinder_Class_onCreate onCreate;
+    const AIBinder_Class_onDestroy onDestroy;
+    const AIBinder_Class_onTransact onTransact;
 
     // optional methods for a class
-    AIBinder_onDump onDump = nullptr;
-    AIBinder_handleShellCommand handleShellCommand = nullptr;
+    AIBinder_onDump onDump;
+    AIBinder_handleShellCommand handleShellCommand;
 
    private:
     // Copy of the raw char string for when we don't have to return UTF-16

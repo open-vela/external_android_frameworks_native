@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-//
-#ifndef ANDROID_IINTERFACE_H
-#define ANDROID_IINTERFACE_H
+#pragma once
 
 #include <binder/Binder.h>
 
@@ -145,11 +143,10 @@ public:                                                                 \
     {                                                                   \
         ::android::sp<I##INTERFACE> intr;                               \
         if (obj != nullptr) {                                           \
-            intr = static_cast<I##INTERFACE*>(                          \
-                obj->queryLocalInterface(                               \
-                        I##INTERFACE::descriptor).get());               \
+            intr = ::android::sp<I##INTERFACE>::cast(                   \
+                obj->queryLocalInterface(I##INTERFACE::descriptor));    \
             if (intr == nullptr) {                                      \
-                intr = new Bp##INTERFACE(obj);                          \
+                intr = ::android::sp<Bp##INTERFACE>::make(obj);         \
             }                                                           \
         }                                                               \
         return intr;                                                    \
@@ -188,7 +185,7 @@ template<typename INTERFACE>
 inline sp<IInterface> BnInterface<INTERFACE>::queryLocalInterface(
         const String16& _descriptor)
 {
-    if (_descriptor == INTERFACE::descriptor) return this;
+    if (_descriptor == INTERFACE::descriptor) return sp<IInterface>::fromExisting(this);
     return nullptr;
 }
 
@@ -335,5 +332,3 @@ constexpr bool allowedManualInterface(const char* name) {
 
 } // namespace internal
 } // namespace android
-
-#endif // ANDROID_IINTERFACE_H

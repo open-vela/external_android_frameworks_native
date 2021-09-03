@@ -25,7 +25,6 @@ use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ffi::{c_void, CStr, CString};
 use std::fmt;
-use std::fs::File;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::os::raw::c_char;
@@ -50,18 +49,10 @@ pub type TransactionFlags = u32;
 /// interfaces) must implement this trait.
 ///
 /// This is equivalent `IInterface` in C++.
-pub trait Interface: Send + Sync {
+pub trait Interface: Send {
     /// Convert this binder object into a generic [`SpIBinder`] reference.
     fn as_binder(&self) -> SpIBinder {
         panic!("This object was not a Binder object and cannot be converted into an SpIBinder.")
-    }
-
-    /// Dump transaction handler for this Binder object.
-    ///
-    /// This handler is a no-op by default and should be implemented for each
-    /// Binder service struct that wishes to respond to dump transactions.
-    fn dump(&self, _file: &File, _args: &[&CStr]) -> Result<()> {
-        Ok(())
     }
 }
 
@@ -107,10 +98,6 @@ pub trait Remotable: Send + Sync {
     /// `reply` may be [`None`] if the sender does not expect a reply.
     fn on_transact(&self, code: TransactionCode, data: &Parcel, reply: &mut Parcel) -> Result<()>;
 
-    /// Handle a request to invoke the dump transaction on this
-    /// object.
-    fn on_dump(&self, file: &File, args: &[&CStr]) -> Result<()>;
-
     /// Retrieve the class of this remote object.
     ///
     /// This method should always return the same InterfaceClass for the same
@@ -152,46 +139,20 @@ pub trait IBinderInternal: IBinder {
     /// available.
     fn get_extension(&mut self) -> Result<Option<SpIBinder>>;
 
-    /// Create a Parcel that can be used with `submit_transact`.
-    fn prepare_transact(&self) -> Result<Parcel>;
-
     /// Perform a generic operation with the object.
-    ///
-    /// The provided [`Parcel`] must have been created by a call to
-    /// `prepare_transact` on the same binder.
-    ///
-    /// # Arguments
-    ///
-    /// * `code` - Transaction code for the operation.
-    /// * `data` - [`Parcel`] with input data.
-    /// * `flags` - Transaction flags, e.g. marking the transaction as
-    ///   asynchronous ([`FLAG_ONEWAY`](FLAG_ONEWAY)).
-    fn submit_transact(
-        &self,
-        code: TransactionCode,
-        data: Parcel,
-        flags: TransactionFlags,
-    ) -> Result<Parcel>;
-
-    /// Perform a generic operation with the object. This is a convenience
-    /// method that internally calls `prepare_transact` followed by
-    /// `submit_transact.
     ///
     /// # Arguments
     /// * `code` - Transaction code for the operation
+    /// * `data` - [`Parcel`] with input data
+    /// * `reply` - Optional [`Parcel`] for reply data
     /// * `flags` - Transaction flags, e.g. marking the transaction as
     ///   asynchronous ([`FLAG_ONEWAY`](FLAG_ONEWAY))
-    /// * `input_callback` A callback for building the `Parcel`.
     fn transact<F: FnOnce(&mut Parcel) -> Result<()>>(
         &self,
         code: TransactionCode,
         flags: TransactionFlags,
         input_callback: F,
-    ) -> Result<Parcel> {
-        let mut parcel = self.prepare_transact()?;
-        input_callback(&mut parcel)?;
-        self.submit_transact(code, parcel, flags)
-    }
+    ) -> Result<Parcel>;
 }
 
 /// Interface of binder local or remote objects.
@@ -257,7 +218,7 @@ impl InterfaceClass {
             if class.is_null() {
                 panic!("Expected non-null class pointer from AIBinder_Class_define!");
             }
-            sys::AIBinder_Class_setOnDump(class, Some(I::on_dump));
+            sys::AIBinder_Class_setOnDump(class, None);
             sys::AIBinder_Class_setHandleShellCommand(class, None);
             class
         };
@@ -531,16 +492,6 @@ pub trait InterfaceClassMethods {
     /// returned by `on_create` for this class. This function takes ownership of
     /// the provided pointer and destroys it.
     unsafe extern "C" fn on_destroy(object: *mut c_void);
-
-    /// Called to handle the `dump` transaction.
-    ///
-    /// # Safety
-    ///
-    /// Must be called with a non-null, valid pointer to a local `AIBinder` that
-    /// contains a `T` pointer in its user data. fd should be a non-owned file
-    /// descriptor, and args must be an array of null-terminated string
-    /// poiinters with length num_args.
-    unsafe extern "C" fn on_dump(binder: *mut sys::AIBinder, fd: i32, args: *mut *const c_char, num_args: u32) -> status_t;
 }
 
 /// Interface for transforming a generic SpIBinder into a specific remote
@@ -827,10 +778,6 @@ macro_rules! declare_binder_interface {
                 }
             }
 
-            fn on_dump(&self, file: &std::fs::File, args: &[&std::ffi::CStr]) -> $crate::Result<()> {
-                self.0.dump(file, args)
-            }
-
             fn get_class() -> $crate::InterfaceClass {
                 static CLASS_INIT: std::sync::Once = std::sync::Once::new();
                 static mut CLASS: Option<$crate::InterfaceClass> = None;
@@ -923,7 +870,7 @@ macro_rules! declare_binder_interface {
 #[macro_export]
 macro_rules! declare_binder_enum {
     {
-        $enum:ident : [$backing:ty; $size:expr] {
+        $enum:ident : $backing:ty {
             $( $name:ident = $value:expr, )*
         }
     } => {
@@ -931,11 +878,6 @@ macro_rules! declare_binder_enum {
         pub struct $enum(pub $backing);
         impl $enum {
             $( pub const $name: Self = Self($value); )*
-
-            #[inline(always)]
-            pub const fn enum_values() -> [Self; $size] {
-                [$(Self::$name),*]
-            }
         }
 
         impl $crate::parcel::Serialize for $enum {

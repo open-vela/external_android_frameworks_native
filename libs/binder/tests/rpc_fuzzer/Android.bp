@@ -14,7 +14,6 @@ cc_fuzz {
     fuzz_config: {
         cc: ["smoreland@google.com"],
     },
-    dictionary: "binder_rpc_fuzzer.dict",
 
     srcs: [
         "main.cpp",
@@ -23,19 +22,18 @@ cc_fuzz {
         "libbase",
         "libcutils",
         "liblog",
+        "libutils",
     ],
 
     target: {
         android: {
             shared_libs: [
                 "libbinder",
-                "libutils",
             ],
         },
         host: {
             static_libs: [
                 "libbinder",
-                "libutils",
             ],
         },
     },

@@ -37,7 +37,7 @@ namespace android {
 
 Mutex BpBinder::sTrackingLock;
 std::unordered_map<int32_t, uint32_t> BpBinder::sTrackingMap;
-std::unordered_map<int32_t, uint32_t> BpBinder::sLastLimitCallbackMap;
+std::unordered_map<int32_t, uint32_t> sLastLimitCallbackMap;
 int BpBinder::sNumTrackedUids = 0;
 std::atomic_bool BpBinder::sCountByUidEnabled(false);
 binder_proxy_limit_callback BpBinder::sLimitCallback;
@@ -47,10 +47,6 @@ bool BpBinder::sBinderProxyThrottleCreate = false;
 uint32_t BpBinder::sBinderProxyCountHighWatermark = 2500;
 // Another arbitrary value a binder count needs to drop below before another callback will be called
 uint32_t BpBinder::sBinderProxyCountLowWatermark = 2000;
-
-// Once the limit has been exceeded, keep calling the limit callback for every this many new proxies
-// created over the limit.
-constexpr uint32_t REPEAT_LIMIT_CALLBACK_INTERVAL = 1000;
 
 enum {
     LIMIT_REACHED_MASK = 0x80000000,        // A flag denoting that the limit has been reached
@@ -66,22 +62,22 @@ BpBinder::ObjectManager::~ObjectManager()
     kill();
 }
 
-void* BpBinder::ObjectManager::attach(const void* objectID, void* object, void* cleanupCookie,
-                                      IBinder::object_cleanup_func func) {
+void BpBinder::ObjectManager::attach(
+    const void* objectID, void* object, void* cleanupCookie,
+    IBinder::object_cleanup_func func)
+{
     entry_t e;
     e.object = object;
     e.cleanupCookie = cleanupCookie;
     e.func = func;
 
-    if (ssize_t idx = mObjects.indexOfKey(objectID); idx >= 0) {
-        ALOGI("Trying to attach object ID %p to binder ObjectManager %p with object %p, but object "
-              "ID already in use",
-              objectID, this, object);
-        return mObjects[idx].object;
+    if (mObjects.indexOfKey(objectID) >= 0) {
+        ALOGE("Trying to attach object ID %p to binder ObjectManager %p with object %p, but object ID already in use",
+                objectID, this,  object);
+        return;
     }
 
     mObjects.add(objectID, e);
-    return nullptr;
 }
 
 void* BpBinder::ObjectManager::find(const void* objectID) const
@@ -91,12 +87,9 @@ void* BpBinder::ObjectManager::find(const void* objectID) const
     return mObjects.valueAt(i).object;
 }
 
-void* BpBinder::ObjectManager::detach(const void* objectID) {
-    ssize_t idx = mObjects.indexOfKey(objectID);
-    if (idx < 0) return nullptr;
-    void* value = mObjects[idx].object;
-    mObjects.removeItemsAt(idx, 1);
-    return value;
+void BpBinder::ObjectManager::detach(const void* objectID)
+{
+    mObjects.removeItem(objectID);
 }
 
 void BpBinder::ObjectManager::kill()
@@ -129,7 +122,7 @@ sp<BpBinder> BpBinder::create(int32_t handle) {
             uint32_t lastLimitCallbackAt = sLastLimitCallbackMap[trackedUid];
 
             if (trackedValue > lastLimitCallbackAt &&
-                (trackedValue - lastLimitCallbackAt > REPEAT_LIMIT_CALLBACK_INTERVAL)) {
+                (trackedValue - lastLimitCallbackAt > sBinderProxyCountHighWatermark)) {
                 ALOGE("Still too many binder proxy objects sent to uid %d from uid %d (%d proxies "
                       "held)",
                       getuid(), trackedUid, trackedValue);
@@ -156,7 +149,7 @@ sp<BpBinder> BpBinder::create(int32_t handle) {
     return sp<BpBinder>::make(BinderHandle{handle}, trackedUid);
 }
 
-sp<BpBinder> BpBinder::create(const sp<RpcSession>& session, uint64_t address) {
+sp<BpBinder> BpBinder::create(const sp<RpcSession>& session, const RpcAddress& address) {
     LOG_ALWAYS_FATAL_IF(session == nullptr, "BpBinder::create null session");
 
     // These are not currently tracked, since there is no UID or other
@@ -193,7 +186,7 @@ bool BpBinder::isRpcBinder() const {
     return std::holds_alternative<RpcHandle>(mHandle);
 }
 
-uint64_t BpBinder::rpcAddress() const {
+const RpcAddress& BpBinder::rpcAddress() const {
     return std::get<RpcHandle>(mHandle).address;
 }
 
@@ -203,14 +196,6 @@ const sp<RpcSession>& BpBinder::rpcSession() const {
 
 int32_t BpBinder::binderHandle() const {
     return std::get<BinderHandle>(mHandle).handle;
-}
-
-std::optional<int32_t> BpBinder::getDebugBinderHandle() const {
-    if (!isRpcBinder()) {
-        return binderHandle();
-    } else {
-        return std::nullopt;
-    }
 }
 
 bool BpBinder::isDescriptorCached() const {
@@ -286,23 +271,22 @@ status_t BpBinder::transact(
         if (code >= FIRST_CALL_TRANSACTION && code <= LAST_CALL_TRANSACTION) {
             using android::internal::Stability;
 
-            int16_t stability = Stability::getRepr(this);
+            auto category = Stability::getCategory(this);
             Stability::Level required = privateVendor ? Stability::VENDOR
                 : Stability::getLocalLevel();
 
-            if (CC_UNLIKELY(!Stability::check(stability, required))) {
+            if (CC_UNLIKELY(!Stability::check(category, required))) {
                 ALOGE("Cannot do a user transaction on a %s binder (%s) in a %s context.",
-                      Stability::levelString(stability).c_str(),
-                      String8(getInterfaceDescriptor()).c_str(),
-                      Stability::levelString(required).c_str());
+                    category.debugString().c_str(),
+                    String8(getInterfaceDescriptor()).c_str(),
+                    Stability::levelString(required).c_str());
                 return BAD_TYPE;
             }
         }
 
         status_t status;
         if (CC_UNLIKELY(isRpcBinder())) {
-            status = rpcSession()->transact(sp<IBinder>::fromExisting(this), code, data, reply,
-                                            flags);
+            status = rpcSession()->transact(rpcAddress(), code, data, reply, flags);
         } else {
             status = IPCThreadState::self()->transact(binderHandle(), code, data, reply, flags);
         }
@@ -434,11 +418,14 @@ void BpBinder::reportOneDeath(const Obituary& obit)
     recipient->binderDied(wp<BpBinder>::fromExisting(this));
 }
 
-void* BpBinder::attachObject(const void* objectID, void* object, void* cleanupCookie,
-                             object_cleanup_func func) {
+
+void BpBinder::attachObject(
+    const void* objectID, void* object, void* cleanupCookie,
+    object_cleanup_func func)
+{
     AutoMutex _l(mLock);
     ALOGV("Attaching object %p to binder %p (manager=%p)", object, this, &mObjects);
-    return mObjects.attach(objectID, object, cleanupCookie, func);
+    mObjects.attach(objectID, object, cleanupCookie, func);
 }
 
 void* BpBinder::findObject(const void* objectID) const
@@ -447,14 +434,10 @@ void* BpBinder::findObject(const void* objectID) const
     return mObjects.find(objectID);
 }
 
-void* BpBinder::detachObject(const void* objectID) {
+void BpBinder::detachObject(const void* objectID)
+{
     AutoMutex _l(mLock);
-    return mObjects.detach(objectID);
-}
-
-void BpBinder::withLock(const std::function<void()>& doWithLock) {
-    AutoMutex _l(mLock);
-    doWithLock();
+    mObjects.detach(objectID);
 }
 
 BpBinder* BpBinder::remoteBinder()
@@ -510,7 +493,7 @@ void BpBinder::onLastStrongRef(const void* /*id*/)
 {
     ALOGV("onLastStrongRef BpBinder %p handle %d\n", this, binderHandle());
     if (CC_UNLIKELY(isRpcBinder())) {
-        (void)rpcSession()->sendDecStrong(this);
+        (void)rpcSession()->sendDecStrong(rpcAddress());
         return;
     }
     IF_ALOGV() {

@@ -68,7 +68,7 @@ private:
     // TODO: Reimplemement based on standard C++ container?
 };
 
-static sp<HeapCache> gHeapCache = sp<HeapCache>::make();
+static sp<HeapCache> gHeapCache = new HeapCache();
 
 /******************************************************************************/
 
@@ -82,10 +82,10 @@ public:
     explicit BpMemoryHeap(const sp<IBinder>& impl);
     virtual ~BpMemoryHeap();
 
-    int getHeapID() const override;
-    void* getBase() const override;
-    size_t getSize() const override;
-    uint32_t getFlags() const override;
+    virtual int getHeapID() const;
+    virtual void* getBase() const;
+    virtual size_t getSize() const;
+    virtual uint32_t getFlags() const;
     off_t getOffset() const override;
 
 private:
@@ -149,7 +149,7 @@ void* IMemory::fastPointer(const sp<IBinder>& binder, ssize_t offset) const
     return static_cast<char*>(base) + offset;
 }
 
-void* IMemory::unsecurePointer() const {
+void* IMemory::pointer() const {
     ssize_t offset;
     sp<IMemoryHeap> heap = getMemory(&offset);
     void* const base = heap!=nullptr ? heap->base() : MAP_FAILED;
@@ -157,8 +157,6 @@ void* IMemory::unsecurePointer() const {
         return nullptr;
     return static_cast<char*>(base) + offset;
 }
-
-void* IMemory::pointer() const { return unsecurePointer(); }
 
 size_t IMemory::size() const {
     size_t size;
@@ -223,7 +221,7 @@ sp<IMemoryHeap> BpMemory::getMemory(ssize_t* offset, size_t* size) const
 
 // ---------------------------------------------------------------------------
 
-IMPLEMENT_META_INTERFACE(Memory, "android.utils.IMemory")
+IMPLEMENT_META_INTERFACE(Memory, "android.utils.IMemory");
 
 BnMemory::BnMemory() {
 }
@@ -288,7 +286,7 @@ void BpMemoryHeap::assertMapped() const
     int32_t heapId = mHeapId.load(memory_order_acquire);
     if (heapId == -1) {
         sp<IBinder> binder(IInterface::asBinder(const_cast<BpMemoryHeap*>(this)));
-        sp<BpMemoryHeap> heap = sp<BpMemoryHeap>::cast(find_heap(binder));
+        sp<BpMemoryHeap> heap(static_cast<BpMemoryHeap*>(find_heap(binder).get()));
         heap->assertReallyMapped();
         if (heap->mBase != MAP_FAILED) {
             Mutex::Autolock _l(mLock);
@@ -388,7 +386,7 @@ off_t BpMemoryHeap::getOffset() const {
 
 // ---------------------------------------------------------------------------
 
-IMPLEMENT_META_INTERFACE(MemoryHeap, "android.utils.IMemoryHeap")
+IMPLEMENT_META_INTERFACE(MemoryHeap, "android.utils.IMemoryHeap");
 
 BnMemoryHeap::BnMemoryHeap() {
 }
@@ -512,4 +510,4 @@ void HeapCache::dump_heaps()
 
 
 // ---------------------------------------------------------------------------
-} // namespace android
+}; // namespace android

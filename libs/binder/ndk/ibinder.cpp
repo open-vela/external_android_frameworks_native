@@ -15,24 +15,18 @@
  */
 
 #include <android/binder_ibinder.h>
-#include <android/binder_ibinder_platform.h>
-#include <android/binder_libbinder.h>
 #include "ibinder_internal.h"
 
-#include <android/binder_stability.h>
 #include <android/binder_status.h>
 #include "parcel_internal.h"
 #include "status_internal.h"
 
 #include <android-base/logging.h>
 #include <binder/IPCThreadState.h>
-#include <binder/IResultReceiver.h>
-#include <private/android_filesystem_config.h>
 
 using DeathRecipient = ::android::IBinder::DeathRecipient;
 
 using ::android::IBinder;
-using ::android::IResultReceiver;
 using ::android::Parcel;
 using ::android::sp;
 using ::android::status_t;
@@ -47,8 +41,7 @@ static void* kValue = static_cast<void*>(new bool{true});
 void clean(const void* /*id*/, void* /*obj*/, void* /*cookie*/){/* do nothing */};
 
 static void attach(const sp<IBinder>& binder) {
-    // can only attach once
-    CHECK_EQ(nullptr, binder->attachObject(kId, kValue, nullptr /*cookie*/, clean));
+    binder->attachObject(kId, kValue, nullptr /*cookie*/, clean);
 }
 static bool has(const sp<IBinder>& binder) {
     return binder != nullptr && binder->findObject(kId) == kValue;
@@ -58,6 +51,7 @@ static bool has(const sp<IBinder>& binder) {
 
 namespace ABpBinderTag {
 
+static std::mutex gLock;
 static const void* kId = "ABpBinder";
 struct Value {
     wp<ABpBinder> binder;
@@ -73,61 +67,43 @@ void clean(const void* id, void* obj, void* cookie) {
 AIBinder::AIBinder(const AIBinder_Class* clazz) : mClazz(clazz) {}
 AIBinder::~AIBinder() {}
 
-std::optional<bool> AIBinder::associateClassInternal(const AIBinder_Class* clazz,
-                                                     const String16& newDescriptor, bool set) {
-    std::lock_guard<std::mutex> lock(mClazzMutex);
+bool AIBinder::associateClass(const AIBinder_Class* clazz) {
+    if (clazz == nullptr) return false;
     if (mClazz == clazz) return true;
 
+    String8 newDescriptor(clazz->getInterfaceDescriptor());
+
     if (mClazz != nullptr) {
-        const String16& currentDescriptor = mClazz->getInterfaceDescriptor();
+        String8 currentDescriptor(mClazz->getInterfaceDescriptor());
         if (newDescriptor == currentDescriptor) {
             LOG(ERROR) << __func__ << ": Class descriptors '" << currentDescriptor
-                       << "' match during associateClass, but they are different class objects ("
-                       << clazz << " vs " << mClazz << "). Class descriptor collision?";
+                       << "' match during associateClass, but they are different class objects. "
+                          "Class descriptor collision?";
         } else {
             LOG(ERROR) << __func__
                        << ": Class cannot be associated on object which already has a class. "
                           "Trying to associate to '"
-                       << newDescriptor << "' but already set to '" << currentDescriptor << "'.";
+                       << newDescriptor.c_str() << "' but already set to '"
+                       << currentDescriptor.c_str() << "'.";
         }
 
         // always a failure because we know mClazz != clazz
         return false;
     }
 
-    if (set) {
-        // if this is a local object, it's not one known to libbinder_ndk
-        mClazz = clazz;
-        return true;
-    }
-
-    return {};
-}
-
-bool AIBinder::associateClass(const AIBinder_Class* clazz) {
-    if (clazz == nullptr) return false;
-
-    const String16& newDescriptor = clazz->getInterfaceDescriptor();
-
-    auto result = associateClassInternal(clazz, newDescriptor, false);
-    if (result.has_value()) return *result;
-
     CHECK(asABpBinder() != nullptr);  // ABBinder always has a descriptor
 
-    const String16& descriptor = getBinder()->getInterfaceDescriptor();
+    String8 descriptor(getBinder()->getInterfaceDescriptor());
     if (descriptor != newDescriptor) {
-        if (getBinder()->isBinderAlive()) {
-            LOG(ERROR) << __func__ << ": Expecting binder to have class '" << newDescriptor
-                       << "' but descriptor is actually '" << descriptor << "'.";
-        } else {
-            // b/155793159
-            LOG(ERROR) << __func__ << ": Cannot associate class '" << newDescriptor
-                       << "' to dead binder.";
-        }
+        LOG(ERROR) << __func__ << ": Expecting binder to have class '" << newDescriptor.c_str()
+                   << "' but descriptor is actually '" << descriptor.c_str() << "'.";
         return false;
     }
 
-    return associateClassInternal(clazz, newDescriptor, true).value();
+    // if this is a local object, it's not one known to libbinder_ndk
+    mClazz = clazz;
+
+    return true;
 }
 
 ABBinder::ABBinder(const AIBinder_Class* clazz, void* userData)
@@ -172,7 +148,7 @@ status_t ABBinder::dump(int fd, const ::android::Vector<String16>& args) {
 status_t ABBinder::onTransact(transaction_code_t code, const Parcel& data, Parcel* reply,
                               binder_flags_t flags) {
     if (isUserCommand(code)) {
-        if (getClass()->writeHeader && !data.checkInterface(this)) {
+        if (!data.checkInterface(this)) {
             return STATUS_BAD_TYPE;
         }
 
@@ -181,45 +157,6 @@ status_t ABBinder::onTransact(transaction_code_t code, const Parcel& data, Parce
 
         binder_status_t status = getClass()->onTransact(this, code, &in, &out);
         return PruneStatusT(status);
-    } else if (code == SHELL_COMMAND_TRANSACTION && getClass()->handleShellCommand != nullptr) {
-        int in = data.readFileDescriptor();
-        int out = data.readFileDescriptor();
-        int err = data.readFileDescriptor();
-
-        int argc = data.readInt32();
-        std::vector<String8> utf8Args;          // owns memory of utf8s
-        std::vector<const char*> utf8Pointers;  // what can be passed over NDK API
-        for (int i = 0; i < argc && data.dataAvail() > 0; i++) {
-            utf8Args.push_back(String8(data.readString16()));
-            utf8Pointers.push_back(utf8Args[i].c_str());
-        }
-
-        data.readStrongBinder();  // skip over the IShellCallback
-        sp<IResultReceiver> resultReceiver = IResultReceiver::asInterface(data.readStrongBinder());
-
-        // Shell commands should only be callable by ADB.
-        uid_t uid = AIBinder_getCallingUid();
-        if (uid != AID_ROOT && uid != AID_SHELL) {
-            if (resultReceiver != nullptr) {
-                resultReceiver->send(-1);
-            }
-            return STATUS_PERMISSION_DENIED;
-        }
-
-        // Check that the file descriptors are valid.
-        if (in == STATUS_BAD_TYPE || out == STATUS_BAD_TYPE || err == STATUS_BAD_TYPE) {
-            if (resultReceiver != nullptr) {
-                resultReceiver->send(-1);
-            }
-            return STATUS_BAD_VALUE;
-        }
-
-        binder_status_t status = getClass()->handleShellCommand(
-                this, in, out, err, utf8Pointers.data(), utf8Pointers.size());
-        if (resultReceiver != nullptr) {
-            resultReceiver->send(status);
-        }
-        return status;
     } else {
         return BBinder::onTransact(code, data, reply, flags);
     }
@@ -232,16 +169,19 @@ ABpBinder::ABpBinder(const ::android::sp<::android::IBinder>& binder)
 ABpBinder::~ABpBinder() {}
 
 void ABpBinder::onLastStrongRef(const void* id) {
-    // Since ABpBinder is OBJECT_LIFETIME_WEAK, we must remove this weak reference in order for
-    // the ABpBinder to be deleted. Even though we have no more references on the ABpBinder
-    // (BpRefBase), the remote object may still exist (for instance, if we
-    // receive it from another process, before the ABpBinder is attached).
+    {
+        std::lock_guard<std::mutex> lock(ABpBinderTag::gLock);
+        // Since ABpBinder is OBJECT_LIFETIME_WEAK, we must remove this weak reference in order for
+        // the ABpBinder to be deleted. Since a strong reference to this ABpBinder object should no
+        // longer be able to exist at the time of this method call, there is no longer a need to
+        // recover it.
 
-    ABpBinderTag::Value* value =
-            static_cast<ABpBinderTag::Value*>(remote()->findObject(ABpBinderTag::kId));
-    CHECK_NE(nullptr, value) << "ABpBinder must always be attached";
-
-    remote()->withLock([&]() { value->binder = nullptr; });
+        ABpBinderTag::Value* value =
+                static_cast<ABpBinderTag::Value*>(remote()->findObject(ABpBinderTag::kId));
+        if (value != nullptr) {
+            value->binder = nullptr;
+        }
+    }
 
     BpRefBase::onLastStrongRef(id);
 }
@@ -256,29 +196,21 @@ sp<AIBinder> ABpBinder::lookupOrCreateFromBinder(const ::android::sp<::android::
 
     // The following code ensures that for a given binder object (remote or local), if it is not an
     // ABBinder then at most one ABpBinder object exists in a given process representing it.
+    std::lock_guard<std::mutex> lock(ABpBinderTag::gLock);
 
-    auto* value = static_cast<ABpBinderTag::Value*>(binder->findObject(ABpBinderTag::kId));
+    ABpBinderTag::Value* value =
+            static_cast<ABpBinderTag::Value*>(binder->findObject(ABpBinderTag::kId));
     if (value == nullptr) {
         value = new ABpBinderTag::Value;
-        auto oldValue = static_cast<ABpBinderTag::Value*>(
-                binder->attachObject(ABpBinderTag::kId, static_cast<void*>(value),
-                                     nullptr /*cookie*/, ABpBinderTag::clean));
-
-        // allocated by another thread
-        if (oldValue) {
-            delete value;
-            value = oldValue;
-        }
+        binder->attachObject(ABpBinderTag::kId, static_cast<void*>(value), nullptr /*cookie*/,
+                             ABpBinderTag::clean);
     }
 
-    sp<ABpBinder> ret;
-    binder->withLock([&]() {
-        ret = value->binder.promote();
-        if (ret == nullptr) {
-            ret = sp<ABpBinder>::make(binder);
-            value->binder = ret;
-        }
-    });
+    sp<ABpBinder> ret = value->binder.promote();
+    if (ret == nullptr) {
+        ret = new ABpBinder(binder);
+        value->binder = ret;
+    }
 
     return ret;
 }
@@ -306,34 +238,13 @@ AIBinder* AIBinder_Weak_promote(AIBinder_Weak* weakBinder) {
     return binder.get();
 }
 
-AIBinder_Weak* AIBinder_Weak_clone(const AIBinder_Weak* weak) {
-    if (weak == nullptr) {
-        return nullptr;
-    }
-
-    return new AIBinder_Weak{weak->binder};
-}
-
-bool AIBinder_lt(const AIBinder* lhs, const AIBinder* rhs) {
-    if (lhs == nullptr || rhs == nullptr) return lhs < rhs;
-
-    return const_cast<AIBinder*>(lhs)->getBinder() < const_cast<AIBinder*>(rhs)->getBinder();
-}
-
-bool AIBinder_Weak_lt(const AIBinder_Weak* lhs, const AIBinder_Weak* rhs) {
-    if (lhs == nullptr || rhs == nullptr) return lhs < rhs;
-
-    return lhs->binder < rhs->binder;
-}
-
 AIBinder_Class::AIBinder_Class(const char* interfaceDescriptor, AIBinder_Class_onCreate onCreate,
                                AIBinder_Class_onDestroy onDestroy,
                                AIBinder_Class_onTransact onTransact)
     : onCreate(onCreate),
       onDestroy(onDestroy),
       onTransact(onTransact),
-      mInterfaceDescriptor(interfaceDescriptor),
-      mWideInterfaceDescriptor(interfaceDescriptor) {}
+      mInterfaceDescriptor(interfaceDescriptor) {}
 
 AIBinder_Class* AIBinder_Class_define(const char* interfaceDescriptor,
                                       AIBinder_Class_onCreate onCreate,
@@ -354,28 +265,8 @@ void AIBinder_Class_setOnDump(AIBinder_Class* clazz, AIBinder_onDump onDump) {
     clazz->onDump = onDump;
 }
 
-void AIBinder_Class_disableInterfaceTokenHeader(AIBinder_Class* clazz) {
-    CHECK(clazz != nullptr) << "disableInterfaceTokenHeader requires non-null clazz";
-
-    clazz->writeHeader = false;
-}
-
-void AIBinder_Class_setHandleShellCommand(AIBinder_Class* clazz,
-                                          AIBinder_handleShellCommand handleShellCommand) {
-    CHECK(clazz != nullptr) << "setHandleShellCommand requires non-null clazz";
-
-    clazz->handleShellCommand = handleShellCommand;
-}
-
-const char* AIBinder_Class_getDescriptor(const AIBinder_Class* clazz) {
-    CHECK(clazz != nullptr) << "getDescriptor requires non-null clazz";
-
-    return clazz->getInterfaceDescriptorUtf8();
-}
-
 void AIBinder_DeathRecipient::TransferDeathRecipient::binderDied(const wp<IBinder>& who) {
-    CHECK(who == mWho) << who.unsafe_get() << "(" << who.get_refs() << ") vs " << mWho.unsafe_get()
-                       << " (" << mWho.get_refs() << ")";
+    CHECK(who == mWho);
 
     mOnDied(mCookie);
 
@@ -406,7 +297,7 @@ void AIBinder_DeathRecipient::pruneDeadTransferEntriesLocked() {
                            mDeathRecipients.end());
 }
 
-binder_status_t AIBinder_DeathRecipient::linkToDeath(const sp<IBinder>& binder, void* cookie) {
+binder_status_t AIBinder_DeathRecipient::linkToDeath(sp<IBinder> binder, void* cookie) {
     CHECK(binder != nullptr);
 
     std::lock_guard<std::mutex> l(mDeathRecipientsMutex);
@@ -425,7 +316,7 @@ binder_status_t AIBinder_DeathRecipient::linkToDeath(const sp<IBinder>& binder, 
     return STATUS_OK;
 }
 
-binder_status_t AIBinder_DeathRecipient::unlinkToDeath(const sp<IBinder>& binder, void* cookie) {
+binder_status_t AIBinder_DeathRecipient::unlinkToDeath(sp<IBinder> binder, void* cookie) {
     CHECK(binder != nullptr);
 
     std::lock_guard<std::mutex> l(mDeathRecipientsMutex);
@@ -545,6 +436,7 @@ pid_t AIBinder_getCallingPid() {
 
 void AIBinder_incStrong(AIBinder* binder) {
     if (binder == nullptr) {
+        LOG(ERROR) << __func__ << ": on null binder";
         return;
     }
 
@@ -609,13 +501,15 @@ binder_status_t AIBinder_prepareTransaction(AIBinder* binder, AParcel** in) {
         return STATUS_INVALID_OPERATION;
     }
 
-    *in = new AParcel(binder);
-    (*in)->get()->markForBinder(binder->getBinder());
-
-    status_t status = android::OK;
-    if (clazz->writeHeader) {
-        status = (*in)->get()->writeInterfaceToken(clazz->getInterfaceDescriptor());
+    if (!binder->isRemote()) {
+        LOG(WARNING) << "A binder object at " << binder
+                     << " is being transacted on, however, this object is in the same process as "
+                        "its proxy. Transacting with this binder is expensive compared to just "
+                        "calling the corresponding functionality in the same process.";
     }
+
+    *in = new AParcel(binder);
+    status_t status = (*in)->get()->writeInterfaceToken(clazz->getInterfaceDescriptor());
     binder_status_t ret = PruneStatusT(status);
 
     if (ret != STATUS_OK) {
@@ -648,8 +542,7 @@ binder_status_t AIBinder_transact(AIBinder* binder, transaction_code_t code, APa
         return STATUS_UNKNOWN_TRANSACTION;
     }
 
-    constexpr binder_flags_t kAllFlags = FLAG_PRIVATE_VENDOR | FLAG_ONEWAY | FLAG_CLEAR_BUF;
-    if ((flags & ~kAllFlags) != 0) {
+    if ((flags & ~FLAG_ONEWAY) != 0) {
         LOG(ERROR) << __func__ << ": Unrecognized flags sent: " << flags;
         return STATUS_BAD_VALUE;
     }
@@ -695,67 +588,4 @@ void AIBinder_DeathRecipient_delete(AIBinder_DeathRecipient* recipient) {
     }
 
     recipient->decStrong(nullptr);
-}
-
-binder_status_t AIBinder_getExtension(AIBinder* binder, AIBinder** outExt) {
-    if (binder == nullptr || outExt == nullptr) {
-        if (outExt != nullptr) {
-            *outExt = nullptr;
-        }
-        return STATUS_UNEXPECTED_NULL;
-    }
-
-    sp<IBinder> ext;
-    status_t res = binder->getBinder()->getExtension(&ext);
-
-    if (res != android::OK) {
-        *outExt = nullptr;
-        return PruneStatusT(res);
-    }
-
-    sp<AIBinder> ret = ABpBinder::lookupOrCreateFromBinder(ext);
-    if (ret != nullptr) ret->incStrong(binder);
-
-    *outExt = ret.get();
-    return STATUS_OK;
-}
-
-binder_status_t AIBinder_setExtension(AIBinder* binder, AIBinder* ext) {
-    if (binder == nullptr || ext == nullptr) {
-        return STATUS_UNEXPECTED_NULL;
-    }
-
-    ABBinder* rawBinder = binder->asABBinder();
-    if (rawBinder == nullptr) {
-        return STATUS_INVALID_OPERATION;
-    }
-
-    rawBinder->setExtension(ext->getBinder());
-    return STATUS_OK;
-}
-
-// platform methods follow
-
-void AIBinder_setRequestingSid(AIBinder* binder, bool requestingSid) {
-    ABBinder* localBinder = binder->asABBinder();
-    if (localBinder == nullptr) {
-        LOG(FATAL) << "AIBinder_setRequestingSid must be called on a local binder";
-    }
-
-    localBinder->setRequestingSid(requestingSid);
-}
-
-const char* AIBinder_getCallingSid() {
-    return ::android::IPCThreadState::self()->getCallingSid();
-}
-
-android::sp<android::IBinder> AIBinder_toPlatformBinder(AIBinder* binder) {
-    if (binder == nullptr) return nullptr;
-    return binder->getBinder();
-}
-
-AIBinder* AIBinder_fromPlatformBinder(const android::sp<android::IBinder>& binder) {
-    sp<AIBinder> ndkBinder = ABpBinder::lookupOrCreateFromBinder(binder);
-    AIBinder_incStrong(ndkBinder.get());
-    return ndkBinder.get();
 }

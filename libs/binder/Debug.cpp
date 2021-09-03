@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#include "Debug.h"
-
+#include <binder/Debug.h>
 #include <binder/ProcessState.h>
 
 #include <utils/misc.h>
@@ -209,7 +208,7 @@ void printHexData(int32_t indent, const void *buf, size_t length,
     }
 
     for (offset = 0; ; offset += bytesPerLine, pos += bytesPerLine) {
-        ssize_t remain = length;
+        long remain = length;
 
         char* c = buffer;
         if (!oneLine && !cStyle) {
@@ -309,5 +308,5 @@ ssize_t getBinderKernelReferences(size_t count, uintptr_t* buf) {
     return proc->getKernelReferences(count, buf);
 }
 
-} // namespace android
+}; // namespace android
 

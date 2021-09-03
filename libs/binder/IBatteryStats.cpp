@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-#include <batterystats/IBatteryStats.h>
+#include <binder/IBatteryStats.h>
 
 #include <utils/Log.h>
 #include <binder/Parcel.h>
 #include <utils/String8.h>
+
+#include <private/binder/Static.h>
 
 namespace android {
 
@@ -130,7 +132,7 @@ public:
 
 };
 
-IMPLEMENT_META_INTERFACE(BatteryStats, "com.android.internal.app.IBatteryStats")
+IMPLEMENT_META_INTERFACE(BatteryStats, "com.android.internal.app.IBatteryStats");
 
 // ----------------------------------------------------------------------
 
@@ -240,4 +242,4 @@ status_t BnBatteryStats::onTransact(
     }
 }
 
-} // namespace android
+}; // namespace android

@@ -56,26 +56,23 @@ public:
         remote()->transact(ON_UID_IDLE_TRANSACTION, data, &reply, IBinder::FLAG_ONEWAY);
     }
 
-    virtual void onUidStateChanged(uid_t uid, int32_t procState, int64_t procStateSeq,
-            int32_t capability)
+    virtual void onUidStateChanged(uid_t uid, int32_t procState, int64_t procStateSeq)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IUidObserver::getInterfaceDescriptor());
         data.writeInt32((int32_t) uid);
         data.writeInt32(procState);
         data.writeInt64(procStateSeq);
-        data.writeInt32(capability);
         remote()->transact(ON_UID_STATE_CHANGED_TRANSACTION, data, &reply, IBinder::FLAG_ONEWAY);
     }
 };
 
 // ----------------------------------------------------------------------
 
-IMPLEMENT_META_INTERFACE(UidObserver, "android.app.IUidObserver")
+IMPLEMENT_META_INTERFACE(UidObserver, "android.app.IUidObserver");
 
 // ----------------------------------------------------------------------
 
-// NOLINTNEXTLINE(google-default-arguments)
 status_t BnUidObserver::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
@@ -107,8 +104,7 @@ status_t BnUidObserver::onTransact(
             uid_t uid = data.readInt32();
             int32_t procState = data.readInt32();
             int64_t procStateSeq = data.readInt64();
-            int32_t capability = data.readInt32();
-            onUidStateChanged(uid, procState, procStateSeq, capability);
+            onUidStateChanged(uid, procState, procStateSeq);
             return NO_ERROR;
         } break;
         default:
@@ -116,4 +112,4 @@ status_t BnUidObserver::onTransact(
     }
 }
 
-} // namespace android
+}; // namespace android

@@ -22,6 +22,8 @@
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 
+#include <private/binder/Static.h>
+
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -42,7 +44,7 @@ public:
     }
 };
 
-IMPLEMENT_META_INTERFACE(ResultReceiver, "com.android.internal.os.IResultReceiver")
+IMPLEMENT_META_INTERFACE(ResultReceiver, "com.android.internal.os.IResultReceiver");
 
 // ----------------------------------------------------------------------
 
@@ -65,4 +67,4 @@ status_t BnResultReceiver::onTransact(
     }
 }
 
-} // namespace android
+}; // namespace android

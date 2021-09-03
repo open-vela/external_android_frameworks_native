@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <binder/BufferedTextOutput.h>
+#include "BufferedTextOutput.h"
 #include <binder/Debug.h>
 
 #include <cutils/atomic.h>
@@ -23,11 +23,11 @@
 #include <utils/RefBase.h>
 #include <utils/Vector.h>
 
-#include <private/binder/Static.h>
-
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "Static.h"
 
 // ---------------------------------------------------------------------------
 
@@ -281,4 +281,4 @@ BufferedTextOutput::BufferState* BufferedTextOutput::getBuffer() const
     return mGlobalState;
 }
 
-}; // namespace android
+} // namespace android

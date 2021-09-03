@@ -130,13 +130,13 @@ status_t Status::readFromParcel(const Parcel& parcel) {
     }
 
     // The remote threw an exception.  Get the message back.
-    std::optional<String16> message;
+    String16 message;
     status = parcel.readString16(&message);
     if (status != OK) {
         setFromStatusT(status);
         return status;
     }
-    mMessage = String8(message.value_or(String16()));
+    mMessage = String8(message);
 
     // Skip over the remote stack trace data
     int32_t remote_stack_trace_header_size;
@@ -193,15 +193,13 @@ status_t Status::writeToParcel(Parcel* parcel) const {
     }
 
     status_t status = parcel->writeInt32(mException);
-    if (status != OK) return status;
+    if (status != OK) { return status; }
     if (mException == EX_NONE) {
         // We have no more information to write.
         return status;
     }
     status = parcel->writeString16(String16(mMessage));
-    if (status != OK) return status;
     status = parcel->writeInt32(0); // Empty remote stack trace header
-    if (status != OK) return status;
     if (mException == EX_SERVICE_SPECIFIC) {
         status = parcel->writeInt32(mErrorCode);
     } else if (mException == EX_PARCELABLE) {
@@ -234,15 +232,19 @@ String8 Status::toString8() const {
         ret.append("No error");
     } else {
         ret.appendFormat("Status(%d, %s): '", mException, exceptionToString(mException).c_str());
-        if (mException == EX_SERVICE_SPECIFIC) {
+        if (mException == EX_SERVICE_SPECIFIC ||
+            mException == EX_TRANSACTION_FAILED) {
             ret.appendFormat("%d: ", mErrorCode);
-        } else if (mException == EX_TRANSACTION_FAILED) {
-            ret.appendFormat("%s: ", statusToString(mErrorCode).c_str());
         }
         ret.append(String8(mMessage));
         ret.append("'");
     }
     return ret;
+}
+
+std::stringstream& operator<< (std::stringstream& stream, const Status& s) {
+    stream << s.toString8().string();
+    return stream;
 }
 
 }  // namespace binder

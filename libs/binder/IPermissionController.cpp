@@ -22,6 +22,8 @@
 #include <binder/Parcel.h>
 #include <utils/String8.h>
 
+#include <private/binder/Static.h>
+
 namespace android {
 
 // ----------------------------------------------------------------------
@@ -103,7 +105,7 @@ public:
     }
 };
 
-IMPLEMENT_META_INTERFACE(PermissionController, "android.os.IPermissionController")
+IMPLEMENT_META_INTERFACE(PermissionController, "android.os.IPermissionController");
 
 // ----------------------------------------------------------------------
 
@@ -172,4 +174,4 @@ status_t BnPermissionController::onTransact(
     }
 }
 
-} // namespace android
+}; // namespace android

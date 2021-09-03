@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BINDER_PERMISSION_H
+#define BINDER_PERMISSION_H
 
 #ifndef __ANDROID_VNDK__
 
@@ -73,13 +74,13 @@ public:
 
     static bool checkPermission(const String16& permission,
             pid_t pid, uid_t uid);
-
-    static void purgeCache();
 };
 
 // ---------------------------------------------------------------------------
-} // namespace android
+}; // namespace android
 
 #else // __ANDROID_VNDK__
 #error "This header is not visible to vendors"
 #endif // __ANDROID_VNDK__
+
+#endif /* BINDER_PERMISSION_H */

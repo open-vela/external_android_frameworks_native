@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-#pragma once
+//
+#ifndef ANDROID_ISHELL_CALLBACK_H
+#define ANDROID_ISHELL_CALLBACK_H
 
 #include <binder/IInterface.h>
 
@@ -25,7 +27,7 @@ namespace android {
 class IShellCallback : public IInterface
 {
 public:
-    DECLARE_META_INTERFACE(ShellCallback)
+    DECLARE_META_INTERFACE(ShellCallback);
 
     virtual int openFile(const String16& path, const String16& seLinuxContext,
             const String16& mode) = 0;
@@ -50,3 +52,6 @@ public:
 // ----------------------------------------------------------------------
 
 } // namespace android
+
+#endif // ANDROID_ISHELL_CALLBACK_H
+

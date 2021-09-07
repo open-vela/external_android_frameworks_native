@@ -23,8 +23,7 @@ using ::android::status_t;
 using ::android::binder::Status;
 
 AStatus* AStatus_newOk() {
-    static AStatus status = AStatus();
-    return &status;
+    return new AStatus();
 }
 
 AStatus* AStatus_fromExceptionCode(binder_exception_t exception) {
@@ -48,27 +47,27 @@ AStatus* AStatus_fromStatus(binder_status_t status) {
 }
 
 bool AStatus_isOk(const AStatus* status) {
-    return status->get().isOk();
+    return status->get()->isOk();
 }
 
 binder_exception_t AStatus_getExceptionCode(const AStatus* status) {
-    return PruneException(status->get().exceptionCode());
+    return PruneException(status->get()->exceptionCode());
 }
 
 int32_t AStatus_getServiceSpecificError(const AStatus* status) {
-    return status->get().serviceSpecificErrorCode();
+    return status->get()->serviceSpecificErrorCode();
 }
 
 binder_status_t AStatus_getStatus(const AStatus* status) {
-    return PruneStatusT(status->get().transactionError());
+    return PruneStatusT(status->get()->transactionError());
 }
 
 const char* AStatus_getMessage(const AStatus* status) {
-    return status->get().exceptionMessage().c_str();
+    return status->get()->exceptionMessage().c_str();
 }
 
 const char* AStatus_getDescription(const AStatus* status) {
-    android::String8 description = status->get().toString8();
+    android::String8 description = status->get()->toString8();
     char* cStr = new char[description.size() + 1];
     memcpy(cStr, description.c_str(), description.size() + 1);
     return cStr;
@@ -79,9 +78,7 @@ void AStatus_deleteDescription(const char* description) {
 }
 
 void AStatus_delete(AStatus* status) {
-    if (status != AStatus_newOk()) {
-        delete status;
-    }
+    delete status;
 }
 
 binder_status_t PruneStatusT(status_t status) {
@@ -126,8 +123,8 @@ binder_status_t PruneStatusT(status_t status) {
             return STATUS_UNKNOWN_ERROR;
 
         default:
-            LOG(WARNING) << __func__ << ": Unknown status_t (" << status
-                         << ") pruned into STATUS_UNKNOWN_ERROR";
+            LOG(WARNING) << __func__
+                         << ": Unknown status_t pruned into STATUS_UNKNOWN_ERROR: " << status;
             return STATUS_UNKNOWN_ERROR;
     }
 }
@@ -158,8 +155,8 @@ binder_exception_t PruneException(int32_t exception) {
             return EX_TRANSACTION_FAILED;
 
         default:
-            LOG(WARNING) << __func__ << ": Unknown binder exception (" << exception
-                         << ") pruned into EX_TRANSACTION_FAILED";
+            LOG(WARNING) << __func__
+                         << ": Unknown status_t pruned into EX_TRANSACTION_FAILED: " << exception;
             return EX_TRANSACTION_FAILED;
     }
 }

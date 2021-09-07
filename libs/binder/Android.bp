@@ -68,8 +68,6 @@ libbinder_device_interface_sources = [
 cc_library {
     name: "libbinder",
 
-    version_script: "libbinder.map",
-
     // for vndbinder
     vendor_available: true,
     vndk: {
@@ -98,7 +96,6 @@ cc_library {
         "BpBinder.cpp",
         "BufferedTextOutput.cpp",
         "Debug.cpp",
-        "FdTrigger.cpp",
         "IInterface.cpp",
         "IMemory.cpp",
         "IPCThreadState.cpp",
@@ -118,12 +115,12 @@ cc_library {
         "RpcSession.cpp",
         "RpcServer.cpp",
         "RpcState.cpp",
-        "RpcTransportRaw.cpp",
         "Static.cpp",
         "Stability.cpp",
         "Status.cpp",
         "TextOutput.cpp",
         "Utils.cpp",
+        ":packagemanager_aidl",
         ":libbinder_aidl",
     ],
 
@@ -136,17 +133,39 @@ cc_library {
                 enabled: false,
             },
         },
+        android_arm64: {
+            // b/189438896 Sampling PGO restricted to arm64, arm32 in sc-dev
+            pgo: {
+                sampling: true,
+                profile_file: "libbinder/libbinder.profdata",
+            },
+            // b/189438896 Add exported symbols in a map file for ABI stability
+            version_script: "libbinder.arm64.map",
+            target: {
+                vendor: {
+                    version_script: "libbinder.arm64.vendor.map",
+                },
+            },
+        },
+        android_arm: {
+            // b/189438896 Sampling PGO restricted to arm64, arm32 in sc-dev
+            pgo: {
+                sampling: true,
+                profile_file: "libbinder/libbinder.profdata",
+            },
+            // b/189438896 Add exported symbols in a map file for ABI stability
+            version_script: "libbinder.arm32.map",
+            target: {
+                vendor: {
+                    version_script: "libbinder.arm32.vendor.map",
+                },
+            },
+        },
         vendor: {
             exclude_srcs: libbinder_device_interface_sources,
         },
         darwin: {
             enabled: false,
-        },
-        host: {
-            srcs: [
-                "ServiceManagerHost.cpp",
-                "UtilsHost.cpp",
-            ],
         },
     },
 
@@ -171,10 +190,6 @@ cc_library {
         binder32bit: {
             cflags: ["-DBINDER_IPC_32BIT=1"],
         },
-
-        debuggable: {
-            cflags: ["-DBINDER_RPC_DEV_SERVERS"],
-        },
     },
 
     shared_libs: [
@@ -183,13 +198,8 @@ cc_library {
         "libutils",
     ],
 
-    static_libs: [
-        "libbase",
-    ],
-
     header_libs: [
         "libbinder_headers",
-        "libandroid_runtime_vm_headers",
     ],
 
     export_header_lib_headers: [
@@ -222,56 +232,6 @@ cc_library {
         "performance*",
         "portability*",
     ],
-
-    pgo: {
-        sampling: true,
-        profile_file: "libbinder/libbinder.profdata",
-    },
-}
-
-cc_defaults {
-    name: "libbinder_tls_shared_deps",
-    shared_libs: [
-        "libbinder",
-        "libcrypto",
-        "liblog",
-        "libssl",
-        "libutils",
-    ],
-}
-
-cc_defaults {
-    name: "libbinder_tls_defaults",
-    defaults: ["libbinder_tls_shared_deps"],
-    host_supported: true,
-
-    header_libs: [
-        "libbinder_headers",
-    ],
-    export_header_lib_headers: [
-        "libbinder_headers",
-    ],
-    export_include_dirs: ["include_tls"],
-    static_libs: [
-        "libbase",
-    ],
-    srcs: [
-        "RpcTransportTls.cpp",
-    ],
-}
-
-cc_library_shared {
-    name: "libbinder_tls",
-    defaults: ["libbinder_tls_defaults"],
-}
-
-// For testing
-cc_library_static {
-    name: "libbinder_tls_static",
-    defaults: ["libbinder_tls_defaults"],
-    visibility: [
-        ":__subpackages__",
-    ],
 }
 
 // AIDL interface between libbinder and framework.jar
@@ -286,19 +246,14 @@ filegroup {
     path: "aidl",
 }
 
-aidl_interface {
+filegroup {
     name: "packagemanager_aidl",
-    unstable: true,
-    local_include_dir: "aidl",
-    host_supported: true,
     srcs: [
         "aidl/android/content/pm/IPackageChangeObserver.aidl",
         "aidl/android/content/pm/IPackageManagerNative.aidl",
         "aidl/android/content/pm/PackageChangeEvent.aidl",
-        "aidl/android/content/pm/IStagedApexObserver.aidl",
-        "aidl/android/content/pm/ApexStagedEvent.aidl",
-        "aidl/android/content/pm/StagedApexInfo.aidl",
     ],
+    path: "aidl",
 }
 
 aidl_interface {
@@ -312,34 +267,6 @@ aidl_interface {
             enabled: false,
         },
     },
-}
-
-// TODO(b/184872979): remove once the Rust API is created.
-cc_library {
-    name: "libbinder_rpc_unstable",
-    srcs: ["libbinder_rpc_unstable.cpp"],
-    defaults: ["libbinder_ndk_host_user"],
-    shared_libs: [
-        "libbase",
-        "libbinder",
-        "libbinder_ndk",
-        "libutils",
-    ],
-
-    // enumerate stable entry points, for apex use
-    stubs: {
-        symbol_file: "libbinder_rpc_unstable.map.txt",
-    },
-
-    // This library is intentionally limited to these targets, and it will be removed later.
-    // Do not expand the visibility.
-    visibility: [
-        "//packages/modules/Virtualization/authfs:__subpackages__",
-        "//packages/modules/Virtualization/compos:__subpackages__",
-        "//packages/modules/Virtualization/microdroid",
-        "//packages/modules/Virtualization/microdroid_manager",
-        "//packages/modules/Virtualization/virtualizationservice",
-    ],
 }
 
 // libbinder historically contained additional interfaces that provided specific
@@ -393,19 +320,4 @@ cc_library {
     aidl: {
         export_aidl_headers: true,
     },
-}
-
-cc_binary {
-    name: "servicedispatcher",
-    host_supported: false,
-    srcs: [
-        "servicedispatcher.cpp",
-    ],
-    shared_libs: [
-        "libbase",
-        "libbinder",
-        "liblog",
-        "libutils",
-        "android.debug_aidl-cpp",
-    ],
 }

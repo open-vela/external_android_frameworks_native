@@ -26,64 +26,10 @@ class ProcessState;
 
 namespace internal {
 
-// Stability encodes how a binder changes over time. There are two levels of
-// stability:
-// 1). the interface stability - this is how a particular set of API calls (a
-//   particular ordering of things like writeInt32/readInt32) are changed over
-//   time. If one release, we have 'writeInt32' and the next release, we have
-//   'writeInt64', then this interface doesn't have a very stable
-//   Stability::Level. Usually this ordering is controlled by a .aidl file.
-// 2). the wire format stability - this is how these API calls map to actual
-//   bytes that are written to the wire (literally, this is how they are written
-//   to the kernel inside of IBinder::transact, but it may be expanded to other
-//   wires in the future). For instance, writeInt32 in binder translates to
-//   writing a 4-byte little-endian integer in two's complement. You can imagine
-//   in the future, we change writeInt32/readInt32 to instead write 8-bytes with
-//   that integer and some check bits. In this case, the wire format changes,
-//   but as long as a client libbinder knows to keep on writing a 4-byte value
-//   to old servers, and new servers know how to interpret the 8-byte result,
-//   they can still communicate.
-//
-// This class is specifically about (1). (2) is not currently tracked by
-// libbinder for regular binder calls, and everything on the system uses the
-// same copy of libbinder.
-
+// WARNING: These APIs are only ever expected to be called by auto-generated code.
+//     Instead of calling them, you should set the stability of a .aidl interface
 class Stability final {
 public:
-    // Given a binder interface at a certain stability, there may be some
-    // requirements associated with that higher stability level. For instance, a
-    // VINTF stability binder is required to be in the VINTF manifest. This API
-    // can be called to use that same interface within the local partition.
-    static void forceDowngradeToLocalStability(const sp<IBinder>& binder);
-
-    // WARNING: Below APIs are only ever expected to be called by auto-generated code.
-    //     Instead of calling them, you should set the stability of a .aidl interface
-
-    // WARNING: The only client of
-    //      - forceDowngradeToSystemStability() and;
-    //      - korceDowngradeToVendorStability()
-    //  should be AIBinder_forceDowngradeToLocalStability().
-    //
-    // getLocalLevel() in libbinder returns Level::SYSTEM when called
-    // from libbinder_ndk (even on vendor partition). So we explicitly provide
-    // these methods for use by the NDK API:
-    //      AIBinder_forceDowngradeToLocalStability().
-    //
-    // This allows correctly downgrading the binder's stability to either system/vendor,
-    // depending on the partition.
-
-    // Given a binder interface at a certain stability, there may be some
-    // requirements associated with that higher stability level. For instance, a
-    // VINTF stability binder is required to be in the VINTF manifest. This API
-    // can be called to use that same interface within the vendor partition.
-    static void forceDowngradeToVendorStability(const sp<IBinder>& binder);
-
-    // Given a binder interface at a certain stability, there may be some
-    // requirements associated with that higher stability level. For instance, a
-    // VINTF stability binder is required to be in the VINTF manifest. This API
-    // can be called to use that same interface within the system partition.
-    static void forceDowngradeToSystemStability(const sp<IBinder>& binder);
-
     // WARNING: This is only ever expected to be called by auto-generated code. You likely want to
     // change or modify the stability class of the interface you are using.
     // This must be called as soon as the binder in question is constructed. No thread safety
@@ -99,7 +45,7 @@ public:
     static void markVintf(IBinder* binder);
 
     // WARNING: for debugging only
-    static std::string debugToString(const sp<IBinder>& binder);
+    static void debugLogStability(const std::string& tag, const sp<IBinder>& binder);
 
     // WARNING: This is only ever expected to be called by auto-generated code or tests.
     // You likely want to change or modify the stability of the interface you are using.
@@ -127,10 +73,7 @@ private:
 
     static void tryMarkCompilationUnit(IBinder* binder);
 
-    // Currently, we use int16_t for Level so that it can fit in BBinder.
-    // However, on the wire, we have 4 bytes reserved for stability, so whenever
-    // we ingest a Level, we always accept an int32_t.
-    enum Level : int16_t {
+    enum Level : int32_t {
         UNDECLARED = 0,
 
         VENDOR = 0b000011,
@@ -138,30 +81,22 @@ private:
         VINTF = 0b111111,
     };
 
-    // returns the stability according to how this was built
-    static Level getLocalLevel();
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
+    static constexpr Level kLocalStability = Level::VENDOR;
+#else
+    static constexpr Level kLocalStability = Level::SYSTEM;
+#endif
 
-    // Downgrades binder stability to the specified level.
-    static void forceDowngradeToStability(const sp<IBinder>& binder, Level level);
-
-    enum {
-      REPR_NONE = 0,
-      REPR_LOG = 1,
-      REPR_ALLOW_DOWNGRADE = 2,
-    };
     // applies stability to binder if stability level is known
-    __attribute__((warn_unused_result)) static status_t setRepr(IBinder* binder, int32_t setting,
-                                                                uint32_t flags);
+    __attribute__((warn_unused_result))
+    static status_t set(IBinder* binder, int32_t stability, bool log);
 
-    // get stability information as encoded on the wire
-    static int16_t getRepr(IBinder* binder);
+    static Level get(IBinder* binder);
 
-    // whether a transaction on binder is allowed, if the transaction
-    // is done from a context with a specific stability level
-    static bool check(int16_t provided, Level required);
+    static bool check(int32_t provided, Level required);
 
-    static bool isDeclaredLevel(int32_t level);
-    static std::string levelString(int32_t level);
+    static bool isDeclaredStability(int32_t stability);
+    static std::string stabilityString(int32_t stability);
 
     Stability();
 };

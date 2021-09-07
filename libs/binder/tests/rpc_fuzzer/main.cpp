@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/unique_fd.h>
 #include <binder/Binder.h>
 #include <binder/Parcel.h>
 #include <binder/RpcServer.h>
 #include <binder/RpcSession.h>
+#include <fuzzer/FuzzedDataProvider.h>
 
 #include <sys/resource.h>
 #include <sys/un.h>
@@ -28,20 +28,6 @@ namespace android {
 
 static const std::string kSock = std::string(getenv("TMPDIR") ?: "/tmp") +
         "/binderRpcFuzzerSocket_" + std::to_string(getpid());
-
-size_t getHardMemoryLimit() {
-    struct rlimit limit;
-    CHECK(0 == getrlimit(RLIMIT_AS, &limit)) << errno;
-    return limit.rlim_max;
-}
-
-void setMemoryLimit(size_t cur, size_t max) {
-    const struct rlimit kLimit = {
-            .rlim_cur = cur,
-            .rlim_max = max,
-    };
-    CHECK(0 == setrlimit(RLIMIT_AS, &kLimit)) << errno;
-}
 
 class SomeBinder : public BBinder {
     status_t onTransact(uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags = 0) {
@@ -67,19 +53,16 @@ class SomeBinder : public BBinder {
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     if (size > 50000) return 0;
+    FuzzedDataProvider provider(data, size);
 
     unlink(kSock.c_str());
 
     sp<RpcServer> server = RpcServer::make();
     server->setRootObject(sp<SomeBinder>::make());
     server->iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
-    CHECK(server->setupUnixDomainServer(kSock.c_str()));
+    CHECK_EQ(OK, server->setupUnixDomainServer(kSock.c_str()));
 
-    static constexpr size_t kMemLimit = 1llu * 1024 * 1024 * 1024;
-    size_t hardLimit = getHardMemoryLimit();
-    setMemoryLimit(std::min(kMemLimit, hardLimit), hardLimit);
-
-    std::thread serverThread([=] { (void)server->acceptOne(); });
+    std::thread serverThread([=] { (void)server->join(); });
 
     sockaddr_un addr{
             .sun_family = AF_UNIX,
@@ -87,33 +70,45 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     CHECK_LT(kSock.size(), sizeof(addr.sun_path));
     memcpy(&addr.sun_path, kSock.c_str(), kSock.size());
 
-    base::unique_fd clientFd(TEMP_FAILURE_RETRY(socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0)));
-    CHECK_NE(clientFd.get(), -1);
-    CHECK_EQ(0,
-             TEMP_FAILURE_RETRY(
-                     connect(clientFd.get(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr))))
-            << strerror(errno);
+    std::vector<base::unique_fd> connections;
 
-    serverThread.join();
+    bool hangupBeforeShutdown = provider.ConsumeBool();
 
-    // TODO(b/182938024): fuzz multiple sessions, instead of just one
+    while (provider.remaining_bytes() > 0) {
+        if (connections.empty() || provider.ConsumeBool()) {
+            base::unique_fd fd(TEMP_FAILURE_RETRY(socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0)));
+            CHECK_NE(fd.get(), -1);
+            CHECK_EQ(0,
+                     TEMP_FAILURE_RETRY(
+                             connect(fd.get(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr))))
+                    << strerror(errno);
+            connections.push_back(std::move(fd));
+        } else {
+            size_t idx = provider.ConsumeIntegralInRange<size_t>(0, connections.size() - 1);
 
-#if 0
-    // make fuzzer more productive locally by forcing it to create a new session
-    int32_t id = -1;
-    CHECK(base::WriteFully(clientFd, &id, sizeof(id)));
-#endif
-
-    CHECK(base::WriteFully(clientFd, data, size));
-
-    clientFd.reset();
-
-    // TODO(b/185167543): better way to force a server to shutdown
-    while (!server->listSessions().empty() && server->numUninitializedSessions()) {
-        usleep(1);
+            if (provider.ConsumeBool()) {
+                std::vector<uint8_t> writeData = provider.ConsumeBytes<uint8_t>(
+                        provider.ConsumeIntegralInRange<size_t>(0, provider.remaining_bytes()));
+                ssize_t size = TEMP_FAILURE_RETRY(send(connections.at(idx).get(), writeData.data(),
+                                                       writeData.size(), MSG_NOSIGNAL));
+                CHECK(errno == EPIPE || size == writeData.size())
+                        << size << " " << writeData.size() << " " << strerror(errno);
+            } else {
+                connections.erase(connections.begin() + idx); // hang up
+            }
+        }
     }
 
-    setMemoryLimit(hardLimit, hardLimit);
+    if (hangupBeforeShutdown) {
+        connections.clear();
+        while (!server->listSessions().empty() && server->numUninitializedSessions()) {
+            // wait for all threads to finish processing existing information
+            usleep(1);
+        }
+    }
+
+    while (!server->shutdown()) usleep(1);
+    serverThread.join();
 
     return 0;
 }

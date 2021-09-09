@@ -138,12 +138,6 @@ public:
     std::string getCertificate(CertificateFormat);
 
     /**
-     * See RpcTransportCtx::addTrustedPeerCertificate.
-     * Thread-safe. This is only possible before the server is join()-ing.
-     */
-    status_t addTrustedPeerCertificate(CertificateFormat, std::string_view cert);
-
-    /**
      * Runs join() in a background thread. Immediately returns.
      */
     void start();

@@ -205,11 +205,11 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
         if (binder) {
             status_t status = writeInt32(1); // non-null
             if (status != OK) return status;
-            uint64_t address;
+            RpcAddress address = RpcAddress::zero();
             // TODO(b/167966510): need to undo this if the Parcel is not sent
             status = mSession->state()->onBinderLeaving(mSession, binder, &address);
             if (status != OK) return status;
-            status = writeUint64(address);
+            status = address.writeToParcel(this);
             if (status != OK) return status;
         } else {
             status_t status = writeInt32(0); // null
@@ -279,15 +279,15 @@ status_t Parcel::unflattenBinder(sp<IBinder>* out) const
     if (isForRpc()) {
         LOG_ALWAYS_FATAL_IF(mSession == nullptr, "RpcSession required to read from remote parcel");
 
-        int32_t isPresent;
-        status_t status = readInt32(&isPresent);
+        int32_t isNull;
+        status_t status = readInt32(&isNull);
         if (status != OK) return status;
 
         sp<IBinder> binder;
 
-        if (isPresent & 1) {
-            uint64_t addr;
-            if (status_t status = readUint64(&addr); status != OK) return status;
+        if (isNull & 1) {
+            auto addr = RpcAddress::zero();
+            if (status_t status = addr.readFromParcel(*this); status != OK) return status;
             if (status_t status = mSession->state()->onBinderEntering(mSession, addr, &binder);
                 status != OK)
                 return status;

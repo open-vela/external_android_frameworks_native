@@ -156,7 +156,7 @@ sp<BpBinder> BpBinder::create(int32_t handle) {
     return sp<BpBinder>::make(BinderHandle{handle}, trackedUid);
 }
 
-sp<BpBinder> BpBinder::create(const sp<RpcSession>& session, uint64_t address) {
+sp<BpBinder> BpBinder::create(const sp<RpcSession>& session, const RpcAddress& address) {
     LOG_ALWAYS_FATAL_IF(session == nullptr, "BpBinder::create null session");
 
     // These are not currently tracked, since there is no UID or other
@@ -193,7 +193,7 @@ bool BpBinder::isRpcBinder() const {
     return std::holds_alternative<RpcHandle>(mHandle);
 }
 
-uint64_t BpBinder::rpcAddress() const {
+const RpcAddress& BpBinder::rpcAddress() const {
     return std::get<RpcHandle>(mHandle).address;
 }
 

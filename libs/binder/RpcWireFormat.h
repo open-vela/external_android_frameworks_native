@@ -20,55 +20,6 @@ namespace android {
 #pragma clang diagnostic push
 #pragma clang diagnostic error "-Wpadded"
 
-enum : uint8_t {
-    RPC_CONNECTION_OPTION_INCOMING = 0x1, // default is outgoing
-};
-
-constexpr uint64_t RPC_WIRE_ADDRESS_OPTION_CREATED = 1 << 0; // distinguish from '0' address
-constexpr uint64_t RPC_WIRE_ADDRESS_OPTION_FOR_SERVER = 1 << 1;
-
-struct RpcWireAddress {
-    uint64_t options;
-    uint8_t address[32];
-};
-static_assert(sizeof(RpcWireAddress) == 40);
-
-/**
- * This is sent to an RpcServer in order to request a new connection is created,
- * either as part of a new session or an existing session
- */
-struct RpcConnectionHeader {
-    uint32_t version; // maximum supported by caller
-    uint8_t reserver0[4];
-    RpcWireAddress sessionId;
-    uint8_t options;
-    uint8_t reserved1[7];
-};
-static_assert(sizeof(RpcConnectionHeader) == 56);
-
-/**
- * In response to an RpcConnectionHeader which corresponds to a new session,
- * this returns information to the server.
- */
-struct RpcNewSessionResponse {
-    uint32_t version; // maximum supported by callee <= maximum supported by caller
-    uint8_t reserved[4];
-};
-static_assert(sizeof(RpcNewSessionResponse) == 8);
-
-#define RPC_CONNECTION_INIT_OKAY "cci"
-
-/**
- * Whenever a client connection is setup, this is sent as the initial
- * transaction. The main use of this is in order to control the timing for when
- * an incoming connection is setup.
- */
-struct RpcOutgoingConnectionInit {
-    char msg[4];
-    uint8_t reserved[4];
-};
-static_assert(sizeof(RpcOutgoingConnectionInit) == 8);
-
 enum : uint32_t {
     /**
      * follows is RpcWireTransaction, if flags != oneway, reply w/ RPC_COMMAND_REPLY expected
@@ -100,6 +51,8 @@ enum : uint32_t {
     RPC_SPECIAL_TRANSACT_GET_SESSION_ID = 2,
 };
 
+constexpr int32_t RPC_SESSION_ID_NEW = -1;
+
 // serialization is like:
 // |RpcWireHeader|struct desginated by 'command'| (over and over again)
 
@@ -109,7 +62,10 @@ struct RpcWireHeader {
 
     uint32_t reserved[2];
 };
-static_assert(sizeof(RpcWireHeader) == 16);
+
+struct RpcWireAddress {
+    uint8_t address[32];
+};
 
 struct RpcWireTransaction {
     RpcWireAddress address;
@@ -120,15 +76,13 @@ struct RpcWireTransaction {
 
     uint32_t reserved[4];
 
-    uint8_t data[];
+    uint8_t data[0];
 };
-static_assert(sizeof(RpcWireTransaction) == 72);
 
 struct RpcWireReply {
     int32_t status; // transact return
-    uint8_t data[];
+    uint8_t data[0];
 };
-static_assert(sizeof(RpcWireReply) == 4);
 
 #pragma clang diagnostic pop
 

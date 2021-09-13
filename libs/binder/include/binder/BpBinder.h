@@ -39,6 +39,9 @@ using binder_proxy_limit_callback = void(*)(int);
 class BpBinder : public IBinder
 {
 public:
+    static sp<BpBinder> create(int32_t handle);
+    static sp<BpBinder> create(const sp<RpcSession>& session, uint64_t address);
+
     /**
      * Return value:
      * true - this is associated with a socket RpcSession
@@ -113,19 +116,13 @@ public:
         KeyedVector<const void*, entry_t> mObjects;
     };
 
-    class PrivateAccessor {
+    class PrivateAccessorForId {
     private:
         friend class BpBinder;
         friend class ::android::Parcel;
         friend class ::android::ProcessState;
-        friend class ::android::RpcSession;
         friend class ::android::RpcState;
-        explicit PrivateAccessor(const BpBinder* binder) : mBinder(binder) {}
-
-        static sp<BpBinder> create(int32_t handle) { return BpBinder::create(handle); }
-        static sp<BpBinder> create(const sp<RpcSession>& session, uint64_t address) {
-            return BpBinder::create(session, address);
-        }
+        explicit PrivateAccessorForId(const BpBinder* binder) : mBinder(binder) {}
 
         // valid if !isRpcBinder
         int32_t binderHandle() const { return mBinder->binderHandle(); }
@@ -136,14 +133,13 @@ public:
 
         const BpBinder* mBinder;
     };
-    const PrivateAccessor getPrivateAccessor() const { return PrivateAccessor(this); }
+    const PrivateAccessorForId getPrivateAccessorForId() const {
+        return PrivateAccessorForId(this);
+    }
 
 private:
-    friend PrivateAccessor;
+    friend PrivateAccessorForId;
     friend class sp<BpBinder>;
-
-    static sp<BpBinder> create(int32_t handle);
-    static sp<BpBinder> create(const sp<RpcSession>& session, uint64_t address);
 
     struct BinderHandle {
         int32_t handle;

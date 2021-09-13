@@ -151,13 +151,7 @@ public:
 
     [[nodiscard]] status_t transact(const sp<IBinder>& binder, uint32_t code, const Parcel& data,
                                     Parcel* reply, uint32_t flags);
-
-    /**
-     * Generally, you should not call this, unless you are testing error
-     * conditions, as this is called automatically by BpBinders when they are
-     * deleted (this is also why a raw pointer is used here)
-     */
-    [[nodiscard]] status_t sendDecStrong(const BpBinder* binder);
+    [[nodiscard]] status_t sendDecStrong(uint64_t address);
 
     ~RpcSession();
 
@@ -176,8 +170,6 @@ private:
     friend RpcState;
     explicit RpcSession(std::unique_ptr<RpcTransportCtx> ctx);
 
-    [[nodiscard]] status_t sendDecStrong(uint64_t address);
-
     class EventListener : public virtual RefBase {
     public:
         virtual void onSessionAllIncomingThreadsEnded(const sp<RpcSession>& session) = 0;
@@ -188,12 +180,12 @@ private:
     public:
         void onSessionAllIncomingThreadsEnded(const sp<RpcSession>& session) override;
         void onSessionIncomingThreadEnded() override;
-        void waitForShutdown(std::unique_lock<std::mutex>& lock, const sp<RpcSession>& session);
+        void waitForShutdown(std::unique_lock<std::mutex>& lock);
 
     private:
         std::condition_variable mCv;
+        volatile bool mShutdown = false;
     };
-    friend WaitForShutdownListener;
 
     struct RpcConnection : public RefBase {
         std::unique_ptr<RpcTransport> rpcTransport;

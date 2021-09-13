@@ -64,6 +64,9 @@ libbinder_device_interface_sources = [
     "PermissionCache.cpp",
     "PermissionController.cpp",
 ]
+libbinder_no_vendor_interface_sources = [
+    ":packagemanager_aidl",
+]
 
 cc_library {
     name: "libbinder",
@@ -114,7 +117,6 @@ cc_library {
         "ParcelFileDescriptor.cpp",
         "PersistableBundle.cpp",
         "ProcessState.cpp",
-        "RpcAddress.cpp",
         "RpcSession.cpp",
         "RpcServer.cpp",
         "RpcState.cpp",
@@ -125,7 +127,7 @@ cc_library {
         "TextOutput.cpp",
         "Utils.cpp",
         ":libbinder_aidl",
-    ],
+    ] + libbinder_no_vendor_interface_sources,
 
     target: {
         android: {
@@ -137,7 +139,7 @@ cc_library {
             },
         },
         vendor: {
-            exclude_srcs: libbinder_device_interface_sources,
+            exclude_srcs: libbinder_device_interface_sources + libbinder_no_vendor_interface_sources,
         },
         darwin: {
             enabled: false,
@@ -286,11 +288,8 @@ filegroup {
     path: "aidl",
 }
 
-aidl_interface {
+filegroup {
     name: "packagemanager_aidl",
-    unstable: true,
-    local_include_dir: "aidl",
-    host_supported: true,
     srcs: [
         "aidl/android/content/pm/IPackageChangeObserver.aidl",
         "aidl/android/content/pm/IPackageManagerNative.aidl",
@@ -299,6 +298,7 @@ aidl_interface {
         "aidl/android/content/pm/ApexStagedEvent.aidl",
         "aidl/android/content/pm/StagedApexInfo.aidl",
     ],
+    path: "aidl",
 }
 
 aidl_interface {

@@ -26,7 +26,6 @@
 
 #include <string_view>
 
-#include <android-base/hex.h>
 #include <android-base/macros.h>
 #include <android_runtime/vm.h>
 #include <binder/Parcel.h>
@@ -133,7 +132,7 @@ status_t RpcSession::setupInetClient(const char* addr, unsigned int port) {
 }
 
 status_t RpcSession::setupPreconnectedClient(unique_fd fd, std::function<unique_fd()>&& request) {
-    return setupClient([&](const std::vector<uint8_t>& sessionId, bool incoming) -> status_t {
+    return setupClient([&](const RpcAddress& sessionId, bool incoming) -> status_t {
         // std::move'd from fd becomes -1 (!ok())
         if (!fd.ok()) {
             fd = request();
@@ -215,7 +214,7 @@ status_t RpcSession::transact(const sp<IBinder>& binder, uint32_t code, const Pa
                              sp<RpcSession>::fromExisting(this), reply, flags);
 }
 
-status_t RpcSession::sendDecStrong(uint64_t address) {
+status_t RpcSession::sendDecStrong(const RpcAddress& address) {
     ExclusiveConnection connection;
     status_t status = ExclusiveConnection::find(sp<RpcSession>::fromExisting(this),
                                                 ConnectionUse::CLIENT_REFCOUNT, &connection);
@@ -234,11 +233,12 @@ status_t RpcSession::readId() {
                                                 ConnectionUse::CLIENT, &connection);
     if (status != OK) return status;
 
-    status = state()->getSessionId(connection.get(), sp<RpcSession>::fromExisting(this), &mId);
+    mId = RpcAddress::zero();
+    status = state()->getSessionId(connection.get(), sp<RpcSession>::fromExisting(this),
+                                   &mId.value());
     if (status != OK) return status;
 
-    LOG_RPC_DETAIL("RpcSession %p has id %s", this,
-                   base::HexString(mId.data(), mId.size()).c_str());
+    LOG_RPC_DETAIL("RpcSession %p has id %s", this, mId->toString().c_str());
     return OK;
 }
 
@@ -397,8 +397,8 @@ sp<RpcServer> RpcSession::server() {
     return server;
 }
 
-status_t RpcSession::setupClient(const std::function<status_t(const std::vector<uint8_t>& sessionId,
-                                                              bool incoming)>& connectAndInit) {
+status_t RpcSession::setupClient(
+        const std::function<status_t(const RpcAddress& sessionId, bool incoming)>& connectAndInit) {
     {
         std::lock_guard<std::mutex> _l(mMutex);
         LOG_ALWAYS_FATAL_IF(mOutgoingConnections.size() != 0,
@@ -407,7 +407,8 @@ status_t RpcSession::setupClient(const std::function<status_t(const std::vector<
     }
     if (auto status = initShutdownTrigger(); status != OK) return status;
 
-    if (status_t status = connectAndInit({}, false /*incoming*/); status != OK) return status;
+    if (status_t status = connectAndInit(RpcAddress::zero(), false /*incoming*/); status != OK)
+        return status;
 
     {
         ExclusiveConnection connection;
@@ -448,25 +449,26 @@ status_t RpcSession::setupClient(const std::function<status_t(const std::vector<
 
     // we've already setup one client
     for (size_t i = 0; i + 1 < numThreadsAvailable; i++) {
-        if (status_t status = connectAndInit(mId, false /*incoming*/); status != OK) return status;
+        if (status_t status = connectAndInit(mId.value(), false /*incoming*/); status != OK)
+            return status;
     }
 
     for (size_t i = 0; i < mMaxThreads; i++) {
-        if (status_t status = connectAndInit(mId, true /*incoming*/); status != OK) return status;
+        if (status_t status = connectAndInit(mId.value(), true /*incoming*/); status != OK)
+            return status;
     }
 
     return OK;
 }
 
 status_t RpcSession::setupSocketClient(const RpcSocketAddress& addr) {
-    return setupClient([&](const std::vector<uint8_t>& sessionId, bool incoming) {
+    return setupClient([&](const RpcAddress& sessionId, bool incoming) {
         return setupOneSocketConnection(addr, sessionId, incoming);
     });
 }
 
 status_t RpcSession::setupOneSocketConnection(const RpcSocketAddress& addr,
-                                              const std::vector<uint8_t>& sessionId,
-                                              bool incoming) {
+                                              const RpcAddress& sessionId, bool incoming) {
     for (size_t tries = 0; tries < 5; tries++) {
         if (tries > 0) usleep(10000);
 
@@ -524,7 +526,7 @@ status_t RpcSession::setupOneSocketConnection(const RpcSocketAddress& addr,
     return UNKNOWN_ERROR;
 }
 
-status_t RpcSession::initAndAddConnection(unique_fd fd, const std::vector<uint8_t>& sessionId,
+status_t RpcSession::initAndAddConnection(unique_fd fd, const RpcAddress& sessionId,
                                           bool incoming) {
     LOG_ALWAYS_FATAL_IF(mShutdownTrigger == nullptr);
     auto server = mCtx->newTransport(std::move(fd), mShutdownTrigger.get());
@@ -535,20 +537,13 @@ status_t RpcSession::initAndAddConnection(unique_fd fd, const std::vector<uint8_
 
     LOG_RPC_DETAIL("Socket at client with RpcTransport %p", server.get());
 
-    if (sessionId.size() > std::numeric_limits<uint16_t>::max()) {
-        ALOGE("Session ID too big %zu", sessionId.size());
-        return BAD_VALUE;
-    }
-
     RpcConnectionHeader header{
             .version = mProtocolVersion.value_or(RPC_WIRE_PROTOCOL_VERSION),
             .options = 0,
-            .sessionIdSize = static_cast<uint16_t>(sessionId.size()),
     };
+    memcpy(&header.sessionId, &sessionId.viewRawEmbedded(), sizeof(RpcWireAddress));
 
-    if (incoming) {
-        header.options |= RPC_CONNECTION_OPTION_INCOMING;
-    }
+    if (incoming) header.options |= RPC_CONNECTION_OPTION_INCOMING;
 
     auto sendHeaderStatus =
             server->interruptableWriteFully(mShutdownTrigger.get(), &header, sizeof(header));
@@ -556,18 +551,6 @@ status_t RpcSession::initAndAddConnection(unique_fd fd, const std::vector<uint8_
         ALOGE("Could not write connection header to socket: %s",
               statusToString(sendHeaderStatus).c_str());
         return sendHeaderStatus;
-    }
-
-    if (sessionId.size() > 0) {
-        auto sendSessionIdStatus =
-                server->interruptableWriteFully(mShutdownTrigger.get(), sessionId.data(),
-                                                sessionId.size());
-        if (sendSessionIdStatus != OK) {
-            ALOGE("Could not write session ID ('%s') to socket: %s",
-                  base::HexString(sessionId.data(), sessionId.size()).c_str(),
-                  statusToString(sendSessionIdStatus).c_str());
-            return sendSessionIdStatus;
-        }
     }
 
     LOG_RPC_DETAIL("Socket at client: header sent");
@@ -642,7 +625,7 @@ status_t RpcSession::addOutgoingConnection(std::unique_ptr<RpcTransport> rpcTran
 }
 
 bool RpcSession::setForServer(const wp<RpcServer>& server, const wp<EventListener>& eventListener,
-                              const std::vector<uint8_t>& sessionId) {
+                              const RpcAddress& sessionId) {
     LOG_ALWAYS_FATAL_IF(mForServer != nullptr);
     LOG_ALWAYS_FATAL_IF(server == nullptr);
     LOG_ALWAYS_FATAL_IF(mEventListener != nullptr);

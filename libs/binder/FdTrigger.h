@@ -37,7 +37,7 @@ public:
     /**
      * Check whether this has been triggered by checking the write end.
      */
-    [[nodiscard]] bool isTriggered();
+    bool isTriggered();
 
     /**
      * Poll for a read event.
@@ -48,7 +48,7 @@ public:
      *   true - time to read!
      *   false - trigger happened
      */
-    [[nodiscard]] status_t triggerablePoll(base::borrowed_fd fd, int16_t event);
+    status_t triggerablePoll(base::borrowed_fd fd, int16_t event);
 
     /**
      * Check whether this has been triggered by poll()ing the read end.
@@ -58,7 +58,7 @@ public:
      *   false - not triggered
      *   error - error when polling
      */
-    [[nodiscard]] android::base::Result<bool> isTriggeredPolled();
+    android::base::Result<bool> isTriggeredPolled();
 
 private:
     base::unique_fd mWrite;

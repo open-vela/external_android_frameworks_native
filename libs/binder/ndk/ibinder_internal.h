@@ -148,14 +148,8 @@ struct AIBinder_DeathRecipient : ::android::RefBase {
     struct TransferDeathRecipient : ::android::IBinder::DeathRecipient {
         TransferDeathRecipient(const ::android::wp<::android::IBinder>& who, void* cookie,
                                const ::android::wp<AIBinder_DeathRecipient>& parentRecipient,
-                               const AIBinder_DeathRecipient_onBinderDied onDied,
-                               const AIBinder_DeathRecipient_onBinderUnlinked onUnlinked)
-            : mWho(who),
-              mCookie(cookie),
-              mParentRecipient(parentRecipient),
-              mOnDied(onDied),
-              mOnUnlinked(onUnlinked) {}
-        ~TransferDeathRecipient();
+                               const AIBinder_DeathRecipient_onBinderDied onDied)
+            : mWho(who), mCookie(cookie), mParentRecipient(parentRecipient), mOnDied(onDied) {}
 
         void binderDied(const ::android::wp<::android::IBinder>& who) override;
 
@@ -171,13 +165,11 @@ struct AIBinder_DeathRecipient : ::android::RefBase {
         // This is kept separately from AIBinder_DeathRecipient in case the death recipient is
         // deleted while the death notification is fired
         const AIBinder_DeathRecipient_onBinderDied mOnDied;
-        const AIBinder_DeathRecipient_onBinderUnlinked mOnUnlinked;
     };
 
     explicit AIBinder_DeathRecipient(AIBinder_DeathRecipient_onBinderDied onDied);
     binder_status_t linkToDeath(const ::android::sp<::android::IBinder>&, void* cookie);
     binder_status_t unlinkToDeath(const ::android::sp<::android::IBinder>& binder, void* cookie);
-    void setOnUnlinked(AIBinder_DeathRecipient_onBinderUnlinked onUnlinked);
 
    private:
     // When the user of this API deletes a Bp object but not the death recipient, the
@@ -188,5 +180,4 @@ struct AIBinder_DeathRecipient : ::android::RefBase {
     std::mutex mDeathRecipientsMutex;
     std::vector<::android::sp<TransferDeathRecipient>> mDeathRecipients;
     AIBinder_DeathRecipient_onBinderDied mOnDied;
-    AIBinder_DeathRecipient_onBinderUnlinked mOnUnlinked;
 };

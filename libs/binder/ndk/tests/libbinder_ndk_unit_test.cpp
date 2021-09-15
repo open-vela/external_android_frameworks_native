@@ -253,6 +253,26 @@ TEST(NdkBinder, CheckServiceThatDoesExist) {
     AIBinder_decStrong(binder);
 }
 
+TEST(NdkBinder, UnimplementedDump) {
+    sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
+    ASSERT_NE(foo, nullptr);
+    AIBinder* binder = foo->getBinder();
+    EXPECT_EQ(OK, AIBinder_dump(binder, STDOUT_FILENO, nullptr, 0));
+    AIBinder_decStrong(binder);
+}
+
+TEST(NdkBinder, UnimplementedShell) {
+    // libbinder_ndk doesn't support calling shell, so we are calling from the
+    // libbinder across processes to the NDK service which doesn't implement
+    // shell
+    static const sp<android::IServiceManager> sm(android::defaultServiceManager());
+    sp<IBinder> testService = sm->getService(String16(IFoo::kSomeInstanceName));
+
+    Vector<String16> argsVec;
+    EXPECT_EQ(OK, IBinder::shellCommand(testService, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO,
+                                        argsVec, nullptr, nullptr));
+}
+
 TEST(NdkBinder, DoubleNumber) {
     sp<IFoo> foo = IFoo::getService(IFoo::kSomeInstanceName);
     ASSERT_NE(foo, nullptr);
@@ -375,16 +395,9 @@ TEST(NdkBinder, ActiveServicesCallbackTest) {
             << "Service failed to shut down.";
 }
 
-struct DeathRecipientCookie {
-    std::function<void(void)>*onDeath, *onUnlink;
-};
 void LambdaOnDeath(void* cookie) {
-    auto funcs = static_cast<DeathRecipientCookie*>(cookie);
-    (*funcs->onDeath)();
-};
-void LambdaOnUnlink(void* cookie) {
-    auto funcs = static_cast<DeathRecipientCookie*>(cookie);
-    (*funcs->onUnlink)();
+    auto onDeath = static_cast<std::function<void(void)>*>(cookie);
+    (*onDeath)();
 };
 TEST(NdkBinder, DeathRecipient) {
     using namespace std::chrono_literals;
@@ -396,46 +409,26 @@ TEST(NdkBinder, DeathRecipient) {
 
     std::mutex deathMutex;
     std::condition_variable deathCv;
-    bool deathReceived = false;
+    bool deathRecieved = false;
 
     std::function<void(void)> onDeath = [&] {
         std::cerr << "Binder died (as requested)." << std::endl;
-        deathReceived = true;
+        deathRecieved = true;
         deathCv.notify_one();
     };
 
-    std::mutex unlinkMutex;
-    std::condition_variable unlinkCv;
-    bool unlinkReceived = false;
-    bool wasDeathReceivedFirst = false;
-
-    std::function<void(void)> onUnlink = [&] {
-        std::cerr << "Binder unlinked (as requested)." << std::endl;
-        wasDeathReceivedFirst = deathReceived;
-        unlinkReceived = true;
-        unlinkCv.notify_one();
-    };
-
-    DeathRecipientCookie cookie = {&onDeath, &onUnlink};
-
     AIBinder_DeathRecipient* recipient = AIBinder_DeathRecipient_new(LambdaOnDeath);
-    AIBinder_DeathRecipient_setOnUnlinked(recipient, LambdaOnUnlink);
 
-    EXPECT_EQ(STATUS_OK, AIBinder_linkToDeath(binder, recipient, static_cast<void*>(&cookie)));
+    EXPECT_EQ(STATUS_OK, AIBinder_linkToDeath(binder, recipient, static_cast<void*>(&onDeath)));
 
     // the binder driver should return this if the service dies during the transaction
     EXPECT_EQ(STATUS_DEAD_OBJECT, foo->die());
 
     foo = nullptr;
 
-    std::unique_lock<std::mutex> lockDeath(deathMutex);
-    EXPECT_TRUE(deathCv.wait_for(lockDeath, 1s, [&] { return deathReceived; }));
-    EXPECT_TRUE(deathReceived);
-
-    std::unique_lock<std::mutex> lockUnlink(unlinkMutex);
-    EXPECT_TRUE(deathCv.wait_for(lockUnlink, 1s, [&] { return unlinkReceived; }));
-    EXPECT_TRUE(unlinkReceived);
-    EXPECT_TRUE(wasDeathReceivedFirst);
+    std::unique_lock<std::mutex> lock(deathMutex);
+    EXPECT_TRUE(deathCv.wait_for(lock, 1s, [&] { return deathRecieved; }));
+    EXPECT_TRUE(deathRecieved);
 
     AIBinder_DeathRecipient_delete(recipient);
     AIBinder_decStrong(binder);

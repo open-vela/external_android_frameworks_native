@@ -25,7 +25,6 @@ use std::cell::RefCell;
 use std::convert::TryInto;
 use std::mem::ManuallyDrop;
 use std::ptr;
-use std::fmt;
 
 mod file_descriptor;
 mod parcelable;
@@ -96,13 +95,6 @@ impl Parcel {
         let ptr = self.as_native_mut();
         let _ = ManuallyDrop::new(self);
         ptr
-    }
-
-    pub(crate) fn is_owned(&self) -> bool {
-        match *self {
-            Self::Owned(_) => true,
-            Self::Borrowed(_) => false,
-        }
     }
 }
 
@@ -417,13 +409,6 @@ impl Drop for Parcel {
                 sys::AParcel_delete(ptr)
             }
         }
-    }
-}
-
-impl fmt::Debug for Parcel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Parcel")
-            .finish()
     }
 }
 

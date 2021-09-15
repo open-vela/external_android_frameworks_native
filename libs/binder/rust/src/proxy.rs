@@ -235,7 +235,13 @@ impl Drop for SpIBinder {
 }
 
 impl<T: AsNative<sys::AIBinder>> IBinderInternal for T {
-    fn prepare_transact(&self) -> Result<Parcel> {
+    /// Perform a binder transaction
+    fn transact<F: FnOnce(&mut Parcel) -> Result<()>>(
+        &self,
+        code: TransactionCode,
+        flags: TransactionFlags,
+        input_callback: F,
+    ) -> Result<Parcel> {
         let mut input = ptr::null_mut();
         let status = unsafe {
             // Safety: `SpIBinder` guarantees that `self` always contains a
@@ -248,25 +254,15 @@ impl<T: AsNative<sys::AIBinder>> IBinderInternal for T {
             // pointer, or null.
             sys::AIBinder_prepareTransaction(self.as_native() as *mut sys::AIBinder, &mut input)
         };
-
         status_result(status)?;
-
-        unsafe {
+        let mut input = unsafe {
             // Safety: At this point, `input` is either a valid, owned `AParcel`
             // pointer, or null. `Parcel::owned` safely handles both cases,
             // taking ownership of the parcel.
-            Parcel::owned(input).ok_or(StatusCode::UNEXPECTED_NULL)
-        }
-    }
-
-    fn submit_transact(
-        &self,
-        code: TransactionCode,
-        data: Parcel,
-        flags: TransactionFlags,
-    ) -> Result<Parcel> {
+            Parcel::owned(input).ok_or(StatusCode::UNEXPECTED_NULL)?
+        };
+        input_callback(&mut input)?;
         let mut reply = ptr::null_mut();
-        assert!(data.is_owned());
         let status = unsafe {
             // Safety: `SpIBinder` guarantees that `self` always contains a
             // valid pointer to an `AIBinder`. Although `IBinder::transact` is
@@ -281,13 +277,13 @@ impl<T: AsNative<sys::AIBinder>> IBinderInternal for T {
             // only providing `on_transact` with an immutable reference to
             // `self`.
             //
-            // This call takes ownership of the `data` parcel pointer, and
+            // This call takes ownership of the `input` parcel pointer, and
             // passes ownership of the `reply` out parameter to its caller. It
             // does not affect ownership of the `binder` parameter.
             sys::AIBinder_transact(
                 self.as_native() as *mut sys::AIBinder,
                 code,
-                &mut data.into_raw(),
+                &mut input.into_raw(),
                 &mut reply,
                 flags,
             )

@@ -363,58 +363,13 @@ mod tests {
         );
     }
 
-    struct Bools {
-        binder_died: Arc<AtomicBool>,
-        binder_dealloc: Arc<AtomicBool>,
-    }
-
-    impl Bools {
-        fn is_dead(&self) -> bool {
-            self.binder_died.load(Ordering::Relaxed)
-        }
-        fn assert_died(&self) {
-            assert!(
-                self.is_dead(),
-                "Did not receive death notification"
-            );
-        }
-        fn assert_dropped(&self) {
-            assert!(
-                self.binder_dealloc.load(Ordering::Relaxed),
-                "Did not dealloc death notification"
-            );
-        }
-        fn assert_not_dropped(&self) {
-            assert!(
-                !self.binder_dealloc.load(Ordering::Relaxed),
-                "Dealloc death notification too early"
-            );
-        }
-    }
-
-    fn register_death_notification(binder: &mut SpIBinder) -> (Bools, DeathRecipient) {
+    fn register_death_notification(binder: &mut SpIBinder) -> (Arc<AtomicBool>, DeathRecipient) {
         let binder_died = Arc::new(AtomicBool::new(false));
-        let binder_dealloc = Arc::new(AtomicBool::new(false));
-
-        struct SetOnDrop {
-            binder_dealloc: Arc<AtomicBool>,
-        }
-        impl Drop for SetOnDrop {
-            fn drop(&mut self) {
-                self.binder_dealloc.store(true, Ordering::Relaxed);
-            }
-        }
 
         let mut death_recipient = {
             let flag = binder_died.clone();
-            let set_on_drop = SetOnDrop {
-                binder_dealloc: binder_dealloc.clone(),
-            };
             DeathRecipient::new(move || {
                 flag.store(true, Ordering::Relaxed);
-                // Force the closure to take ownership of set_on_drop. When the closure is
-                // dropped, the destructor of `set_on_drop` will run.
-                let _ = &set_on_drop;
             })
         };
 
@@ -422,12 +377,7 @@ mod tests {
             .link_to_death(&mut death_recipient)
             .expect("link_to_death failed");
 
-        let bools = Bools {
-            binder_died,
-            binder_dealloc,
-        };
-
-        (bools, death_recipient)
+        (binder_died, death_recipient)
     }
 
     /// Killing a remote service should unregister the service and trigger
@@ -440,7 +390,7 @@ mod tests {
         let service_process = ScopedServiceProcess::new(service_name);
         let mut remote = binder::get_service(service_name).expect("Could not retrieve service");
 
-        let (bools, recipient) = register_death_notification(&mut remote);
+        let (binder_died, _recipient) = register_death_notification(&mut remote);
 
         drop(service_process);
         remote
@@ -450,12 +400,10 @@ mod tests {
         // Pause to ensure any death notifications get delivered
         thread::sleep(Duration::from_secs(1));
 
-        bools.assert_died();
-        bools.assert_not_dropped();
-
-        drop(recipient);
-
-        bools.assert_dropped();
+        assert!(
+            binder_died.load(Ordering::Relaxed),
+            "Did not receive death notification"
+        );
     }
 
     /// Test unregistering death notifications.
@@ -467,7 +415,7 @@ mod tests {
         let service_process = ScopedServiceProcess::new(service_name);
         let mut remote = binder::get_service(service_name).expect("Could not retrieve service");
 
-        let (bools, mut recipient) = register_death_notification(&mut remote);
+        let (binder_died, mut recipient) = register_death_notification(&mut remote);
 
         remote
             .unlink_to_death(&mut recipient)
@@ -482,13 +430,9 @@ mod tests {
         thread::sleep(Duration::from_secs(1));
 
         assert!(
-            !bools.is_dead(),
+            !binder_died.load(Ordering::Relaxed),
             "Received unexpected death notification after unlinking",
         );
-
-        bools.assert_not_dropped();
-        drop(recipient);
-        bools.assert_dropped();
     }
 
     /// Dropping a remote handle should unregister any death notifications.
@@ -500,7 +444,7 @@ mod tests {
         let service_process = ScopedServiceProcess::new(service_name);
         let mut remote = binder::get_service(service_name).expect("Could not retrieve service");
 
-        let (bools, recipient) = register_death_notification(&mut remote);
+        let (binder_died, _recipient) = register_death_notification(&mut remote);
 
         // This should automatically unregister our death notification.
         drop(remote);
@@ -513,13 +457,9 @@ mod tests {
         // We dropped the remote handle, so we should not receive the death
         // notification when the remote process dies here.
         assert!(
-            !bools.is_dead(),
+            !binder_died.load(Ordering::Relaxed),
             "Received unexpected death notification after dropping remote handle"
         );
-
-        bools.assert_not_dropped();
-        drop(recipient);
-        bools.assert_dropped();
     }
 
     /// Test IBinder interface methods not exercised elsewhere.

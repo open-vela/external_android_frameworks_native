@@ -53,25 +53,10 @@ status_t FdTrigger::triggerablePoll(base::borrowed_fd fd, int16_t event) {
             continue;
         }
         if (pfd[1].revents & POLLHUP) {
-            return -ECANCELED;
+            return DEAD_OBJECT;
         }
         return pfd[0].revents & event ? OK : DEAD_OBJECT;
     }
-}
-
-android::base::Result<bool> FdTrigger::isTriggeredPolled() {
-    pollfd pfd{.fd = mRead.get(), .events = 0, .revents = 0};
-    int ret = TEMP_FAILURE_RETRY(poll(&pfd, 1, 0));
-    if (ret < 0) {
-        return android::base::ErrnoError() << "FdTrigger::isTriggeredPolled: Error in poll()";
-    }
-    if (ret == 0) {
-        return false;
-    }
-    if (pfd.revents & POLLHUP) {
-        return true;
-    }
-    return android::base::Error() << "FdTrigger::isTriggeredPolled: poll() returns " << pfd.revents;
 }
 
 } // namespace android

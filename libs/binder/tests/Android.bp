@@ -153,7 +153,6 @@ cc_test {
 
     srcs: [
         "binderRpcTest.cpp",
-        "RpcAuthTesting.cpp",
         "RpcCertificateVerifierSimple.cpp",
     ],
     shared_libs: [

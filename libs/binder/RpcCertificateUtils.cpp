@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "RpcTlsUtils"
+#define LOG_TAG "RpcCertificateUtils"
 #include <log/log.h>
 
-#include <binder/RpcTlsUtils.h>
+#include <binder/RpcCertificateUtils.h>
 
 #include "Utils.h"
 

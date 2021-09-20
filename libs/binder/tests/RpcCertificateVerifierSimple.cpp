@@ -16,21 +16,16 @@
 #define LOG_TAG "RpcCertificateVerifierSimple"
 #include <log/log.h>
 
-#include <binder/RpcTlsUtils.h>
+#include <binder/RpcCertificateUtils.h>
 
 #include "RpcCertificateVerifierSimple.h"
 
 namespace android {
 
-status_t RpcCertificateVerifierSimple::verify(const SSL* ssl, uint8_t* outAlert) {
-    const char* logPrefix = SSL_is_server(ssl) ? "Server" : "Client";
-    bssl::UniquePtr<X509> peerCert(SSL_get_peer_certificate(ssl)); // Does not set error queue
-    LOG_ALWAYS_FATAL_IF(peerCert == nullptr,
-                        "%s: libssl should not ask to verify non-existing cert", logPrefix);
-
+status_t RpcCertificateVerifierSimple::verify(const X509* peerCert, uint8_t* outAlert) {
     std::lock_guard<std::mutex> lock(mMutex);
     for (const auto& trustedCert : mTrustedPeerCertificates) {
-        if (0 == X509_cmp(trustedCert.get(), peerCert.get())) {
+        if (0 == X509_cmp(trustedCert.get(), peerCert)) {
             return OK;
         }
     }

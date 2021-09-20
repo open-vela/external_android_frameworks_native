@@ -87,7 +87,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             size_t idx = provider.ConsumeIntegralInRange<size_t>(0, connections.size() - 1);
 
             if (provider.ConsumeBool()) {
-                std::string writeData = provider.ConsumeRandomLengthString();
+                std::vector<uint8_t> writeData = provider.ConsumeBytes<uint8_t>(
+                        provider.ConsumeIntegralInRange<size_t>(0, provider.remaining_bytes()));
                 ssize_t size = TEMP_FAILURE_RETRY(send(connections.at(idx).get(), writeData.data(),
                                                        writeData.size(), MSG_NOSIGNAL));
                 CHECK(errno == EPIPE || size == writeData.size())
@@ -100,7 +101,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     if (hangupBeforeShutdown) {
         connections.clear();
-        while (!server->listSessions().empty() || server->numUninitializedSessions()) {
+        while (!server->listSessions().empty() && server->numUninitializedSessions()) {
             // wait for all threads to finish processing existing information
             usleep(1);
         }

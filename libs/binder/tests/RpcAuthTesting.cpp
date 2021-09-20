@@ -70,14 +70,4 @@ status_t RpcAuthSelfSigned::configure(SSL_CTX* ctx) {
     return OK;
 }
 
-status_t RpcAuthPreSigned::configure(SSL_CTX* ctx) {
-    if (!SSL_CTX_use_PrivateKey(ctx, mPkey.get())) {
-        return INVALID_OPERATION;
-    }
-    if (!SSL_CTX_use_certificate(ctx, mCert.get())) {
-        return INVALID_OPERATION;
-    }
-    return OK;
-}
-
 } // namespace android

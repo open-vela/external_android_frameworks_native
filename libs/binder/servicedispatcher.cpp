@@ -157,11 +157,6 @@ public:
                                              std::optional<std::string>* _aidl_return) override {
         return mImpl->updatableViaApex(name, _aidl_return);
     }
-    android::binder::Status getConnectionInfo(
-            const std::string& name,
-            std::optional<android::os::ConnectionInfo>* _aidl_return) override {
-        return mImpl->getConnectionInfo(name, _aidl_return);
-    }
     android::binder::Status registerClientCallback(
             const std::string&, const android::sp<android::IBinder>&,
             const android::sp<android::os::IClientCallback>&) override {

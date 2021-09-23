@@ -169,6 +169,7 @@ cc_test {
         "binderRpcTestIface-cpp",
         "binderRpcTestIface-ndk",
     ],
+    test_suites: ["general-tests"],
     require_root: true,
 }
 

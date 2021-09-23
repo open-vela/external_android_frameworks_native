@@ -233,7 +233,7 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
                 ALOGE("null proxy");
             } else {
                 if (proxy->isRpcBinder()) {
-                    ALOGE("Sending a socket binder over RPC is prohibited");
+                    ALOGE("Sending a socket binder over kernel binder is prohibited");
                     return INVALID_OPERATION;
                 }
             }
@@ -597,7 +597,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__)
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

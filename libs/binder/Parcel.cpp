@@ -291,9 +291,6 @@ status_t Parcel::unflattenBinder(sp<IBinder>* out) const
             if (status_t status = mSession->state()->onBinderEntering(mSession, addr, &binder);
                 status != OK)
                 return status;
-            if (status_t status = mSession->state()->flushExcessBinderRefs(mSession, addr, binder);
-                status != OK)
-                return status;
         }
 
         return finishUnflattenBinder(binder, out);
@@ -600,7 +597,7 @@ void Parcel::updateWorkSourceRequestHeaderPosition() const {
     }
 }
 
-#if defined(__ANDROID_VNDK__)
+#if defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
 constexpr int32_t kHeader = B_PACK_CHARS('V', 'N', 'D', 'R');
 #else
 constexpr int32_t kHeader = B_PACK_CHARS('S', 'Y', 'S', 'T');

@@ -217,17 +217,15 @@ status_t RpcSession::transact(const sp<IBinder>& binder, uint32_t code, const Pa
 }
 
 status_t RpcSession::sendDecStrong(const BpBinder* binder) {
-    // target is 0 because this is used to free BpBinder objects
-    return sendDecStrongToTarget(binder->getPrivateAccessor().rpcAddress(), 0 /*target*/);
+    return sendDecStrong(binder->getPrivateAccessor().rpcAddress());
 }
 
-status_t RpcSession::sendDecStrongToTarget(uint64_t address, size_t target) {
+status_t RpcSession::sendDecStrong(uint64_t address) {
     ExclusiveConnection connection;
     status_t status = ExclusiveConnection::find(sp<RpcSession>::fromExisting(this),
                                                 ConnectionUse::CLIENT_REFCOUNT, &connection);
     if (status != OK) return status;
-    return state()->sendDecStrongToTarget(connection.get(), sp<RpcSession>::fromExisting(this),
-                                          address, target);
+    return state()->sendDecStrong(connection.get(), sp<RpcSession>::fromExisting(this), address);
 }
 
 status_t RpcSession::readId() {
@@ -560,7 +558,7 @@ status_t RpcSession::initAndAddConnection(unique_fd fd, const std::vector<uint8_
     }
 
     auto sendHeaderStatus =
-            server->interruptableWriteFully(mShutdownTrigger.get(), &header, sizeof(header), {});
+            server->interruptableWriteFully(mShutdownTrigger.get(), &header, sizeof(header));
     if (sendHeaderStatus != OK) {
         ALOGE("Could not write connection header to socket: %s",
               statusToString(sendHeaderStatus).c_str());
@@ -570,7 +568,7 @@ status_t RpcSession::initAndAddConnection(unique_fd fd, const std::vector<uint8_
     if (sessionId.size() > 0) {
         auto sendSessionIdStatus =
                 server->interruptableWriteFully(mShutdownTrigger.get(), sessionId.data(),
-                                                sessionId.size(), {});
+                                                sessionId.size());
         if (sendSessionIdStatus != OK) {
             ALOGE("Could not write session ID ('%s') to socket: %s",
                   base::HexString(sessionId.data(), sessionId.size()).c_str(),

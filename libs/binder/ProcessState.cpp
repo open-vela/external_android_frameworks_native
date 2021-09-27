@@ -18,6 +18,7 @@
 
 #include <binder/ProcessState.h>
 
+#include <android-base/result.h>
 #include <binder/BpBinder.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
@@ -211,7 +212,7 @@ ssize_t ProcessState::getStrongRefCountForNode(const sp<BpBinder>& binder) {
     binder_node_info_for_ref info;
     memset(&info, 0, sizeof(binder_node_info_for_ref));
 
-    info.handle = binder->getPrivateAccessorForId().binderHandle();
+    info.handle = binder->getPrivateAccessor().binderHandle();
 
     status_t result = ioctl(mDriverFD, BINDER_GET_NODE_INFO_FOR_REF, &info);
 
@@ -300,7 +301,7 @@ sp<IBinder> ProcessState::getStrongProxyForHandle(int32_t handle)
                    return nullptr;
             }
 
-            sp<BpBinder> b = BpBinder::create(handle);
+            sp<BpBinder> b = BpBinder::PrivateAccessor::create(handle);
             e->binder = b.get();
             if (b) e->refs = b->getWeakRefs();
             result = b;
@@ -359,6 +360,14 @@ status_t ProcessState::setThreadPoolMaxThreadCount(size_t maxThreads) {
     return result;
 }
 
+size_t ProcessState::getThreadPoolMaxThreadCount() const {
+    // may actually be one more than this, if join is called
+    if (mThreadPoolStarted) return mMaxThreads;
+    // must not be initialized or maybe has poll thread setup, we
+    // currently don't track this in libbinder
+    return 0;
+}
+
 status_t ProcessState::enableOnewaySpamDetection(bool enable) {
     uint32_t enableDetection = enable ? 1 : 0;
     if (ioctl(mDriverFD, BINDER_ENABLE_ONEWAY_SPAM_DETECTION, &enableDetection) == -1) {
@@ -376,68 +385,73 @@ String8 ProcessState::getDriverName() {
     return mDriverName;
 }
 
-static int open_driver(const char *driver)
-{
+static base::Result<int> open_driver(const char* driver) {
     int fd = open(driver, O_RDWR | O_CLOEXEC);
-    if (fd >= 0) {
-        int vers = 0;
-        status_t result = ioctl(fd, BINDER_VERSION, &vers);
-        if (result == -1) {
-            ALOGE("Binder ioctl to obtain version failed: %s", strerror(errno));
-            close(fd);
-            fd = -1;
-        }
-        if (result != 0 || vers != BINDER_CURRENT_PROTOCOL_VERSION) {
-          ALOGE("Binder driver protocol(%d) does not match user space protocol(%d)! ioctl() return value: %d",
-                vers, BINDER_CURRENT_PROTOCOL_VERSION, result);
-            close(fd);
-            fd = -1;
-        }
-        size_t maxThreads = DEFAULT_MAX_BINDER_THREADS;
-        result = ioctl(fd, BINDER_SET_MAX_THREADS, &maxThreads);
-        if (result == -1) {
-            ALOGE("Binder ioctl to set max threads failed: %s", strerror(errno));
-        }
-        uint32_t enable = DEFAULT_ENABLE_ONEWAY_SPAM_DETECTION;
-        result = ioctl(fd, BINDER_ENABLE_ONEWAY_SPAM_DETECTION, &enable);
-        if (result == -1) {
-            ALOGD("Binder ioctl to enable oneway spam detection failed: %s", strerror(errno));
-        }
-    } else {
-        ALOGW("Opening '%s' failed: %s\n", driver, strerror(errno));
+    if (fd < 0) {
+        return base::ErrnoError() << "Opening '" << driver << "' failed";
+    }
+    int vers = 0;
+    status_t result = ioctl(fd, BINDER_VERSION, &vers);
+    if (result == -1) {
+        close(fd);
+        return base::ErrnoError() << "Binder ioctl to obtain version failed";
+    }
+    if (result != 0 || vers != BINDER_CURRENT_PROTOCOL_VERSION) {
+        close(fd);
+        return base::Error() << "Binder driver protocol(" << vers
+                             << ") does not match user space protocol("
+                             << BINDER_CURRENT_PROTOCOL_VERSION
+                             << ")! ioctl() return value: " << result;
+    }
+    size_t maxThreads = DEFAULT_MAX_BINDER_THREADS;
+    result = ioctl(fd, BINDER_SET_MAX_THREADS, &maxThreads);
+    if (result == -1) {
+        ALOGE("Binder ioctl to set max threads failed: %s", strerror(errno));
+    }
+    uint32_t enable = DEFAULT_ENABLE_ONEWAY_SPAM_DETECTION;
+    result = ioctl(fd, BINDER_ENABLE_ONEWAY_SPAM_DETECTION, &enable);
+    if (result == -1) {
+        ALOGV("Binder ioctl to enable oneway spam detection failed: %s", strerror(errno));
     }
     return fd;
 }
 
-ProcessState::ProcessState(const char *driver)
-    : mDriverName(String8(driver))
-    , mDriverFD(open_driver(driver))
-    , mVMStart(MAP_FAILED)
-    , mThreadCountLock(PTHREAD_MUTEX_INITIALIZER)
-    , mThreadCountDecrement(PTHREAD_COND_INITIALIZER)
-    , mExecutingThreadsCount(0)
-    , mWaitingForThreads(0)
-    , mMaxThreads(DEFAULT_MAX_BINDER_THREADS)
-    , mStarvationStartTimeMs(0)
-    , mThreadPoolStarted(false)
-    , mThreadPoolSeq(1)
-    , mCallRestriction(CallRestriction::NONE)
-{
-    if (mDriverFD >= 0) {
+ProcessState::ProcessState(const char* driver)
+      : mDriverName(String8(driver)),
+        mDriverFD(-1),
+        mVMStart(MAP_FAILED),
+        mThreadCountLock(PTHREAD_MUTEX_INITIALIZER),
+        mThreadCountDecrement(PTHREAD_COND_INITIALIZER),
+        mExecutingThreadsCount(0),
+        mWaitingForThreads(0),
+        mMaxThreads(DEFAULT_MAX_BINDER_THREADS),
+        mStarvationStartTimeMs(0),
+        mThreadPoolStarted(false),
+        mThreadPoolSeq(1),
+        mCallRestriction(CallRestriction::NONE) {
+    base::Result<int> opened = open_driver(driver);
+
+    if (opened.ok()) {
         // mmap the binder, providing a chunk of virtual address space to receive transactions.
-        mVMStart = mmap(nullptr, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, 0);
+        mVMStart = mmap(nullptr, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE,
+                        opened.value(), 0);
         if (mVMStart == MAP_FAILED) {
+            close(opened.value());
             // *sigh*
-            ALOGE("Using %s failed: unable to mmap transaction memory.\n", mDriverName.c_str());
-            close(mDriverFD);
-            mDriverFD = -1;
+            opened = base::Error()
+                    << "Using " << driver << " failed: unable to mmap transaction memory.";
             mDriverName.clear();
         }
     }
 
 #ifdef __ANDROID__
-    LOG_ALWAYS_FATAL_IF(mDriverFD < 0, "Binder driver '%s' could not be opened.  Terminating.", driver);
+    LOG_ALWAYS_FATAL_IF(!opened.ok(), "Binder driver '%s' could not be opened. Terminating: %s",
+                        driver, opened.error().message().c_str());
 #endif
+
+    if (opened.ok()) {
+        mDriverFD = opened.value();
+    }
 }
 
 ProcessState::~ProcessState()

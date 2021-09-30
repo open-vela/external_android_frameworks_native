@@ -183,10 +183,6 @@ status_t RpcState::onBinderEntering(const sp<RpcSession>& session, uint64_t addr
 
 status_t RpcState::flushExcessBinderRefs(const sp<RpcSession>& session, uint64_t address,
                                          const sp<IBinder>& binder) {
-    // We can flush all references when the binder is destroyed. No need to send
-    // extra reference counting packets now.
-    if (binder->remoteBinder()) return OK;
-
     std::unique_lock<std::mutex> _l(mNodeMutex);
     if (mTerminated) return DEAD_OBJECT;
 
@@ -196,19 +192,20 @@ status_t RpcState::flushExcessBinderRefs(const sp<RpcSession>& session, uint64_t
     LOG_ALWAYS_FATAL_IF(it->second.binder != binder,
                         "Caller of flushExcessBinderRefs using inconsistent arguments");
 
-    LOG_ALWAYS_FATAL_IF(it->second.timesSent <= 0, "Local binder must have been sent %p",
-                        binder.get());
+    // if this is a local binder, then we want to get rid of all refcounts
+    // (tell the other process it can drop the binder when it wants to - we
+    // have a local sp<>, so we will drop it when we want to as well). if
+    // this is a remote binder, then we need to hold onto one refcount until
+    // it is dropped in BpBinder::onLastStrongRef
+    size_t targetRecd = binder->localBinder() ? 0 : 1;
 
-    // For a local binder, we only need to know that we sent it. Now that we
-    // have an sp<> for this call, we don't need anything more. If the other
-    // process is done with this binder, it needs to know we received the
-    // refcount associated with this call, so we can acknowledge that we
-    // received it. Once (or if) it has no other refcounts, it would reply with
-    // its own decStrong so that it could be removed from this session.
-    if (it->second.timesRecd != 0) {
+    // We have timesRecd RPC refcounts, but we only need to hold on to one
+    // when we keep the object. All additional dec strongs are sent
+    // immediately, we wait to send the last one in BpBinder::onLastDecStrong.
+    if (it->second.timesRecd != targetRecd) {
         _l.unlock();
 
-        return session->sendDecStrongToTarget(address, 0);
+        return session->sendDecStrongToTarget(address, targetRecd);
     }
 
     return OK;
@@ -885,6 +882,12 @@ processTransactInternalTailCall:
         }
     }
 
+    // Binder refs are flushed for oneway calls only after all calls which are
+    // built up are executed. Otherwise, they fill up the binder buffer.
+    if (addr != 0 && replyStatus == OK && !oneway) {
+        replyStatus = flushExcessBinderRefs(session, addr, target);
+    }
+
     if (oneway) {
         if (replyStatus != OK) {
             ALOGW("Oneway call failed with error: %d", replyStatus);
@@ -942,12 +945,6 @@ processTransactInternalTailCall:
         }
 
         return OK;
-    }
-
-    // Binder refs are flushed for oneway calls only after all calls which are
-    // built up are executed. Otherwise, they fill up the binder buffer.
-    if (addr != 0 && replyStatus == OK) {
-        replyStatus = flushExcessBinderRefs(session, addr, target);
     }
 
     LOG_ALWAYS_FATAL_IF(std::numeric_limits<int32_t>::max() - sizeof(RpcWireHeader) -

@@ -1141,7 +1141,6 @@ private:
     release_func        mOwner;
 
     sp<RpcSession> mSession;
-    size_t mReserved;
 
     class Blob {
     public:
@@ -1226,17 +1225,13 @@ public:
         inline void* data() { return mData; }
     };
 
-    /**
-     * Returns the total amount of ashmem memory owned by this object.
-     *
-     * Note: for historical reasons, this does not include ashmem memory which
-     * is referenced by this Parcel, but which this parcel doesn't own (e.g.
-     * writeFileDescriptor is called without 'takeOwnership' true).
-     */
-    size_t getOpenAshmemSize() const;
+private:
+    size_t mOpenAshmemSize;
 
-    // TODO(b/202029388): Remove 'getBlobAshmemSize' once ABI can be changed.
+public:
+    // TODO: Remove once ABI can be changed.
     size_t getBlobAshmemSize() const;
+    size_t getOpenAshmemSize() const;
 };
 
 // ---------------------------------------------------------------------------

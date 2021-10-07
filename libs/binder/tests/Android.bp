@@ -87,7 +87,6 @@ cc_test {
     srcs: ["binderParcelUnitTest.cpp", "binderBinderUnitTest.cpp"],
     shared_libs: [
         "libbinder",
-        "libcutils",
         "libutils",
     ],
     test_suites: ["general-tests"],

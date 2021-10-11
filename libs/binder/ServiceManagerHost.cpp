@@ -124,8 +124,7 @@ void cleanupCommandResult(const void* id, void* obj, void* /* cookie */) {
 
 } // namespace
 
-sp<IBinder> getDeviceService(std::vector<std::string>&& serviceDispatcherArgs,
-                             const RpcDelegateServiceManagerOptions& options) {
+sp<IBinder> getDeviceService(std::vector<std::string>&& serviceDispatcherArgs) {
     std::vector<std::string> prefix{"adb", "shell", "servicedispatcher"};
     serviceDispatcherArgs.insert(serviceDispatcherArgs.begin(), prefix.begin(), prefix.end());
 
@@ -159,10 +158,6 @@ sp<IBinder> getDeviceService(std::vector<std::string>&& serviceDispatcherArgs,
     LOG_ALWAYS_FATAL_IF(!forwardResult->hostPort().has_value());
 
     auto rpcSession = RpcSession::make();
-    if (options.maxOutgoingThreads.has_value()) {
-        rpcSession->setMaxOutgoingThreads(*options.maxOutgoingThreads);
-    }
-
     if (status_t status = rpcSession->setupInetClient("127.0.0.1", *forwardResult->hostPort());
         status != OK) {
         ALOGE("Unable to set up inet client on host port %u: %s", *forwardResult->hostPort(),

@@ -65,9 +65,7 @@ MATCHER_P(StatusEq, expected, (negation ? "not " : "") + statusToString(expected
 
 void initHostRpcServiceManagerOnce() {
     static std::once_flag gSmOnce;
-    std::call_once(gSmOnce, [] {
-        setDefaultServiceManager(createRpcDelegateServiceManager({.maxOutgoingThreads = 1}));
-    });
+    std::call_once(gSmOnce, [] { setDefaultServiceManager(createRpcDelegateServiceManager()); });
 }
 
 // Test for host service manager.

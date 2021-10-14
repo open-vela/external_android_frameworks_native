@@ -17,7 +17,7 @@
 //! Trait definitions for binder objects
 
 use crate::error::{status_t, Result, StatusCode};
-use crate::parcel::{OwnedParcel, Parcel};
+use crate::parcel::Parcel;
 use crate::proxy::{DeathRecipient, SpIBinder, WpIBinder};
 use crate::sys;
 
@@ -177,25 +177,25 @@ pub trait IBinderInternal: IBinder {
     fn get_extension(&mut self) -> Result<Option<SpIBinder>>;
 
     /// Create a Parcel that can be used with `submit_transact`.
-    fn prepare_transact(&self) -> Result<OwnedParcel>;
+    fn prepare_transact(&self) -> Result<Parcel>;
 
     /// Perform a generic operation with the object.
     ///
-    /// The provided [`OwnedParcel`] must have been created by a call to
+    /// The provided [`Parcel`] must have been created by a call to
     /// `prepare_transact` on the same binder.
     ///
     /// # Arguments
     ///
     /// * `code` - Transaction code for the operation.
-    /// * `data` - [`OwnedParcel`] with input data.
+    /// * `data` - [`Parcel`] with input data.
     /// * `flags` - Transaction flags, e.g. marking the transaction as
     ///   asynchronous ([`FLAG_ONEWAY`](FLAG_ONEWAY)).
     fn submit_transact(
         &self,
         code: TransactionCode,
-        data: OwnedParcel,
+        data: Parcel,
         flags: TransactionFlags,
-    ) -> Result<OwnedParcel>;
+    ) -> Result<Parcel>;
 
     /// Perform a generic operation with the object. This is a convenience
     /// method that internally calls `prepare_transact` followed by
@@ -213,8 +213,8 @@ pub trait IBinderInternal: IBinder {
         input_callback: F,
     ) -> Result<Parcel> {
         let mut parcel = self.prepare_transact()?;
-        input_callback(&mut parcel.borrowed())?;
-        self.submit_transact(code, parcel, flags).map(OwnedParcel::into_parcel)
+        input_callback(&mut parcel)?;
+        self.submit_transact(code, parcel, flags)
     }
 }
 

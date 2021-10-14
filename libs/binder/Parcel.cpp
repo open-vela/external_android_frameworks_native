@@ -98,12 +98,13 @@ enum {
     BLOB_ASHMEM_MUTABLE = 2,
 };
 
-static void acquire_object(const sp<ProcessState>& proc, const flat_binder_object& obj,
-                           const void* who) {
+static void acquire_object(const sp<ProcessState>& proc,
+    const flat_binder_object& obj, const void* who, size_t* outAshmemSize)
+{
     switch (obj.hdr.type) {
         case BINDER_TYPE_BINDER:
             if (obj.binder) {
-                LOG_REFS("Parcel %p acquiring reference on local %llu", who, obj.cookie);
+                LOG_REFS("Parcel %p acquiring reference on local %p", who, obj.cookie);
                 reinterpret_cast<IBinder*>(obj.cookie)->incStrong(who);
             }
             return;
@@ -116,6 +117,13 @@ static void acquire_object(const sp<ProcessState>& proc, const flat_binder_objec
             return;
         }
         case BINDER_TYPE_FD: {
+            if ((obj.cookie != 0) && (outAshmemSize != nullptr) && ashmem_valid(obj.handle)) {
+                // If we own an ashmem fd, keep track of how much memory it refers to.
+                int size = ashmem_get_size_region(obj.handle);
+                if (size > 0) {
+                    *outAshmemSize += size;
+                }
+            }
             return;
         }
     }
@@ -123,12 +131,13 @@ static void acquire_object(const sp<ProcessState>& proc, const flat_binder_objec
     ALOGD("Invalid object type 0x%08x", obj.hdr.type);
 }
 
-static void release_object(const sp<ProcessState>& proc, const flat_binder_object& obj,
-                           const void* who) {
+static void release_object(const sp<ProcessState>& proc,
+    const flat_binder_object& obj, const void* who, size_t* outAshmemSize)
+{
     switch (obj.hdr.type) {
         case BINDER_TYPE_BINDER:
             if (obj.binder) {
-                LOG_REFS("Parcel %p releasing reference on local %llu", who, obj.cookie);
+                LOG_REFS("Parcel %p releasing reference on local %p", who, obj.cookie);
                 reinterpret_cast<IBinder*>(obj.cookie)->decStrong(who);
             }
             return;
@@ -142,6 +151,16 @@ static void release_object(const sp<ProcessState>& proc, const flat_binder_objec
         }
         case BINDER_TYPE_FD: {
             if (obj.cookie != 0) { // owned
+                if ((outAshmemSize != nullptr) && ashmem_valid(obj.handle)) {
+                    int size = ashmem_get_size_region(obj.handle);
+                    if (size > 0) {
+                        // ashmem size might have changed since last time it was accounted for, e.g.
+                        // in acquire_object(). Value of *outAshmemSize is not critical since we are
+                        // releasing the object anyway. Check for integer overflow condition.
+                        *outAshmemSize -= std::min(*outAshmemSize, static_cast<size_t>(size));
+                    }
+                }
+
                 close(obj.handle);
             }
             return;
@@ -154,8 +173,8 @@ static void release_object(const sp<ProcessState>& proc, const flat_binder_objec
 status_t Parcel::finishFlattenBinder(const sp<IBinder>& binder)
 {
     internal::Stability::tryMarkCompilationUnit(binder.get());
-    int16_t rep = internal::Stability::getRepr(binder.get());
-    return writeInt32(rep);
+    auto category = internal::Stability::getCategory(binder.get());
+    return writeInt32(category.repr());
 }
 
 status_t Parcel::finishUnflattenBinder(
@@ -165,8 +184,7 @@ status_t Parcel::finishUnflattenBinder(
     status_t status = readInt32(&stability);
     if (status != OK) return status;
 
-    status = internal::Stability::setRepr(binder.get(), static_cast<int16_t>(stability),
-                                          true /*log*/);
+    status = internal::Stability::setRepr(binder.get(), stability, true /*log*/);
     if (status != OK) return status;
 
     *out = binder;
@@ -177,20 +195,16 @@ static constexpr inline int schedPolicyMask(int policy, int priority) {
     return (priority & FLAT_BINDER_FLAG_PRIORITY_MASK) | ((policy & 3) << FLAT_BINDER_FLAG_SCHED_POLICY_SHIFT);
 }
 
-status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
-    BBinder* local = nullptr;
-    if (binder) local = binder->localBinder();
-    if (local) local->setParceled();
-
+status_t Parcel::flattenBinder(const sp<IBinder>& binder)
+{
     if (isForRpc()) {
         if (binder) {
             status_t status = writeInt32(1); // non-null
             if (status != OK) return status;
-            uint64_t address;
-            // TODO(b/167966510): need to undo this if the Parcel is not sent
+            RpcAddress address = RpcAddress::zero();
             status = mSession->state()->onBinderLeaving(mSession, binder, &address);
             if (status != OK) return status;
-            status = writeUint64(address);
+            status = address.writeToParcel(this);
             if (status != OK) return status;
         } else {
             status_t status = writeInt32(0); // null
@@ -208,17 +222,18 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
     }
 
     if (binder != nullptr) {
+        BBinder *local = binder->localBinder();
         if (!local) {
             BpBinder *proxy = binder->remoteBinder();
             if (proxy == nullptr) {
                 ALOGE("null proxy");
             } else {
                 if (proxy->isRpcBinder()) {
-                    ALOGE("Sending a socket binder over kernel binder is prohibited");
+                    ALOGE("Sending a socket binder over RPC is prohibited");
                     return INVALID_OPERATION;
                 }
             }
-            const int32_t handle = proxy ? proxy->getPrivateAccessor().binderHandle() : 0;
+            const int32_t handle = proxy ? proxy->getPrivateAccessorForId().binderHandle() : 0;
             obj.hdr.type = BINDER_TYPE_HANDLE;
             obj.binder = 0; /* Don't pass uninitialized stack data to a remote process */
             obj.handle = handle;
@@ -260,21 +275,17 @@ status_t Parcel::unflattenBinder(sp<IBinder>* out) const
     if (isForRpc()) {
         LOG_ALWAYS_FATAL_IF(mSession == nullptr, "RpcSession required to read from remote parcel");
 
-        int32_t isPresent;
-        status_t status = readInt32(&isPresent);
+        int32_t isNull;
+        status_t status = readInt32(&isNull);
         if (status != OK) return status;
 
         sp<IBinder> binder;
 
-        if (isPresent & 1) {
-            uint64_t addr;
-            if (status_t status = readUint64(&addr); status != OK) return status;
-            if (status_t status = mSession->state()->onBinderEntering(mSession, addr, &binder);
-                status != OK)
-                return status;
-            if (status_t status = mSession->state()->flushExcessBinderRefs(mSession, addr, binder);
-                status != OK)
-                return status;
+        if (isNull & 1) {
+            auto addr = RpcAddress::zero();
+            status_t status = addr.readFromParcel(*this);
+            if (status != OK) return status;
+            binder = mSession->state()->onBinderEntering(mSession, addr);
         }
 
         return finishUnflattenBinder(binder, out);
@@ -411,9 +422,8 @@ status_t Parcel::setData(const uint8_t* buffer, size_t len)
 
 status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
 {
-    if (mSession != parcel->mSession) {
-        ALOGE("Cannot append Parcel from one context to another. They may be different formats, "
-              "and objects are specific to a context.");
+    if (parcel->isForRpc() != isForRpc()) {
+        ALOGE("Cannot append Parcel of one format to another.");
         return BAD_TYPE;
     }
 
@@ -494,7 +504,7 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
 
             flat_binder_object* flat
                 = reinterpret_cast<flat_binder_object*>(mData + off);
-            acquire_object(proc, *flat, this);
+            acquire_object(proc, *flat, this, &mOpenAshmemSize);
 
             if (flat->hdr.type == BINDER_TYPE_FD) {
                 // If this is a file descriptor, we need to dup it so the
@@ -548,36 +558,6 @@ bool Parcel::hasFileDescriptors() const
     return mHasFds;
 }
 
-status_t Parcel::hasFileDescriptorsInRange(size_t offset, size_t len, bool& result) const {
-    if (len > INT32_MAX || offset > INT32_MAX) {
-        // Don't accept size_t values which may have come from an inadvertent conversion from a
-        // negative int.
-        return BAD_VALUE;
-    }
-    size_t limit = offset + len;
-    if (offset > mDataSize || len > mDataSize || limit > mDataSize || offset > limit) {
-        return BAD_VALUE;
-    }
-    result = hasFileDescriptorsInRangeUnchecked(offset, len);
-    return NO_ERROR;
-}
-
-bool Parcel::hasFileDescriptorsInRangeUnchecked(size_t offset, size_t len) const {
-    for (size_t i = 0; i < mObjectsSize; i++) {
-        size_t pos = mObjects[i];
-        if (pos < offset) continue;
-        if (pos + sizeof(flat_binder_object) > offset + len) {
-          if (mObjectsSorted) break;
-          else continue;
-        }
-        const flat_binder_object* flat = reinterpret_cast<const flat_binder_object*>(mData + pos);
-        if (flat->hdr.type == BINDER_TYPE_FD) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void Parcel::markSensitive() const
 {
     mDeallocZero = true;
@@ -587,7 +567,7 @@ void Parcel::markForBinder(const sp<IBinder>& binder) {
     LOG_ALWAYS_FATAL_IF(mData != nullptr, "format must be set before data is written");
 
     if (binder && binder->remoteBinder() && binder->remoteBinder()->isRpcBinder()) {
-        markForRpc(binder->remoteBinder()->getPrivateAccessor().rpcSession());
+        markForRpc(binder->remoteBinder()->getPrivateAccessorForId().rpcSession());
     }
 }
 
@@ -1347,7 +1327,7 @@ restart_write:
         // Need to write meta-data?
         if (nullMetaData || val.binder != 0) {
             mObjects[mObjectsSize] = mDataPos;
-            acquire_object(ProcessState::self(), val, this);
+            acquire_object(ProcessState::self(), val, this, &mOpenAshmemSize);
             mObjectsSize++;
         }
 
@@ -1484,29 +1464,6 @@ const void* Parcel::readInplace(size_t len) const
         return data;
     }
     return nullptr;
-}
-
-status_t Parcel::readOutVectorSizeWithCheck(size_t elmSize, int32_t* size) const {
-    if (status_t status = readInt32(size); status != OK) return status;
-    if (*size < 0) return OK; // may be null, client to handle
-
-    LOG_ALWAYS_FATAL_IF(elmSize > INT32_MAX, "Cannot have element as big as %zu", elmSize);
-
-    // approximation, can't know max element size (e.g. if it makes heap
-    // allocations)
-    static_assert(sizeof(int) == sizeof(int32_t), "Android is LP64");
-    int32_t allocationSize;
-    if (__builtin_smul_overflow(elmSize, *size, &allocationSize)) return NO_MEMORY;
-
-    // High limit of 1MB since something this big could never be returned. Could
-    // probably scope this down, but might impact very specific usecases.
-    constexpr int32_t kMaxAllocationSize = 1 * 1000 * 1000;
-
-    if (allocationSize >= kMaxAllocationSize) {
-        return NO_MEMORY;
-    }
-
-    return OK;
 }
 
 template<class T>
@@ -2237,7 +2194,7 @@ void Parcel::releaseObjects()
         i--;
         const flat_binder_object* flat
             = reinterpret_cast<flat_binder_object*>(data+objects[i]);
-        release_object(proc, *flat, this);
+        release_object(proc, *flat, this, &mOpenAshmemSize);
     }
 }
 
@@ -2254,7 +2211,7 @@ void Parcel::acquireObjects()
         i--;
         const flat_binder_object* flat
             = reinterpret_cast<flat_binder_object*>(data+objects[i]);
-        acquire_object(proc, *flat, this);
+        acquire_object(proc, *flat, this, &mOpenAshmemSize);
     }
 }
 
@@ -2459,7 +2416,7 @@ status_t Parcel::continueWrite(size_t desired)
                     // will need to rescan because we may have lopped off the only FDs
                     mFdsKnown = false;
                 }
-                release_object(proc, *flat, this);
+                release_object(proc, *flat, this, &mOpenAshmemSize);
             }
 
             if (objectsSize == 0) {
@@ -2552,6 +2509,7 @@ void Parcel::initState()
     mAllowFds = true;
     mDeallocZero = false;
     mOwner = nullptr;
+    mOpenAshmemSize = 0;
     mWorkSourceRequestHeaderPosition = 0;
     mRequestHeaderPresent = false;
 
@@ -2570,7 +2528,16 @@ void Parcel::initState()
 
 void Parcel::scanForFds() const
 {
-    mHasFds = hasFileDescriptorsInRangeUnchecked(0, dataSize());
+    bool hasFds = false;
+    for (size_t i=0; i<mObjectsSize; i++) {
+        const flat_binder_object* flat
+            = reinterpret_cast<const flat_binder_object*>(mData + mObjects[i]);
+        if (flat->hdr.type == BINDER_TYPE_FD) {
+            hasFds = true;
+            break;
+        }
+    }
+    mHasFds = hasFds;
     mFdsKnown = true;
 }
 
@@ -2578,28 +2545,13 @@ size_t Parcel::getBlobAshmemSize() const
 {
     // This used to return the size of all blobs that were written to ashmem, now we're returning
     // the ashmem currently referenced by this Parcel, which should be equivalent.
-    // TODO(b/202029388): Remove method once ABI can be changed.
-    return getOpenAshmemSize();
+    // TODO: Remove method once ABI can be changed.
+    return mOpenAshmemSize;
 }
 
 size_t Parcel::getOpenAshmemSize() const
 {
-    size_t openAshmemSize = 0;
-    for (size_t i = 0; i < mObjectsSize; i++) {
-        const flat_binder_object* flat =
-                reinterpret_cast<const flat_binder_object*>(mData + mObjects[i]);
-
-        // cookie is compared against zero for historical reasons
-        // > obj.cookie = takeOwnership ? 1 : 0;
-        if (flat->hdr.type == BINDER_TYPE_FD && flat->cookie != 0 && ashmem_valid(flat->handle)) {
-            int size = ashmem_get_size_region(flat->handle);
-            if (__builtin_add_overflow(openAshmemSize, size, &openAshmemSize)) {
-                ALOGE("Overflow when computing ashmem size.");
-                return SIZE_MAX;
-            }
-        }
-    }
-    return openAshmemSize;
+    return mOpenAshmemSize;
 }
 
 // --- Parcel::Blob ---

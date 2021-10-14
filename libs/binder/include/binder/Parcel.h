@@ -87,7 +87,6 @@ public:
     void                restoreAllowFds(bool lastValue);
 
     bool                hasFileDescriptors() const;
-    status_t hasFileDescriptorsInRange(size_t offset, size_t length, bool& result) const;
 
     // Zeros data when reallocating. Other mitigations may be added
     // in the future.
@@ -246,10 +245,9 @@ public:
     template<typename T>
     status_t            writeNullableParcelable(const std::optional<T>& parcelable)
             { return writeData(parcelable); }
-    template <typename T>
-    status_t writeNullableParcelable(const std::unique_ptr<T>& parcelable) {
-        return writeData(parcelable);
-    }
+    template<typename T>
+    status_t            writeNullableParcelable(const std::unique_ptr<T>& parcelable) __attribute__((deprecated("use std::optional version instead")))
+            { return writeData(parcelable); }
 
     status_t            writeParcelable(const Parcelable& parcelable);
 
@@ -403,10 +401,9 @@ public:
     template<typename T>
     status_t            readParcelable(std::optional<T>* parcelable) const
             { return readData(parcelable); }
-    template <typename T>
-    status_t readParcelable(std::unique_ptr<T>* parcelable) const {
-        return readData(parcelable);
-    }
+    template<typename T>
+    status_t            readParcelable(std::unique_ptr<T>* parcelable) const __attribute__((deprecated("use std::optional version instead")))
+            { return readData(parcelable); }
 
     // If strong binder would be nullptr, readStrongBinder() returns an error.
     // TODO: T must be derived from IInterface, fix for clarity.
@@ -564,8 +561,6 @@ private:
     status_t            flattenBinder(const sp<IBinder>& binder);
     status_t            unflattenBinder(sp<IBinder>* out) const;
 
-    status_t readOutVectorSizeWithCheck(size_t elmSize, int32_t* size) const;
-
     template<class T>
     status_t            readAligned(T *pArg) const;
 
@@ -576,7 +571,6 @@ private:
 
     status_t            writeRawNullableParcelable(const Parcelable*
                                                    parcelable);
-    bool hasFileDescriptorsInRangeUnchecked(size_t offset, size_t length) const;
 
     //-----------------------------------------------------------------------------
     // Generic type read and write methods for Parcel:
@@ -1143,7 +1137,6 @@ private:
     release_func        mOwner;
 
     sp<RpcSession> mSession;
-    size_t mReserved;
 
     class Blob {
     public:
@@ -1228,17 +1221,13 @@ public:
         inline void* data() { return mData; }
     };
 
-    /**
-     * Returns the total amount of ashmem memory owned by this object.
-     *
-     * Note: for historical reasons, this does not include ashmem memory which
-     * is referenced by this Parcel, but which this parcel doesn't own (e.g.
-     * writeFileDescriptor is called without 'takeOwnership' true).
-     */
-    size_t getOpenAshmemSize() const;
+private:
+    size_t mOpenAshmemSize;
 
-    // TODO(b/202029388): Remove 'getBlobAshmemSize' once ABI can be changed.
+public:
+    // TODO: Remove once ABI can be changed.
     size_t getBlobAshmemSize() const;
+    size_t getOpenAshmemSize() const;
 };
 
 // ---------------------------------------------------------------------------
@@ -1326,7 +1315,7 @@ status_t Parcel::writeVectorSize(const std::unique_ptr<std::vector<T>>& val) {
 template<typename T>
 status_t Parcel::resizeOutVector(std::vector<T>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }
@@ -1341,7 +1330,7 @@ status_t Parcel::resizeOutVector(std::vector<T>* val) const {
 template<typename T>
 status_t Parcel::resizeOutVector(std::optional<std::vector<T>>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }
@@ -1357,7 +1346,7 @@ status_t Parcel::resizeOutVector(std::optional<std::vector<T>>* val) const {
 template<typename T>
 status_t Parcel::resizeOutVector(std::unique_ptr<std::vector<T>>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }

@@ -50,7 +50,6 @@ static String16 get_interface_name(sp<IBinder> service)
 {
     if (service != nullptr) {
         Parcel data, reply;
-        data.markForBinder(service);
         status_t err = service->transact(IBinder::INTERFACE_TRANSACTION, data, &reply);
         if (err == NO_ERROR) {
             return reply.readString16();
@@ -97,9 +96,6 @@ int main(int argc, char* const argv[])
 #ifdef VENDORSERVICES
     ProcessState::initWithDriver("/dev/vndbinder");
 #endif
-#ifndef __ANDROID__
-    setDefaultServiceManager(createRpcDelegateServiceManager({.maxOutgoingThreads = 1}));
-#endif
     sp<IServiceManager> sm = defaultServiceManager();
     fflush(stdout);
     if (sm == nullptr) {
@@ -142,7 +138,6 @@ int main(int argc, char* const argv[])
                 int32_t code = atoi(argv[optind++]);
                 if (service != nullptr && ifName.size() > 0) {
                     Parcel data, reply;
-                    data.markForBinder(service);
 
                     // the interface name is first
                     data.writeInterfaceToken(ifName);
@@ -234,7 +229,7 @@ int main(int argc, char* const argv[])
                             int afd = ashmem_create_region("test", statbuf.st_size);
                             void* ptr = mmap(NULL, statbuf.st_size,
                                    PROT_READ | PROT_WRITE, MAP_SHARED, afd, 0);
-                            (void)read(fd, ptr, statbuf.st_size);
+                            read(fd, ptr, statbuf.st_size);
                             close(fd);
                             data.writeFileDescriptor(afd, true /* take ownership */);
                         } else if (strcmp(argv[optind], "nfd") == 0) {

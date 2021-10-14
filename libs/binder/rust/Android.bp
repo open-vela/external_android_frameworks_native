@@ -17,7 +17,6 @@ rust_library {
     rustlibs: [
         "liblibc",
         "libbinder_ndk_sys",
-        "libdowncast_rs",
     ],
     host_supported: true,
     target: {
@@ -27,7 +26,6 @@ rust_library {
     },
     apex_available: [
         "//apex_available:platform",
-        "com.android.compos",
         "com.android.virt",
     ],
 }
@@ -50,7 +48,6 @@ rust_library {
     },
     apex_available: [
         "//apex_available:platform",
-        "com.android.compos",
         "com.android.virt",
     ],
     lints: "none",
@@ -102,22 +99,6 @@ rust_bindgen {
     },
     apex_available: [
         "//apex_available:platform",
-        "com.android.compos",
-        "com.android.virt",
-    ],
-}
-
-// TODO(b/184872979): remove once the Rust API is created.
-rust_bindgen {
-    name: "libbinder_rpc_unstable_bindgen",
-    wrapper_src: ":libbinder_rpc_unstable_header",
-    crate_name: "binder_rpc_unstable_bindgen",
-    source_stem: "bindings",
-    shared_libs: [
-        "libutils",
-    ],
-    apex_available: [
-        "com.android.compos",
         "com.android.virt",
     ],
 }
@@ -134,26 +115,5 @@ rust_test {
     rustlibs: [
         "liblibc",
         "libbinder_ndk_sys",
-        "libdowncast_rs",
     ],
-}
-
-rust_test {
-    name: "libbinder_ndk_bindgen_test",
-    srcs: [":libbinder_ndk_bindgen"],
-    crate_name: "binder_ndk_bindgen",
-    test_suites: ["general-tests"],
-    auto_gen_config: true,
-    clippy_lints: "none",
-    lints: "none",
-}
-
-rust_test {
-    name: "libbinder_rpc_unstable_bindgen_test",
-    srcs: [":libbinder_rpc_unstable_bindgen"],
-    crate_name: "binder_rpc_unstable_bindgen",
-    test_suites: ["general-tests"],
-    auto_gen_config: true,
-    clippy_lints: "none",
-    lints: "none",
 }

@@ -14,41 +14,18 @@
  * limitations under the License.
  */
 
-use crate::binder::{AsNative, FromIBinder, Stability, Strong};
+use crate::binder::{AsNative, FromIBinder, Strong};
 use crate::error::{status_result, status_t, Result, Status, StatusCode};
 use crate::parcel::Parcel;
 use crate::proxy::SpIBinder;
 use crate::sys;
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_ulong};
 use std::mem::{self, MaybeUninit};
 use std::ptr;
 use std::slice;
-
-/// Super-trait for Binder parcelables.
-///
-/// This trait is equivalent `android::Parcelable` in C++,
-/// and defines a common interface that all parcelables need
-/// to implement.
-pub trait Parcelable {
-    /// Internal serialization function for parcelables.
-    ///
-    /// This method is mainly for internal use.
-    /// `Serialize::serialize` and its variants are generally
-    /// preferred over this function, since the former also
-    /// prepend a header.
-    fn write_to_parcel(&self, parcel: &mut Parcel) -> Result<()>;
-
-    /// Internal deserialization function for parcelables.
-    ///
-    /// This method is mainly for internal use.
-    /// `Deserialize::deserialize` and its variants are generally
-    /// preferred over this function, since the former also
-    /// parse the additional header.
-    fn read_from_parcel(&mut self, parcel: &Parcel) -> Result<()>;
-}
 
 /// A struct whose instances can be written to a [`Parcel`].
 // Might be able to hook this up as a serde backend in the future?
@@ -62,14 +39,6 @@ pub trait Serialize {
 pub trait Deserialize: Sized {
     /// Deserialize an instance from the given [`Parcel`].
     fn deserialize(parcel: &Parcel) -> Result<Self>;
-
-    /// Deserialize an instance from the given [`Parcel`] onto the
-    /// current object. This operation will overwrite the old value
-    /// partially or completely, depending on how much data is available.
-    fn deserialize_from(&mut self, parcel: &Parcel) -> Result<()> {
-        *self = Self::deserialize(parcel)?;
-        Ok(())
-    }
 }
 
 /// Helper trait for types that can be serialized as arrays.
@@ -185,18 +154,6 @@ unsafe extern "C" fn deserialize_element<T: Deserialize>(
     StatusCode::OK as status_t
 }
 
-/// Flag that specifies that the following parcelable is present.
-///
-/// This is the Rust equivalent of `Parcel::kNonNullParcelableFlag`
-/// from `include/binder/Parcel.h` in C++.
-pub const NON_NULL_PARCELABLE_FLAG: i32 = 1;
-
-/// Flag that specifies that the following parcelable is absent.
-///
-/// This is the Rust equivalent of `Parcel::kNullParcelableFlag`
-/// from `include/binder/Parcel.h` in C++.
-pub const NULL_PARCELABLE_FLAG: i32 = 0;
-
 /// Helper trait for types that can be nullable when serialized.
 // We really need this trait instead of implementing `Serialize for Option<T>`
 // because of the Rust orphan rule which prevents us from doing
@@ -208,10 +165,10 @@ pub trait SerializeOption: Serialize {
     /// Serialize an Option of this type into the given [`Parcel`].
     fn serialize_option(this: Option<&Self>, parcel: &mut Parcel) -> Result<()> {
         if let Some(inner) = this {
-            parcel.write(&NON_NULL_PARCELABLE_FLAG)?;
+            parcel.write(&1i32)?;
             parcel.write(inner)
         } else {
-            parcel.write(&NULL_PARCELABLE_FLAG)
+            parcel.write(&0i32)
         }
     }
 }
@@ -221,19 +178,11 @@ pub trait DeserializeOption: Deserialize {
     /// Deserialize an Option of this type from the given [`Parcel`].
     fn deserialize_option(parcel: &Parcel) -> Result<Option<Self>> {
         let null: i32 = parcel.read()?;
-        if null == NULL_PARCELABLE_FLAG {
+        if null == 0 {
             Ok(None)
         } else {
             parcel.read().map(Some)
         }
-    }
-
-    /// Deserialize an Option of this type from the given [`Parcel`] onto the
-    /// current object. This operation will overwrite the current value
-    /// partially or completely, depending on how much data is available.
-    fn deserialize_option_from(this: &mut Option<Self>, parcel: &Parcel) -> Result<()> {
-        *this = Self::deserialize_option(parcel)?;
-        Ok(())
     }
 }
 
@@ -643,18 +592,6 @@ impl<T: DeserializeArray> DeserializeOption for Vec<T> {
     }
 }
 
-impl Serialize for Stability {
-    fn serialize(&self, parcel: &mut Parcel) -> Result<()> {
-        i32::from(*self).serialize(parcel)
-    }
-}
-
-impl Deserialize for Stability {
-    fn deserialize(parcel: &Parcel) -> Result<Self> {
-        i32::deserialize(parcel).and_then(Stability::try_from)
-    }
-}
-
 impl Serialize for Status {
     fn serialize(&self, parcel: &mut Parcel) -> Result<()> {
         unsafe {
@@ -740,139 +677,14 @@ impl<T: DeserializeOption> Deserialize for Option<T> {
     fn deserialize(parcel: &Parcel) -> Result<Self> {
         DeserializeOption::deserialize_option(parcel)
     }
-
-    fn deserialize_from(&mut self, parcel: &Parcel) -> Result<()> {
-        DeserializeOption::deserialize_option_from(self, parcel)
-    }
-}
-
-/// Implement `Serialize` trait and friends for a parcelable
-///
-/// This is an internal macro used by the AIDL compiler to implement
-/// `Serialize`, `SerializeArray` and `SerializeOption` for
-/// structured parcelables. The target type must implement the
-/// `Parcelable` trait.
-/// ```
-#[macro_export]
-macro_rules! impl_serialize_for_parcelable {
-    ($parcelable:ident) => {
-        impl $crate::parcel::Serialize for $parcelable {
-            fn serialize(
-                &self,
-                parcel: &mut $crate::parcel::Parcel,
-            ) -> $crate::Result<()> {
-                <Self as $crate::parcel::SerializeOption>::serialize_option(
-                    Some(self),
-                    parcel,
-                )
-            }
-        }
-
-        impl $crate::parcel::SerializeArray for $parcelable {}
-
-        impl $crate::parcel::SerializeOption for $parcelable {
-            fn serialize_option(
-                this: Option<&Self>,
-                parcel: &mut $crate::parcel::Parcel,
-            ) -> $crate::Result<()> {
-                if let Some(this) = this {
-                    use $crate::parcel::Parcelable;
-                    parcel.write(&$crate::parcel::NON_NULL_PARCELABLE_FLAG)?;
-                    this.write_to_parcel(parcel)
-                } else {
-                    parcel.write(&$crate::parcel::NULL_PARCELABLE_FLAG)
-                }
-            }
-        }
-    }
-}
-
-/// Implement `Deserialize` trait and friends for a parcelable
-///
-/// This is an internal macro used by the AIDL compiler to implement
-/// `Deserialize`, `DeserializeArray` and `DeserializeOption` for
-/// structured parcelables. The target type must implement the
-/// `Parcelable` trait.
-/// ```
-#[macro_export]
-macro_rules! impl_deserialize_for_parcelable {
-    ($parcelable:ident) => {
-        impl $crate::parcel::Deserialize for $parcelable {
-            fn deserialize(
-                parcel: &$crate::parcel::Parcel,
-            ) -> $crate::Result<Self> {
-                $crate::parcel::DeserializeOption::deserialize_option(parcel)
-                    .transpose()
-                    .unwrap_or(Err($crate::StatusCode::UNEXPECTED_NULL))
-            }
-            fn deserialize_from(
-                &mut self,
-                parcel: &$crate::parcel::Parcel,
-            ) -> $crate::Result<()> {
-                let status: i32 = parcel.read()?;
-                if status == $crate::parcel::NULL_PARCELABLE_FLAG {
-                    Err($crate::StatusCode::UNEXPECTED_NULL)
-                } else {
-                    use $crate::parcel::Parcelable;
-                    self.read_from_parcel(parcel)
-                }
-            }
-        }
-
-        impl $crate::parcel::DeserializeArray for $parcelable {}
-
-        impl $crate::parcel::DeserializeOption for $parcelable {
-            fn deserialize_option(
-                parcel: &$crate::parcel::Parcel,
-            ) -> $crate::Result<Option<Self>> {
-                let mut result = None;
-                Self::deserialize_option_from(&mut result, parcel)?;
-                Ok(result)
-            }
-            fn deserialize_option_from(
-                this: &mut Option<Self>,
-                parcel: &$crate::parcel::Parcel,
-            ) -> $crate::Result<()> {
-                let status: i32 = parcel.read()?;
-                if status == $crate::parcel::NULL_PARCELABLE_FLAG {
-                    *this = None;
-                    Ok(())
-                } else {
-                    use $crate::parcel::Parcelable;
-                    this.get_or_insert_with(Self::default)
-                        .read_from_parcel(parcel)
-                }
-            }
-        }
-    }
-}
-
-impl<T: Serialize> Serialize for Box<T> {
-    fn serialize(&self, parcel: &mut Parcel) -> Result<()> {
-        Serialize::serialize(&**self, parcel)
-    }
-}
-
-impl<T: Deserialize> Deserialize for Box<T> {
-    fn deserialize(parcel: &Parcel) -> Result<Self> {
-        Deserialize::deserialize(parcel).map(Box::new)
-    }
-}
-
-impl<T: SerializeOption> SerializeOption for Box<T> {
-    fn serialize_option(this: Option<&Self>, parcel: &mut Parcel) -> Result<()> {
-        SerializeOption::serialize_option(this.map(|inner| &**inner), parcel)
-    }
-}
-
-impl<T: DeserializeOption> DeserializeOption for Box<T> {
-    fn deserialize_option(parcel: &Parcel) -> Result<Option<Self>> {
-        DeserializeOption::deserialize_option(parcel).map(|t| t.map(Box::new))
-    }
 }
 
 #[test]
 fn test_custom_parcelable() {
+    use crate::binder::Interface;
+    use crate::native::Binder;
+    let mut service = Binder::new(()).as_binder();
+
     struct Custom(u32, bool, String, Vec<String>);
 
     impl Serialize for Custom {
@@ -905,7 +717,7 @@ fn test_custom_parcelable() {
 
     let custom = Custom(123_456_789, true, string8, strs);
 
-    let mut parcel = Parcel::new();
+    let mut parcel = Parcel::new_for_test(&mut service).unwrap();
     let start = parcel.get_data_position();
 
     assert!(custom.serialize(&mut parcel).is_ok());
@@ -925,9 +737,13 @@ fn test_custom_parcelable() {
 #[test]
 #[allow(clippy::excessive_precision)]
 fn test_slice_parcelables() {
+    use crate::binder::Interface;
+    use crate::native::Binder;
+    let mut service = Binder::new(()).as_binder();
+
     let bools = [true, false, false, true];
 
-    let mut parcel = Parcel::new();
+    let mut parcel = Parcel::new_for_test(&mut service).unwrap();
     let start = parcel.get_data_position();
 
     assert!(bools.serialize(&mut parcel).is_ok());
@@ -951,7 +767,7 @@ fn test_slice_parcelables() {
 
     let u8s = [101u8, 255, 42, 117];
 
-    let mut parcel = Parcel::new();
+    let mut parcel = Parcel::new_for_test(&mut service).unwrap();
     let start = parcel.get_data_position();
 
     assert!(parcel.write(&u8s[..]).is_ok());

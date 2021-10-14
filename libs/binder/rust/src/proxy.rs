@@ -430,7 +430,6 @@ impl SerializeOption for SpIBinder {
 
 impl SerializeArray for SpIBinder {}
 impl SerializeArray for Option<&SpIBinder> {}
-impl SerializeArray for Option<SpIBinder> {}
 
 impl Deserialize for SpIBinder {
     fn deserialize(parcel: &Parcel) -> Result<SpIBinder> {

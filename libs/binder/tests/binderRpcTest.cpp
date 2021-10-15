@@ -690,13 +690,21 @@ TEST_P(BinderRpc, TransactionsMustBeMarkedRpc) {
 }
 
 TEST_P(BinderRpc, AppendSeparateFormats) {
-    auto proc = createRpcTestSocketServerProcess({});
+    auto proc1 = createRpcTestSocketServerProcess({});
+    auto proc2 = createRpcTestSocketServerProcess({});
+
+    Parcel pRaw;
 
     Parcel p1;
-    p1.markForBinder(proc.rootBinder);
+    p1.markForBinder(proc1.rootBinder);
     p1.writeInt32(3);
 
+    EXPECT_EQ(BAD_TYPE, p1.appendFrom(&pRaw, 0, p1.dataSize()));
+    EXPECT_EQ(BAD_TYPE, pRaw.appendFrom(&p1, 0, p1.dataSize()));
+
     Parcel p2;
+    p2.markForBinder(proc2.rootBinder);
+    p2.writeInt32(7);
 
     EXPECT_EQ(BAD_TYPE, p1.appendFrom(&p2, 0, p2.dataSize()));
     EXPECT_EQ(BAD_TYPE, p2.appendFrom(&p1, 0, p1.dataSize()));
@@ -1297,16 +1305,6 @@ TEST_P(BinderRpc, Fds) {
         ASSERT_EQ(OK, proc.rootBinder->pingBinder());
     }
     ASSERT_EQ(beforeFds, countFds()) << (system("ls -l /proc/self/fd/"), "fd leak?");
-}
-
-TEST_P(BinderRpc, AidlDelegatorTest) {
-    auto proc = createRpcTestSocketServerProcess({});
-    auto myDelegator = sp<IBinderRpcTestDelegator>::make(proc.rootIface);
-    ASSERT_NE(nullptr, myDelegator);
-
-    std::string doubled;
-    EXPECT_OK(myDelegator->doubleString("cool ", &doubled));
-    EXPECT_EQ("cool cool ", doubled);
 }
 
 static bool testSupportVsockLoopback() {

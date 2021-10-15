@@ -543,6 +543,28 @@ binder_status_t AParcel_readStdVectorParcelableElement(const AParcel* parcel, vo
 }
 
 /**
+ * Writes a parcelable object of type P inside a std::vector<P> at index 'index' to 'parcel'.
+ */
+template <typename P>
+binder_status_t AParcel_writeNullableStdVectorParcelableElement(AParcel* parcel,
+                                                                const void* vectorData,
+                                                                size_t index) {
+    const std::optional<std::vector<P>>* vector =
+            static_cast<const std::optional<std::vector<P>>*>(vectorData);
+    return AParcel_writeNullableParcelable(parcel, (*vector)->at(index));
+}
+
+/**
+ * Reads a parcelable object of type P inside a std::vector<P> at index 'index' from 'parcel'.
+ */
+template <typename P>
+binder_status_t AParcel_readNullableStdVectorParcelableElement(const AParcel* parcel,
+                                                               void* vectorData, size_t index) {
+    std::optional<std::vector<P>>* vector = static_cast<std::optional<std::vector<P>>*>(vectorData);
+    return AParcel_readNullableParcelable(parcel, &(*vector)->at(index));
+}
+
+/**
  * Writes a ScopedFileDescriptor object inside a std::vector<ScopedFileDescriptor> at index 'index'
  * to 'parcel'.
  */
@@ -551,11 +573,7 @@ inline binder_status_t AParcel_writeStdVectorParcelableElement<ScopedFileDescrip
         AParcel* parcel, const void* vectorData, size_t index) {
     const std::vector<ScopedFileDescriptor>* vector =
             static_cast<const std::vector<ScopedFileDescriptor>*>(vectorData);
-    int writeFd = vector->at(index).get();
-    if (writeFd < 0) {
-        return STATUS_UNEXPECTED_NULL;
-    }
-    return AParcel_writeParcelFileDescriptor(parcel, writeFd);
+    return AParcel_writeRequiredParcelFileDescriptor(parcel, vector->at(index));
 }
 
 /**
@@ -567,15 +585,79 @@ inline binder_status_t AParcel_readStdVectorParcelableElement<ScopedFileDescript
         const AParcel* parcel, void* vectorData, size_t index) {
     std::vector<ScopedFileDescriptor>* vector =
             static_cast<std::vector<ScopedFileDescriptor>*>(vectorData);
-    int readFd;
-    binder_status_t status = AParcel_readParcelFileDescriptor(parcel, &readFd);
-    if (status == STATUS_OK) {
-        if (readFd < 0) {
-            return STATUS_UNEXPECTED_NULL;
-        }
-        vector->at(index).set(readFd);
-    }
-    return status;
+    return AParcel_readRequiredParcelFileDescriptor(parcel, &vector->at(index));
+}
+
+/**
+ * Writes a ScopedFileDescriptor object inside a std::optional<std::vector<ScopedFileDescriptor>> at
+ * index 'index' to 'parcel'.
+ */
+template <>
+inline binder_status_t AParcel_writeNullableStdVectorParcelableElement<ScopedFileDescriptor>(
+        AParcel* parcel, const void* vectorData, size_t index) {
+    const std::optional<std::vector<ScopedFileDescriptor>>* vector =
+            static_cast<const std::optional<std::vector<ScopedFileDescriptor>>*>(vectorData);
+    return AParcel_writeNullableParcelFileDescriptor(parcel, (*vector)->at(index));
+}
+
+/**
+ * Reads a ScopedFileDescriptor object inside a std::optional<std::vector<ScopedFileDescriptor>> at
+ * index 'index' from 'parcel'.
+ */
+template <>
+inline binder_status_t AParcel_readNullableStdVectorParcelableElement<ScopedFileDescriptor>(
+        const AParcel* parcel, void* vectorData, size_t index) {
+    std::optional<std::vector<ScopedFileDescriptor>>* vector =
+            static_cast<std::optional<std::vector<ScopedFileDescriptor>>*>(vectorData);
+    return AParcel_readNullableParcelFileDescriptor(parcel, &(*vector)->at(index));
+}
+
+/**
+ * Writes an SpAIBinder object inside a std::vector<SpAIBinder> at index 'index'
+ * to 'parcel'.
+ */
+template <>
+inline binder_status_t AParcel_writeStdVectorParcelableElement<SpAIBinder>(AParcel* parcel,
+                                                                           const void* vectorData,
+                                                                           size_t index) {
+    const std::vector<SpAIBinder>* vector = static_cast<const std::vector<SpAIBinder>*>(vectorData);
+    return AParcel_writeRequiredStrongBinder(parcel, vector->at(index));
+}
+
+/**
+ * Reads an SpAIBinder object inside a std::vector<SpAIBinder> at index 'index'
+ * from 'parcel'.
+ */
+template <>
+inline binder_status_t AParcel_readStdVectorParcelableElement<SpAIBinder>(const AParcel* parcel,
+                                                                          void* vectorData,
+                                                                          size_t index) {
+    std::vector<SpAIBinder>* vector = static_cast<std::vector<SpAIBinder>*>(vectorData);
+    return AParcel_readRequiredStrongBinder(parcel, &vector->at(index));
+}
+
+/**
+ * Writes an SpAIBinder object inside a std::optional<std::vector<SpAIBinder>> at index 'index'
+ * to 'parcel'.
+ */
+template <>
+inline binder_status_t AParcel_writeNullableStdVectorParcelableElement<SpAIBinder>(
+        AParcel* parcel, const void* vectorData, size_t index) {
+    const std::optional<std::vector<SpAIBinder>>* vector =
+            static_cast<const std::optional<std::vector<SpAIBinder>>*>(vectorData);
+    return AParcel_writeNullableStrongBinder(parcel, (*vector)->at(index));
+}
+
+/**
+ * Reads an SpAIBinder object inside a std::optional<std::vector<SpAIBinder>> at index 'index'
+ * from 'parcel'.
+ */
+template <>
+inline binder_status_t AParcel_readNullableStdVectorParcelableElement<SpAIBinder>(
+        const AParcel* parcel, void* vectorData, size_t index) {
+    std::optional<std::vector<SpAIBinder>>* vector =
+            static_cast<std::optional<std::vector<SpAIBinder>>*>(vectorData);
+    return AParcel_readNullableStrongBinder(parcel, &(*vector)->at(index));
 }
 
 /**
@@ -596,6 +678,30 @@ static inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vec
     void* vectorData = static_cast<void*>(vec);
     return AParcel_readParcelableArray(parcel, vectorData, AParcel_stdVectorExternalAllocator<P>,
                                        AParcel_readStdVectorParcelableElement<P>);
+}
+
+/**
+ * Convenience API for writing a std::optional<std::vector<P>>
+ */
+template <typename P>
+static inline binder_status_t AParcel_writeVector(AParcel* parcel,
+                                                  const std::optional<std::vector<P>>& vec) {
+    if (!vec) return AParcel_writeInt32(parcel, -1);
+    const void* vectorData = static_cast<const void*>(&vec);
+    return AParcel_writeParcelableArray(parcel, vectorData, static_cast<int32_t>(vec->size()),
+                                        AParcel_writeNullableStdVectorParcelableElement<P>);
+}
+
+/**
+ * Convenience API for reading a std::optional<std::vector<P>>
+ */
+template <typename P>
+static inline binder_status_t AParcel_readVector(const AParcel* parcel,
+                                                 std::optional<std::vector<P>>* vec) {
+    void* vectorData = static_cast<void*>(vec);
+    return AParcel_readParcelableArray(parcel, vectorData,
+                                       AParcel_nullableStdVectorExternalAllocator<P>,
+                                       AParcel_readNullableStdVectorParcelableElement<P>);
 }
 
 // @START

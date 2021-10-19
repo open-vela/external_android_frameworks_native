@@ -555,10 +555,6 @@ pid_t AIBinder_getCallingPid() {
     return ::android::IPCThreadState::self()->getCallingPid();
 }
 
-bool AIBinder_isHandlingTransaction() {
-    return ::android::IPCThreadState::self()->getServingStackPointer() != nullptr;
-}
-
 void AIBinder_incStrong(AIBinder* binder) {
     if (binder == nullptr) {
         return;

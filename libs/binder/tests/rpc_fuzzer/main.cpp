@@ -158,8 +158,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         }
     }
 
-    usleep(10000);
-
     if (hangupBeforeShutdown) {
         connections.clear();
         while (!server->listSessions().empty() || server->numUninitializedSessions()) {

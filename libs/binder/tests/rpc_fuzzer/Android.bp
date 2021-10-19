@@ -14,7 +14,6 @@ cc_fuzz {
     fuzz_config: {
         cc: ["smoreland@google.com"],
     },
-    corpus: ["corpus/*"],
     dictionary: "binder_rpc_fuzzer.dict",
 
     srcs: [

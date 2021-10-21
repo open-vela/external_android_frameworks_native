@@ -18,9 +18,6 @@ interface IBinderRpcTest {
     oneway void sendString(@utf8InCpp String str);
     @utf8InCpp String doubleString(@utf8InCpp String str);
 
-    // get the port that a client used to connect to this object
-    int getClientPort();
-
     // number of known RPC binders to process, RpcState::countBinders by session
     int[] countBinders();
 

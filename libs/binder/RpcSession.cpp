@@ -700,8 +700,7 @@ status_t RpcSession::addOutgoingConnection(std::unique_ptr<RpcTransport> rpcTran
 }
 
 bool RpcSession::setForServer(const wp<RpcServer>& server, const wp<EventListener>& eventListener,
-                              const std::vector<uint8_t>& sessionId,
-                              const sp<IBinder>& sessionSpecificRoot) {
+                              const std::vector<uint8_t>& sessionId) {
     LOG_ALWAYS_FATAL_IF(mForServer != nullptr);
     LOG_ALWAYS_FATAL_IF(server == nullptr);
     LOG_ALWAYS_FATAL_IF(mEventListener != nullptr);
@@ -714,7 +713,6 @@ bool RpcSession::setForServer(const wp<RpcServer>& server, const wp<EventListene
     mId = sessionId;
     mForServer = server;
     mEventListener = eventListener;
-    mSessionSpecificRootObject = sessionSpecificRoot;
     return true;
 }
 

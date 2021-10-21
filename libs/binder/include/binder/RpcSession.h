@@ -256,8 +256,7 @@ private:
                                                  bool init);
     [[nodiscard]] bool setForServer(const wp<RpcServer>& server,
                                     const wp<RpcSession::EventListener>& eventListener,
-                                    const std::vector<uint8_t>& sessionId,
-                                    const sp<IBinder>& sessionSpecificRoot);
+                                    const std::vector<uint8_t>& sessionId);
     sp<RpcConnection> assignIncomingConnectionToThisThread(
             std::unique_ptr<RpcTransport> rpcTransport);
     [[nodiscard]] bool removeIncomingConnection(const sp<RpcConnection>& connection);
@@ -313,10 +312,6 @@ private:
     wp<RpcServer> mForServer; // maybe null, for client sessions
     sp<WaitForShutdownListener> mShutdownListener; // used for client sessions
     wp<EventListener> mEventListener; // mForServer if server, mShutdownListener if client
-
-    // session-specific root object (if a different root is used for each
-    // session)
-    sp<IBinder> mSessionSpecificRootObject;
 
     std::vector<uint8_t> mId;
 

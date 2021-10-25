@@ -25,6 +25,10 @@
 #include <mutex>
 #include <thread>
 
+// WARNING: This is a feature which is still in development, and it is subject
+// to radical change. Any production use of this may subject your code to any
+// number of problems.
+
 namespace android {
 
 class FdTrigger;
@@ -94,6 +98,8 @@ public:
      * Return false if there's already a server.
      */
     [[nodiscard]] status_t setupExternalServer(base::unique_fd serverFd);
+
+    void iUnderstandThisCodeIsExperimentalAndIWillNotUseItInProduction();
 
     /**
      * This must be called before adding a client session.
@@ -182,6 +188,7 @@ private:
     status_t setupSocketServer(const RpcSocketAddress& address);
 
     const std::unique_ptr<RpcTransportCtx> mCtx;
+    bool mAgreedExperimental = false;
     size_t mMaxThreads = 1;
     std::optional<uint32_t> mProtocolVersion;
     base::unique_fd mServer; // socket we are accepting sessions on

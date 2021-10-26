@@ -688,8 +688,7 @@ status_t RpcSession::addOutgoingConnection(std::unique_ptr<RpcTransport> rpcTran
 
     status_t status = OK;
     if (init) {
-        status =
-                mRpcBinderState->sendConnectionInit(connection, sp<RpcSession>::fromExisting(this));
+        mRpcBinderState->sendConnectionInit(connection, sp<RpcSession>::fromExisting(this));
     }
 
     {

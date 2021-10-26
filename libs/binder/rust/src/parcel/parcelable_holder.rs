@@ -16,12 +16,13 @@
 
 use crate::binder::Stability;
 use crate::error::{Result, StatusCode};
-use crate::parcel::{OwnedParcel, Parcel, Parcelable};
+use crate::parcel::{Parcel, Parcelable};
 use crate::{impl_deserialize_for_parcelable, impl_serialize_for_parcelable};
 
-use downcast_rs::{impl_downcast, DowncastSync};
+use downcast_rs::{impl_downcast, Downcast};
 use std::any::Any;
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Metadata that `ParcelableHolder` needs for all parcelables.
 ///
@@ -39,18 +40,18 @@ pub trait ParcelableMetadata {
     }
 }
 
-trait AnyParcelable: DowncastSync + Parcelable + std::fmt::Debug {}
-impl_downcast!(sync AnyParcelable);
-impl<T> AnyParcelable for T where T: DowncastSync + Parcelable + std::fmt::Debug {}
+trait AnyParcelable: Downcast + Parcelable + std::fmt::Debug {}
+impl_downcast!(AnyParcelable);
+impl<T> AnyParcelable for T where T: Downcast + Parcelable + std::fmt::Debug {}
 
 #[derive(Debug, Clone)]
 enum ParcelableHolderData {
     Empty,
     Parcelable {
-        parcelable: Arc<dyn AnyParcelable>,
+        parcelable: Rc<dyn AnyParcelable>,
         name: String,
     },
-    Parcel(OwnedParcel),
+    Parcel(Parcel),
 }
 
 impl Default for ParcelableHolderData {
@@ -66,15 +67,15 @@ impl Default for ParcelableHolderData {
 /// `ParcelableHolder` is currently not thread-safe (neither
 /// `Send` nor `Sync`), mainly because it internally contains
 /// a `Parcel` which in turn is not thread-safe.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ParcelableHolder {
-    // This is a `Mutex` because of `get_parcelable`
+    // This is a `RefCell` because of `get_parcelable`
     // which takes `&self` for consistency with C++.
     // We could make `get_parcelable` take a `&mut self`
-    // and get rid of the `Mutex` here for a performance
+    // and get rid of the `RefCell` here for a performance
     // improvement, but then callers would require a mutable
     // `ParcelableHolder` even for that getter method.
-    data: Mutex<ParcelableHolderData>,
+    data: RefCell<ParcelableHolderData>,
     stability: Stability,
 }
 
@@ -82,7 +83,7 @@ impl ParcelableHolder {
     /// Construct a new `ParcelableHolder` with the given stability.
     pub fn new(stability: Stability) -> Self {
         Self {
-            data: Mutex::new(ParcelableHolderData::Empty),
+            data: RefCell::new(ParcelableHolderData::Empty),
             stability,
         }
     }
@@ -92,20 +93,20 @@ impl ParcelableHolder {
     /// Note that this method does not reset the stability,
     /// only the contents.
     pub fn reset(&mut self) {
-        *self.data.get_mut().unwrap() = ParcelableHolderData::Empty;
+        *self.data.get_mut() = ParcelableHolderData::Empty;
         // We could also clear stability here, but C++ doesn't
     }
 
     /// Set the parcelable contained in this `ParcelableHolder`.
-    pub fn set_parcelable<T>(&mut self, p: Arc<T>) -> Result<()>
+    pub fn set_parcelable<T>(&mut self, p: Rc<T>) -> Result<()>
     where
-        T: Any + Parcelable + ParcelableMetadata + std::fmt::Debug + Send + Sync,
+        T: Any + Parcelable + ParcelableMetadata + std::fmt::Debug,
     {
         if self.stability > p.get_stability() {
             return Err(StatusCode::BAD_VALUE);
         }
 
-        *self.data.get_mut().unwrap() = ParcelableHolderData::Parcelable {
+        *self.data.get_mut() = ParcelableHolderData::Parcelable {
             parcelable: p,
             name: T::get_descriptor().into(),
         };
@@ -126,12 +127,12 @@ impl ParcelableHolder {
     /// * `Ok(None)` if the holder is empty or the descriptor does not match
     /// * `Ok(Some(_))` if the object holds a parcelable of type `T`
     ///   with the correct descriptor
-    pub fn get_parcelable<T>(&self) -> Result<Option<Arc<T>>>
+    pub fn get_parcelable<T>(&self) -> Result<Option<Rc<T>>>
     where
-        T: Any + Parcelable + ParcelableMetadata + Default + std::fmt::Debug + Send + Sync,
+        T: Any + Parcelable + ParcelableMetadata + Default + std::fmt::Debug,
     {
         let parcelable_desc = T::get_descriptor();
-        let mut data = self.data.lock().unwrap();
+        let mut data = self.data.borrow_mut();
         match *data {
             ParcelableHolderData::Empty => Ok(None),
             ParcelableHolderData::Parcelable {
@@ -142,13 +143,12 @@ impl ParcelableHolder {
                     return Err(StatusCode::BAD_VALUE);
                 }
 
-                match Arc::clone(parcelable).downcast_arc::<T>() {
+                match Rc::clone(parcelable).downcast_rc::<T>() {
                     Err(_) => Err(StatusCode::BAD_VALUE),
                     Ok(x) => Ok(Some(x)),
                 }
             }
-            ParcelableHolderData::Parcel(ref mut parcel) => {
-                let parcel = parcel.borrowed();
+            ParcelableHolderData::Parcel(ref parcel) => {
                 unsafe {
                     // Safety: 0 should always be a valid position.
                     parcel.set_data_position(0)?;
@@ -160,10 +160,10 @@ impl ParcelableHolder {
                 }
 
                 let mut parcelable = T::default();
-                parcelable.read_from_parcel(&parcel)?;
+                parcelable.read_from_parcel(parcel)?;
 
-                let parcelable = Arc::new(parcelable);
-                let result = Arc::clone(&parcelable);
+                let parcelable = Rc::new(parcelable);
+                let result = Rc::clone(&parcelable);
                 *data = ParcelableHolderData::Parcelable { parcelable, name };
 
                 Ok(Some(result))
@@ -184,8 +184,7 @@ impl Parcelable for ParcelableHolder {
     fn write_to_parcel(&self, parcel: &mut Parcel) -> Result<()> {
         parcel.write(&self.stability)?;
 
-        let mut data = self.data.lock().unwrap();
-        match *data {
+        match *self.data.borrow() {
             ParcelableHolderData::Empty => parcel.write(&0i32),
             ParcelableHolderData::Parcelable {
                 ref parcelable,
@@ -213,10 +212,9 @@ impl Parcelable for ParcelableHolder {
 
                 Ok(())
             }
-            ParcelableHolderData::Parcel(ref mut p) => {
-                let p = p.borrowed();
+            ParcelableHolderData::Parcel(ref p) => {
                 parcel.write(&p.get_data_size())?;
-                parcel.append_all_from(&p)
+                parcel.append_all_from(p)
             }
         }
     }
@@ -231,7 +229,7 @@ impl Parcelable for ParcelableHolder {
             return Err(StatusCode::BAD_VALUE);
         }
         if data_size == 0 {
-            *self.data.get_mut().unwrap() = ParcelableHolderData::Empty;
+            *self.data.get_mut() = ParcelableHolderData::Empty;
             return Ok(());
         }
 
@@ -242,11 +240,9 @@ impl Parcelable for ParcelableHolder {
             .checked_add(data_size)
             .ok_or(StatusCode::BAD_VALUE)?;
 
-        let mut new_parcel = OwnedParcel::new();
-        new_parcel
-            .borrowed()
-            .append_from(parcel, data_start, data_size)?;
-        *self.data.get_mut().unwrap() = ParcelableHolderData::Parcel(new_parcel);
+        let mut new_parcel = Parcel::new();
+        new_parcel.append_from(parcel, data_start, data_size)?;
+        *self.data.get_mut() = ParcelableHolderData::Parcel(new_parcel);
 
         unsafe {
             // Safety: `append_from` checks if `data_size` overflows

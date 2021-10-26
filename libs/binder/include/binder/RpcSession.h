@@ -136,7 +136,7 @@ public:
      * Query the other side of the session for the maximum number of threads
      * it supports (maximum number of concurrent non-nested synchronous transactions)
      */
-    [[nodiscard]] status_t getRemoteMaxThreads(size_t* maxThreads);
+    status_t getRemoteMaxThreads(size_t* maxThreads);
 
     /**
      * See RpcTransportCtx::getCertificate
@@ -216,7 +216,7 @@ private:
         bool allowNested = false;
     };
 
-    [[nodiscard]] status_t readId();
+    status_t readId();
 
     // A thread joining a server must always call these functions in order, and
     // cleanup is only programmed once into join. These are in separate
@@ -258,7 +258,7 @@ private:
             std::unique_ptr<RpcTransport> rpcTransport);
     [[nodiscard]] bool removeIncomingConnection(const sp<RpcConnection>& connection);
 
-    [[nodiscard]] status_t initShutdownTrigger();
+    status_t initShutdownTrigger();
 
     enum class ConnectionUse {
         CLIENT,
@@ -269,8 +269,8 @@ private:
     // Object representing exclusive access to a connection.
     class ExclusiveConnection {
     public:
-        [[nodiscard]] static status_t find(const sp<RpcSession>& session, ConnectionUse use,
-                                           ExclusiveConnection* connection);
+        static status_t find(const sp<RpcSession>& session, ConnectionUse use,
+                             ExclusiveConnection* connection);
 
         ~ExclusiveConnection();
         const sp<RpcConnection>& get() { return mConnection; }

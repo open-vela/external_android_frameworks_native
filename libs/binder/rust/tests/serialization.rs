@@ -20,7 +20,7 @@
 use binder::declare_binder_interface;
 use binder::parcel::ParcelFileDescriptor;
 use binder::{
-    Binder, BinderFeatures, BorrowedParcel, ExceptionCode, Interface, Result, SpIBinder, Status,
+    Binder, BinderFeatures, ExceptionCode, Interface, Parcel, Result, SpIBinder, Status,
     StatusCode, TransactionCode,
 };
 
@@ -111,8 +111,8 @@ impl ReadParcelTest for () {}
 fn on_transact(
     _service: &dyn ReadParcelTest,
     code: TransactionCode,
-    parcel: &BorrowedParcel<'_>,
-    reply: &mut BorrowedParcel<'_>,
+    parcel: &Parcel,
+    reply: &mut Parcel,
 ) -> Result<()> {
     match code {
         bindings::Transaction_TEST_BOOL => {

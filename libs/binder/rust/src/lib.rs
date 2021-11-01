@@ -50,8 +50,8 @@
 //! fn on_transact(
 //!     service: &dyn ITest,
 //!     code: TransactionCode,
-//!     _data: &BorrowedParcel,
-//!     reply: &mut BorrowedParcel,
+//!     _data: &Parcel,
+//!     reply: &mut Parcel,
 //! ) -> binder::Result<()> {
 //!     match code {
 //!         SpIBinder::FIRST_CALL_TRANSACTION => {
@@ -98,7 +98,6 @@ mod proxy;
 
 #[macro_use]
 mod binder;
-mod binder_async;
 mod error;
 mod native;
 mod state;
@@ -112,32 +111,21 @@ pub use crate::binder::{
     Stability, Strong, TransactionCode, TransactionFlags, Weak, FIRST_CALL_TRANSACTION,
     FLAG_CLEAR_BUF, FLAG_ONEWAY, FLAG_PRIVATE_LOCAL, LAST_CALL_TRANSACTION,
 };
-pub use crate::binder_async::{BoxFuture, BinderAsyncPool};
 pub use error::{status_t, ExceptionCode, Result, Status, StatusCode};
-pub use native::{add_service, force_lazy_services_persist, is_handling_transaction, register_lazy_service, Binder};
-pub use parcel::{BorrowedParcel, Parcel};
-pub use proxy::{get_interface, get_service, wait_for_interface, wait_for_service};
+pub use native::add_service;
+pub use native::Binder;
+pub use parcel::Parcel;
+pub use proxy::{get_interface, get_service};
 pub use proxy::{AssociateClass, DeathRecipient, Proxy, SpIBinder, WpIBinder};
 pub use state::{ProcessState, ThreadState};
 
-/// Unstable, in-development API that only allowlisted clients are allowed to use.
-pub mod unstable_api {
-    pub use crate::binder::AsNative;
-    pub use crate::proxy::unstable_api::new_spibinder;
-    pub use crate::sys::AIBinder;
-}
-
 /// The public API usable outside AIDL-generated interface crates.
 pub mod public_api {
-    pub use super::parcel::{ParcelFileDescriptor, ParcelableHolder};
+    pub use super::parcel::ParcelFileDescriptor;
+    pub use super::{add_service, get_interface};
     pub use super::{
-        add_service, force_lazy_services_persist, get_interface, register_lazy_service,
-        wait_for_interface,
-    };
-    pub use super::{
-        BinderAsyncPool, BinderFeatures, BoxFuture, DeathRecipient, ExceptionCode, IBinder,
-        Interface, ProcessState, SpIBinder, Status, StatusCode, Strong, ThreadState, Weak,
-        WpIBinder,
+        BinderFeatures, DeathRecipient, ExceptionCode, IBinder, Interface, ProcessState, SpIBinder,
+        Status, StatusCode, Strong, ThreadState, Weak, WpIBinder,
     };
 
     /// Binder result containing a [`Status`] on error.

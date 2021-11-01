@@ -29,11 +29,13 @@
 #include <android-base/hex.h>
 #include <android-base/macros.h>
 #include <android-base/scopeguard.h>
+#include <android_runtime/vm.h>
 #include <binder/BpBinder.h>
 #include <binder/Parcel.h>
 #include <binder/RpcServer.h>
 #include <binder/RpcTransportRaw.h>
 #include <binder/Stability.h>
+#include <jni.h>
 #include <utils/String8.h>
 
 #include "FdTrigger.h"
@@ -44,11 +46,6 @@
 
 #ifdef __GLIBC__
 extern "C" pid_t gettid();
-#endif
-
-#ifndef __ANDROID_RECOVERY__
-#include <android_runtime/vm.h>
-#include <jni.h>
 #endif
 
 namespace android {
@@ -318,9 +315,6 @@ RpcSession::PreJoinSetupResult RpcSession::preJoinSetup(
 }
 
 namespace {
-#ifdef __ANDROID_RECOVERY__
-class JavaThreadAttacher {};
-#else
 // RAII object for attaching / detaching current thread to JVM if Android Runtime exists. If
 // Android Runtime doesn't exist, no-op.
 class JavaThreadAttacher {
@@ -373,7 +367,6 @@ private:
         return fn();
     }
 };
-#endif
 } // namespace
 
 void RpcSession::join(sp<RpcSession>&& session, PreJoinSetupResult&& setupResult) {
@@ -381,7 +374,7 @@ void RpcSession::join(sp<RpcSession>&& session, PreJoinSetupResult&& setupResult
 
     if (setupResult.status == OK) {
         LOG_ALWAYS_FATAL_IF(!connection, "must have connection if setup succeeded");
-        [[maybe_unused]] JavaThreadAttacher javaThreadAttacher;
+        JavaThreadAttacher javaThreadAttacher;
         while (true) {
             status_t status = session->state()->getAndExecuteCommand(connection, session,
                                                                      RpcState::CommandType::ANY);

@@ -149,11 +149,6 @@ cc_library {
                 "UtilsHost.cpp",
             ],
         },
-        recovery: {
-            exclude_header_libs: [
-                "libandroid_runtime_vm_headers",
-            ],
-        },
     },
 
     aidl: {

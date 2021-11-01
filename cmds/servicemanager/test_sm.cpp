@@ -46,7 +46,7 @@ static sp<IBinder> getBinder() {
         }
     };
 
-    return sp<LinkableBinder>::make();
+    return new LinkableBinder;
 }
 
 class MockAccess : public Access {
@@ -71,7 +71,7 @@ static sp<ServiceManager> getPermissiveServiceManager() {
     ON_CALL(*access, canFind(_, _)).WillByDefault(Return(true));
     ON_CALL(*access, canList(_)).WillByDefault(Return(true));
 
-    sp<ServiceManager> sm = sp<NiceMock<MockServiceManager>>::make(std::move(access));
+    sp<ServiceManager> sm = new NiceMock<MockServiceManager>(std::move(access));
     return sm;
 }
 
@@ -119,7 +119,7 @@ TEST(AddService, AddDisallowedFromApp) {
             .uid = uid,
         }));
         EXPECT_CALL(*access, canAdd(_, _)).Times(0);
-        sp<ServiceManager> sm = sp<NiceMock<MockServiceManager>>::make(std::move(access));
+        sp<ServiceManager> sm = new NiceMock<MockServiceManager>(std::move(access));
 
         EXPECT_FALSE(sm->addService("foo", getBinder(), false /*allowIsolated*/,
             IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT).isOk());
@@ -135,33 +135,13 @@ TEST(AddService, HappyOverExistingService) {
         IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT).isOk());
 }
 
-TEST(AddService, OverwriteExistingService) {
-    auto sm = getPermissiveServiceManager();
-    sp<IBinder> serviceA = getBinder();
-    EXPECT_TRUE(sm->addService("foo", serviceA, false /*allowIsolated*/,
-        IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT).isOk());
-
-    sp<IBinder> outA;
-    EXPECT_TRUE(sm->getService("foo", &outA).isOk());
-    EXPECT_EQ(serviceA, outA);
-
-    // serviceA should be overwritten by serviceB
-    sp<IBinder> serviceB = getBinder();
-    EXPECT_TRUE(sm->addService("foo", serviceB, false /*allowIsolated*/,
-        IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT).isOk());
-
-    sp<IBinder> outB;
-    EXPECT_TRUE(sm->getService("foo", &outB).isOk());
-    EXPECT_EQ(serviceB, outB);
-}
-
 TEST(AddService, NoPermissions) {
     std::unique_ptr<MockAccess> access = std::make_unique<NiceMock<MockAccess>>();
 
     EXPECT_CALL(*access, getCallingContext()).WillOnce(Return(Access::CallingContext{}));
     EXPECT_CALL(*access, canAdd(_, _)).WillOnce(Return(false));
 
-    sp<ServiceManager> sm = sp<NiceMock<MockServiceManager>>::make(std::move(access));
+    sp<ServiceManager> sm = new NiceMock<MockServiceManager>(std::move(access));
 
     EXPECT_FALSE(sm->addService("foo", getBinder(), false /*allowIsolated*/,
         IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT).isOk());
@@ -194,7 +174,7 @@ TEST(GetService, NoPermissionsForGettingService) {
     EXPECT_CALL(*access, canAdd(_, _)).WillOnce(Return(true));
     EXPECT_CALL(*access, canFind(_, _)).WillOnce(Return(false));
 
-    sp<ServiceManager> sm = sp<NiceMock<MockServiceManager>>::make(std::move(access));
+    sp<ServiceManager> sm = new NiceMock<MockServiceManager>(std::move(access));
 
     EXPECT_TRUE(sm->addService("foo", getBinder(), false /*allowIsolated*/,
         IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT).isOk());
@@ -218,7 +198,7 @@ TEST(GetService, AllowedFromIsolated) {
     EXPECT_CALL(*access, canAdd(_, _)).WillOnce(Return(true));
     EXPECT_CALL(*access, canFind(_, _)).WillOnce(Return(true));
 
-    sp<ServiceManager> sm = sp<NiceMock<MockServiceManager>>::make(std::move(access));
+    sp<ServiceManager> sm = new NiceMock<MockServiceManager>(std::move(access));
 
     sp<IBinder> service = getBinder();
     EXPECT_TRUE(sm->addService("foo", service, true /*allowIsolated*/,
@@ -244,7 +224,7 @@ TEST(GetService, NotAllowedFromIsolated) {
     // TODO(b/136023468): when security check is first, this should be called first
     // EXPECT_CALL(*access, canFind(_, _)).WillOnce(Return(true));
 
-    sp<ServiceManager> sm = sp<NiceMock<MockServiceManager>>::make(std::move(access));
+    sp<ServiceManager> sm = new NiceMock<MockServiceManager>(std::move(access));
 
     EXPECT_TRUE(sm->addService("foo", getBinder(), false /*allowIsolated*/,
         IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT).isOk());
@@ -261,7 +241,7 @@ TEST(ListServices, NoPermissions) {
     EXPECT_CALL(*access, getCallingContext()).WillOnce(Return(Access::CallingContext{}));
     EXPECT_CALL(*access, canList(_)).WillOnce(Return(false));
 
-    sp<ServiceManager> sm = sp<NiceMock<MockServiceManager>>::make(std::move(access));
+    sp<ServiceManager> sm = new NiceMock<MockServiceManager>(std::move(access));
 
     std::vector<std::string> out;
     EXPECT_FALSE(sm->listServices(IServiceManager::DUMP_FLAG_PRIORITY_ALL, &out).isOk());
@@ -329,9 +309,9 @@ TEST(ServiceNotifications, NoPermissionsRegister) {
     EXPECT_CALL(*access, getCallingContext()).WillOnce(Return(Access::CallingContext{}));
     EXPECT_CALL(*access, canFind(_,_)).WillOnce(Return(false));
 
-    sp<ServiceManager> sm = sp<ServiceManager>::make(std::move(access));
+    sp<ServiceManager> sm = new ServiceManager(std::move(access));
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     EXPECT_EQ(sm->registerForNotifications("foofoo", cb).exceptionCode(),
         Status::EX_SECURITY);
@@ -343,9 +323,9 @@ TEST(ServiceNotifications, NoPermissionsUnregister) {
     EXPECT_CALL(*access, getCallingContext()).WillOnce(Return(Access::CallingContext{}));
     EXPECT_CALL(*access, canFind(_,_)).WillOnce(Return(false));
 
-    sp<ServiceManager> sm = sp<ServiceManager>::make(std::move(access));
+    sp<ServiceManager> sm = new ServiceManager(std::move(access));
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     // should always hit security error first
     EXPECT_EQ(sm->unregisterForNotifications("foofoo", cb).exceptionCode(),
@@ -355,7 +335,7 @@ TEST(ServiceNotifications, NoPermissionsUnregister) {
 TEST(ServiceNotifications, InvalidName) {
     auto sm = getPermissiveServiceManager();
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     EXPECT_EQ(sm->registerForNotifications("foo@foo", cb).exceptionCode(),
         Status::EX_ILLEGAL_ARGUMENT);
@@ -371,7 +351,7 @@ TEST(ServiceNotifications, NullCallback) {
 TEST(ServiceNotifications, Unregister) {
     auto sm = getPermissiveServiceManager();
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     EXPECT_TRUE(sm->registerForNotifications("foofoo", cb).isOk());
     EXPECT_EQ(sm->unregisterForNotifications("foofoo", cb).exceptionCode(), 0);
@@ -380,7 +360,7 @@ TEST(ServiceNotifications, Unregister) {
 TEST(ServiceNotifications, UnregisterWhenNoRegistrationExists) {
     auto sm = getPermissiveServiceManager();
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     EXPECT_EQ(sm->unregisterForNotifications("foofoo", cb).exceptionCode(),
         Status::EX_ILLEGAL_STATE);
@@ -389,7 +369,7 @@ TEST(ServiceNotifications, UnregisterWhenNoRegistrationExists) {
 TEST(ServiceNotifications, NoNotification) {
     auto sm = getPermissiveServiceManager();
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     EXPECT_TRUE(sm->registerForNotifications("foofoo", cb).isOk());
     EXPECT_TRUE(sm->addService("otherservice", getBinder(),
@@ -402,7 +382,7 @@ TEST(ServiceNotifications, NoNotification) {
 TEST(ServiceNotifications, GetNotification) {
     auto sm = getPermissiveServiceManager();
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     sp<IBinder> service = getBinder();
 
@@ -417,7 +397,7 @@ TEST(ServiceNotifications, GetNotification) {
 TEST(ServiceNotifications, GetNotificationForAlreadyRegisteredService) {
     auto sm = getPermissiveServiceManager();
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     sp<IBinder> service = getBinder();
 
@@ -433,7 +413,7 @@ TEST(ServiceNotifications, GetNotificationForAlreadyRegisteredService) {
 TEST(ServiceNotifications, GetMultipleNotification) {
     auto sm = getPermissiveServiceManager();
 
-    sp<CallbackHistorian> cb = sp<CallbackHistorian>::make();
+    sp<CallbackHistorian> cb = new CallbackHistorian;
 
     sp<IBinder> binder1 = getBinder();
     sp<IBinder> binder2 = getBinder();

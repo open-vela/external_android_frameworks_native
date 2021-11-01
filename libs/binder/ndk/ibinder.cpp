@@ -15,8 +15,6 @@
  */
 
 #include <android/binder_ibinder.h>
-#include <android/binder_ibinder_platform.h>
-#include <android/binder_libbinder.h>
 #include "ibinder_internal.h"
 
 #include <android/binder_stability.h>
@@ -73,13 +71,14 @@ void clean(const void* id, void* obj, void* cookie) {
 AIBinder::AIBinder(const AIBinder_Class* clazz) : mClazz(clazz) {}
 AIBinder::~AIBinder() {}
 
-std::optional<bool> AIBinder::associateClassInternal(const AIBinder_Class* clazz,
-                                                     const String16& newDescriptor, bool set) {
-    std::lock_guard<std::mutex> lock(mClazzMutex);
+bool AIBinder::associateClass(const AIBinder_Class* clazz) {
+    if (clazz == nullptr) return false;
     if (mClazz == clazz) return true;
 
+    String8 newDescriptor(clazz->getInterfaceDescriptor());
+
     if (mClazz != nullptr) {
-        const String16& currentDescriptor = mClazz->getInterfaceDescriptor();
+        String8 currentDescriptor(mClazz->getInterfaceDescriptor());
         if (newDescriptor == currentDescriptor) {
             LOG(ERROR) << __func__ << ": Class descriptors '" << currentDescriptor
                        << "' match during associateClass, but they are different class objects. "
@@ -88,46 +87,27 @@ std::optional<bool> AIBinder::associateClassInternal(const AIBinder_Class* clazz
             LOG(ERROR) << __func__
                        << ": Class cannot be associated on object which already has a class. "
                           "Trying to associate to '"
-                       << newDescriptor << "' but already set to '" << currentDescriptor << "'.";
+                       << newDescriptor.c_str() << "' but already set to '"
+                       << currentDescriptor.c_str() << "'.";
         }
 
         // always a failure because we know mClazz != clazz
         return false;
     }
 
-    if (set) {
-        // if this is a local object, it's not one known to libbinder_ndk
-        mClazz = clazz;
-        return true;
-    }
-
-    return {};
-}
-
-bool AIBinder::associateClass(const AIBinder_Class* clazz) {
-    if (clazz == nullptr) return false;
-
-    const String16& newDescriptor = clazz->getInterfaceDescriptor();
-
-    auto result = associateClassInternal(clazz, newDescriptor, false);
-    if (result.has_value()) return *result;
-
     CHECK(asABpBinder() != nullptr);  // ABBinder always has a descriptor
 
-    const String16& descriptor = getBinder()->getInterfaceDescriptor();
+    String8 descriptor(getBinder()->getInterfaceDescriptor());
     if (descriptor != newDescriptor) {
-        if (getBinder()->isBinderAlive()) {
-            LOG(ERROR) << __func__ << ": Expecting binder to have class '" << newDescriptor
-                       << "' but descriptor is actually '" << descriptor << "'.";
-        } else {
-            // b/155793159
-            LOG(ERROR) << __func__ << ": Cannot associate class '" << newDescriptor
-                       << "' to dead binder.";
-        }
+        LOG(ERROR) << __func__ << ": Expecting binder to have class '" << newDescriptor.c_str()
+                   << "' but descriptor is actually '" << descriptor.c_str() << "'.";
         return false;
     }
 
-    return associateClassInternal(clazz, newDescriptor, true).value();
+    // if this is a local object, it's not one known to libbinder_ndk
+    mClazz = clazz;
+
+    return true;
 }
 
 ABBinder::ABBinder(const AIBinder_Class* clazz, void* userData)
@@ -301,34 +281,13 @@ AIBinder* AIBinder_Weak_promote(AIBinder_Weak* weakBinder) {
     return binder.get();
 }
 
-AIBinder_Weak* AIBinder_Weak_clone(const AIBinder_Weak* weak) {
-    if (weak == nullptr) {
-        return nullptr;
-    }
-
-    return new AIBinder_Weak{weak->binder};
-}
-
-bool AIBinder_lt(const AIBinder* lhs, const AIBinder* rhs) {
-    if (lhs == nullptr || rhs == nullptr) return lhs < rhs;
-
-    return const_cast<AIBinder*>(lhs)->getBinder() < const_cast<AIBinder*>(rhs)->getBinder();
-}
-
-bool AIBinder_Weak_lt(const AIBinder_Weak* lhs, const AIBinder_Weak* rhs) {
-    if (lhs == nullptr || rhs == nullptr) return lhs < rhs;
-
-    return lhs->binder < rhs->binder;
-}
-
 AIBinder_Class::AIBinder_Class(const char* interfaceDescriptor, AIBinder_Class_onCreate onCreate,
                                AIBinder_Class_onDestroy onDestroy,
                                AIBinder_Class_onTransact onTransact)
     : onCreate(onCreate),
       onDestroy(onDestroy),
       onTransact(onTransact),
-      mInterfaceDescriptor(interfaceDescriptor),
-      mWideInterfaceDescriptor(interfaceDescriptor) {}
+      mInterfaceDescriptor(interfaceDescriptor) {}
 
 AIBinder_Class* AIBinder_Class_define(const char* interfaceDescriptor,
                                       AIBinder_Class_onCreate onCreate,
@@ -356,15 +315,8 @@ void AIBinder_Class_setHandleShellCommand(AIBinder_Class* clazz,
     clazz->handleShellCommand = handleShellCommand;
 }
 
-const char* AIBinder_Class_getDescriptor(const AIBinder_Class* clazz) {
-    CHECK(clazz != nullptr) << "getDescriptor requires non-null clazz";
-
-    return clazz->getInterfaceDescriptorUtf8();
-}
-
 void AIBinder_DeathRecipient::TransferDeathRecipient::binderDied(const wp<IBinder>& who) {
-    CHECK(who == mWho) << who.unsafe_get() << "(" << who.get_refs() << ") vs " << mWho.unsafe_get()
-                       << " (" << mWho.get_refs() << ")";
+    CHECK(who == mWho);
 
     mOnDied(mCookie);
 
@@ -395,7 +347,7 @@ void AIBinder_DeathRecipient::pruneDeadTransferEntriesLocked() {
                            mDeathRecipients.end());
 }
 
-binder_status_t AIBinder_DeathRecipient::linkToDeath(const sp<IBinder>& binder, void* cookie) {
+binder_status_t AIBinder_DeathRecipient::linkToDeath(sp<IBinder> binder, void* cookie) {
     CHECK(binder != nullptr);
 
     std::lock_guard<std::mutex> l(mDeathRecipientsMutex);
@@ -414,7 +366,7 @@ binder_status_t AIBinder_DeathRecipient::linkToDeath(const sp<IBinder>& binder, 
     return STATUS_OK;
 }
 
-binder_status_t AIBinder_DeathRecipient::unlinkToDeath(const sp<IBinder>& binder, void* cookie) {
+binder_status_t AIBinder_DeathRecipient::unlinkToDeath(sp<IBinder> binder, void* cookie) {
     CHECK(binder != nullptr);
 
     std::lock_guard<std::mutex> l(mDeathRecipientsMutex);
@@ -598,9 +550,14 @@ binder_status_t AIBinder_prepareTransaction(AIBinder* binder, AParcel** in) {
         return STATUS_INVALID_OPERATION;
     }
 
-    *in = new AParcel(binder);
-    (*in)->get()->markForBinder(binder->getBinder());
+    if (!binder->isRemote()) {
+        LOG(WARNING) << "A binder object at " << binder
+                     << " is being transacted on, however, this object is in the same process as "
+                        "its proxy. Transacting with this binder is expensive compared to just "
+                        "calling the corresponding functionality in the same process.";
+    }
 
+    *in = new AParcel(binder);
     status_t status = (*in)->get()->writeInterfaceToken(clazz->getInterfaceDescriptor());
     binder_status_t ret = PruneStatusT(status);
 
@@ -634,7 +591,7 @@ binder_status_t AIBinder_transact(AIBinder* binder, transaction_code_t code, APa
         return STATUS_UNKNOWN_TRANSACTION;
     }
 
-    constexpr binder_flags_t kAllFlags = FLAG_PRIVATE_VENDOR | FLAG_ONEWAY | FLAG_CLEAR_BUF;
+    constexpr binder_flags_t kAllFlags = FLAG_PRIVATE_VENDOR | FLAG_ONEWAY;
     if ((flags & ~kAllFlags) != 0) {
         LOG(ERROR) << __func__ << ": Unrecognized flags sent: " << flags;
         return STATUS_BAD_VALUE;
@@ -718,30 +675,4 @@ binder_status_t AIBinder_setExtension(AIBinder* binder, AIBinder* ext) {
 
     rawBinder->setExtension(ext->getBinder());
     return STATUS_OK;
-}
-
-// platform methods follow
-
-void AIBinder_setRequestingSid(AIBinder* binder, bool requestingSid) {
-    ABBinder* localBinder = binder->asABBinder();
-    if (localBinder == nullptr) {
-        LOG(FATAL) << "AIBinder_setRequestingSid must be called on a local binder";
-    }
-
-    localBinder->setRequestingSid(requestingSid);
-}
-
-const char* AIBinder_getCallingSid() {
-    return ::android::IPCThreadState::self()->getCallingSid();
-}
-
-android::sp<android::IBinder> AIBinder_toPlatformBinder(AIBinder* binder) {
-    if (binder == nullptr) return nullptr;
-    return binder->getBinder();
-}
-
-AIBinder* AIBinder_fromPlatformBinder(const android::sp<android::IBinder>& binder) {
-    sp<AIBinder> ndkBinder = ABpBinder::lookupOrCreateFromBinder(binder);
-    AIBinder_incStrong(ndkBinder.get());
-    return ndkBinder.get();
 }

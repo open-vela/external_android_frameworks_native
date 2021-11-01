@@ -289,7 +289,7 @@ bool AIBinder_isAlive(const AIBinder* binder) __INTRODUCED_IN(29);
 /**
  * Built-in transaction for all binder objects. This sends a transaction that will immediately
  * return. Usually this is used to make sure that a binder is alive, as a placeholder call, or as a
- * consistency check.
+ * sanity check.
  *
  * Available since API level 29.
  *
@@ -391,6 +391,14 @@ uid_t AIBinder_getCallingUid() __INTRODUCED_IN(29);
  * If the transaction being processed is a oneway transaction, then this method will return 0.
  */
 pid_t AIBinder_getCallingPid() __INTRODUCED_IN(29);
+
+/**
+ * Determine whether the current thread is currently executing an incoming transaction.
+ *
+ * \return true if the current thread is currently executing an incoming transaction, and false
+ * otherwise.
+ */
+bool AIBinder_isHandlingTransaction() __INTRODUCED_IN(33);
 
 /**
  * This can only be called if a strong reference to this object already exists in process.

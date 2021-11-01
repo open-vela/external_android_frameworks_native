@@ -19,15 +19,8 @@
 #include <commonFuzzHelpers.h>
 #include <fuzzer/FuzzedDataProvider.h>
 
-#include <android-base/logging.h>
 #include <binder/BpBinder.h>
 #include <binder/IServiceManager.h>
-#include <binder/RpcServer.h>
-#include <binder/RpcSession.h>
-
-#include <signal.h>
-#include <sys/prctl.h>
-#include <thread>
 
 namespace android {
 
@@ -35,29 +28,13 @@ namespace android {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     FuzzedDataProvider fdp(data, size);
 
-    std::string addr = std::string(getenv("TMPDIR") ?: "/tmp") + "/binderRpcBenchmark";
-    (void)unlink(addr.c_str());
-
-    sp<RpcServer> server = RpcServer::make();
-
-    // use RPC binder because fuzzer can't get coverage from another process.
-    auto thread = std::thread([&]() {
-        prctl(PR_SET_PDEATHSIG, SIGHUP); // racey, okay
-        server->setRootObject(sp<BBinder>::make());
-        CHECK_EQ(OK, server->setupUnixDomainServer(addr.c_str()));
-        server->join();
-    });
-
-    sp<RpcSession> session = RpcSession::make();
-    status_t status;
-    for (size_t tries = 0; tries < 5; tries++) {
-        usleep(10000);
-        status = session->setupUnixDomainClient(addr.c_str());
-        if (status == OK) break;
-    }
-    CHECK_EQ(status, OK) << "Unable to connect";
-
-    sp<BpBinder> bpBinder = session->getRootObject()->remoteBinder();
+    // TODO: In the future it would be more effective to fork a new process and then pass a BBinder
+    // to your process. Right now this is not implemented because it would involved fuzzing IPC on a
+    // forked process, and libfuzzer will not be able to handle code coverage. This would lead to
+    // crashes that are not easy to diagnose.
+    int32_t handle = fdp.ConsumeIntegralInRange<int32_t>(0, 1024);
+    sp<BpBinder> bpbinder = BpBinder::create(handle);
+    if (bpbinder == nullptr) return 0;
 
     // To prevent memory from running out from calling too many add item operations.
     const uint32_t MAX_RUNS = 2048;
@@ -66,15 +43,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
     while (fdp.remaining_bytes() > 0 && count++ < MAX_RUNS) {
         if (fdp.ConsumeBool()) {
-            callArbitraryFunction(&fdp, gBPBinderOperations, bpBinder, s_recipient);
+            callArbitraryFunction(&fdp, gBPBinderOperations, bpbinder, s_recipient);
         } else {
-            callArbitraryFunction(&fdp, gIBinderOperations, bpBinder.get());
+            callArbitraryFunction(&fdp, gIBinderOperations, bpbinder.get());
         }
     }
-
-    CHECK(session->shutdownAndWait(true)) << "couldn't shutdown session";
-    CHECK(server->shutdown()) << "couldn't shutdown server";
-    thread.join();
 
     return 0;
 }

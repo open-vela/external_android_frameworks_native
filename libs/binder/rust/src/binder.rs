@@ -17,16 +17,14 @@
 //! Trait definitions for binder objects
 
 use crate::error::{status_t, Result, StatusCode};
-use crate::parcel::{Parcel, BorrowedParcel};
+use crate::parcel::Parcel;
 use crate::proxy::{DeathRecipient, SpIBinder, WpIBinder};
 use crate::sys;
 
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::convert::TryFrom;
 use std::ffi::{c_void, CStr, CString};
 use std::fmt;
-use std::fs::File;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::os::raw::c_char;
@@ -51,18 +49,10 @@ pub type TransactionFlags = u32;
 /// interfaces) must implement this trait.
 ///
 /// This is equivalent `IInterface` in C++.
-pub trait Interface: Send + Sync {
+pub trait Interface: Send {
     /// Convert this binder object into a generic [`SpIBinder`] reference.
     fn as_binder(&self) -> SpIBinder {
         panic!("This object was not a Binder object and cannot be converted into an SpIBinder.")
-    }
-
-    /// Dump transaction handler for this Binder object.
-    ///
-    /// This handler is a no-op by default and should be implemented for each
-    /// Binder service struct that wishes to respond to dump transactions.
-    fn dump(&self, _file: &File, _args: &[&CStr]) -> Result<()> {
-        Ok(())
     }
 }
 
@@ -71,7 +61,6 @@ pub trait Interface: Send + Sync {
 /// An interface can promise to be a stable vendor interface ([`Vintf`]), or
 /// makes no stability guarantees ([`Local`]). [`Local`] is
 /// currently the default stability.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Stability {
     /// Default stability, visible to other modules in the same compilation
     /// context (e.g. modules on system.img)
@@ -84,28 +73,6 @@ pub enum Stability {
 impl Default for Stability {
     fn default() -> Self {
         Stability::Local
-    }
-}
-
-impl From<Stability> for i32 {
-    fn from(stability: Stability) -> i32 {
-        use Stability::*;
-        match stability {
-            Local => 0,
-            Vintf => 1,
-        }
-    }
-}
-
-impl TryFrom<i32> for Stability {
-    type Error = StatusCode;
-    fn try_from(stability: i32) -> Result<Stability> {
-        use Stability::*;
-        match stability {
-            0 => Ok(Local),
-            1 => Ok(Vintf),
-            _ => Err(StatusCode::BAD_VALUE)
-        }
     }
 }
 
@@ -129,11 +96,7 @@ pub trait Remotable: Send + Sync {
     /// Handle and reply to a request to invoke a transaction on this object.
     ///
     /// `reply` may be [`None`] if the sender does not expect a reply.
-    fn on_transact(&self, code: TransactionCode, data: &BorrowedParcel<'_>, reply: &mut BorrowedParcel<'_>) -> Result<()>;
-
-    /// Handle a request to invoke the dump transaction on this
-    /// object.
-    fn on_dump(&self, file: &File, args: &[&CStr]) -> Result<()>;
+    fn on_transact(&self, code: TransactionCode, data: &Parcel, reply: &mut Parcel) -> Result<()>;
 
     /// Retrieve the class of this remote object.
     ///
@@ -167,7 +130,6 @@ pub trait IBinderInternal: IBinder {
     fn ping_binder(&mut self) -> Result<()>;
 
     /// Indicate that the service intends to receive caller security contexts.
-    #[cfg(not(android_vndk))]
     fn set_requesting_sid(&mut self, enable: bool);
 
     /// Dump this object to the given file handle
@@ -177,46 +139,20 @@ pub trait IBinderInternal: IBinder {
     /// available.
     fn get_extension(&mut self) -> Result<Option<SpIBinder>>;
 
-    /// Create a Parcel that can be used with `submit_transact`.
-    fn prepare_transact(&self) -> Result<Parcel>;
-
     /// Perform a generic operation with the object.
-    ///
-    /// The provided [`Parcel`] must have been created by a call to
-    /// `prepare_transact` on the same binder.
-    ///
-    /// # Arguments
-    ///
-    /// * `code` - Transaction code for the operation.
-    /// * `data` - [`Parcel`] with input data.
-    /// * `flags` - Transaction flags, e.g. marking the transaction as
-    ///   asynchronous ([`FLAG_ONEWAY`](FLAG_ONEWAY)).
-    fn submit_transact(
-        &self,
-        code: TransactionCode,
-        data: Parcel,
-        flags: TransactionFlags,
-    ) -> Result<Parcel>;
-
-    /// Perform a generic operation with the object. This is a convenience
-    /// method that internally calls `prepare_transact` followed by
-    /// `submit_transact.
     ///
     /// # Arguments
     /// * `code` - Transaction code for the operation
+    /// * `data` - [`Parcel`] with input data
+    /// * `reply` - Optional [`Parcel`] for reply data
     /// * `flags` - Transaction flags, e.g. marking the transaction as
     ///   asynchronous ([`FLAG_ONEWAY`](FLAG_ONEWAY))
-    /// * `input_callback` A callback for building the `Parcel`.
-    fn transact<F: FnOnce(BorrowedParcel<'_>) -> Result<()>>(
+    fn transact<F: FnOnce(&mut Parcel) -> Result<()>>(
         &self,
         code: TransactionCode,
         flags: TransactionFlags,
         input_callback: F,
-    ) -> Result<Parcel> {
-        let mut parcel = self.prepare_transact()?;
-        input_callback(parcel.borrowed())?;
-        self.submit_transact(code, parcel, flags)
-    }
+    ) -> Result<Parcel>;
 }
 
 /// Interface of binder local or remote objects.
@@ -282,7 +218,7 @@ impl InterfaceClass {
             if class.is_null() {
                 panic!("Expected non-null class pointer from AIBinder_Class_define!");
             }
-            sys::AIBinder_Class_setOnDump(class, Some(I::on_dump));
+            sys::AIBinder_Class_setOnDump(class, None);
             sys::AIBinder_Class_setHandleShellCommand(class, None);
             class
         };
@@ -476,8 +412,8 @@ impl<I: FromIBinder + ?Sized> Eq for Weak<I> {}
 ///     fn on_transact(
 ///         &self,
 ///         code: TransactionCode,
-///         data: &BorrowedParcel,
-///         reply: &mut BorrowedParcel,
+///         data: &Parcel,
+///         reply: &mut Parcel,
 ///     ) -> Result<()> {
 ///         // ...
 ///     }
@@ -556,16 +492,6 @@ pub trait InterfaceClassMethods {
     /// returned by `on_create` for this class. This function takes ownership of
     /// the provided pointer and destroys it.
     unsafe extern "C" fn on_destroy(object: *mut c_void);
-
-    /// Called to handle the `dump` transaction.
-    ///
-    /// # Safety
-    ///
-    /// Must be called with a non-null, valid pointer to a local `AIBinder` that
-    /// contains a `T` pointer in its user data. fd should be a non-owned file
-    /// descriptor, and args must be an array of null-terminated string
-    /// poiinters with length num_args.
-    unsafe extern "C" fn on_dump(binder: *mut sys::AIBinder, fd: i32, args: *mut *const c_char, num_args: u32) -> status_t;
 }
 
 /// Interface for transforming a generic SpIBinder into a specific remote
@@ -636,7 +562,6 @@ unsafe impl<T, V: AsNative<T>> AsNative<T> for Option<V> {
 pub struct BinderFeatures {
     /// Indicates that the service intends to receive caller security contexts. This must be true
     /// for `ThreadState::with_calling_sid` to work.
-    #[cfg(not(android_vndk))]
     pub set_requesting_sid: bool,
     // Ensure that clients include a ..BinderFeatures::default() to preserve backwards compatibility
     // when new fields are added. #[non_exhaustive] doesn't work because it prevents struct
@@ -657,13 +582,13 @@ pub struct BinderFeatures {
 /// have the following type:
 ///
 /// ```
-/// # use binder::{Interface, TransactionCode, BorrowedParcel};
+/// # use binder::{Interface, TransactionCode, Parcel};
 /// # trait Placeholder {
 /// fn on_transact(
 ///     service: &dyn Interface,
 ///     code: TransactionCode,
-///     data: &BorrowedParcel,
-///     reply: &mut BorrowedParcel,
+///     data: &Parcel,
+///     reply: &mut Parcel,
 /// ) -> binder::Result<()>;
 /// # }
 /// ```
@@ -678,7 +603,7 @@ pub struct BinderFeatures {
 /// using the provided function, `on_transact`.
 ///
 /// ```
-/// use binder::{declare_binder_interface, Binder, Interface, TransactionCode, BorrowedParcel};
+/// use binder::{declare_binder_interface, Binder, Interface, TransactionCode, Parcel};
 ///
 /// pub trait IServiceManager: Interface {
 ///     // remote methods...
@@ -694,8 +619,8 @@ pub struct BinderFeatures {
 /// fn on_transact(
 ///     service: &dyn IServiceManager,
 ///     code: TransactionCode,
-///     data: &BorrowedParcel,
-///     reply: &mut BorrowedParcel,
+///     data: &Parcel,
+///     reply: &mut Parcel,
 /// ) -> binder::Result<()> {
 ///     // ...
 ///     Ok(())
@@ -715,14 +640,12 @@ macro_rules! declare_binder_interface {
         $interface:path[$descriptor:expr] {
             native: $native:ident($on_transact:path),
             proxy: $proxy:ident,
-            $(async: $async_interface:ident,)?
         }
     } => {
         $crate::declare_binder_interface! {
             $interface[$descriptor] {
                 native: $native($on_transact),
                 proxy: $proxy {},
-                $(async: $async_interface,)?
                 stability: $crate::Stability::default(),
             }
         }
@@ -732,7 +655,6 @@ macro_rules! declare_binder_interface {
         $interface:path[$descriptor:expr] {
             native: $native:ident($on_transact:path),
             proxy: $proxy:ident,
-            $(async: $async_interface:ident,)?
             stability: $stability:expr,
         }
     } => {
@@ -740,7 +662,6 @@ macro_rules! declare_binder_interface {
             $interface[$descriptor] {
                 native: $native($on_transact),
                 proxy: $proxy {},
-                $(async: $async_interface,)?
                 stability: $stability,
             }
         }
@@ -752,7 +673,6 @@ macro_rules! declare_binder_interface {
             proxy: $proxy:ident {
                 $($fname:ident: $fty:ty = $finit:expr),*
             },
-            $(async: $async_interface:ident,)?
         }
     } => {
         $crate::declare_binder_interface! {
@@ -761,7 +681,6 @@ macro_rules! declare_binder_interface {
                 proxy: $proxy {
                     $($fname: $fty = $finit),*
                 },
-                $(async: $async_interface,)?
                 stability: $crate::Stability::default(),
             }
         }
@@ -773,7 +692,6 @@ macro_rules! declare_binder_interface {
             proxy: $proxy:ident {
                 $($fname:ident: $fty:ty = $finit:expr),*
             },
-            $(async: $async_interface:ident,)?
             stability: $stability:expr,
         }
     } => {
@@ -785,7 +703,6 @@ macro_rules! declare_binder_interface {
                 proxy: $proxy {
                     $($fname: $fty = $finit),*
                 },
-                $(async: $async_interface,)?
                 stability: $stability,
             }
         }
@@ -800,8 +717,6 @@ macro_rules! declare_binder_interface {
             proxy: $proxy:ident {
                 $($fname:ident: $fty:ty = $finit:expr),*
             },
-
-            $( async: $async_interface:ident, )?
 
             stability: $stability:expr,
         }
@@ -839,7 +754,6 @@ macro_rules! declare_binder_interface {
             /// Create a new binder service.
             pub fn new_binder<T: $interface + Sync + Send + 'static>(inner: T, features: $crate::BinderFeatures) -> $crate::Strong<dyn $interface> {
                 let mut binder = $crate::Binder::new_with_stability($native(Box::new(inner)), $stability);
-                #[cfg(not(android_vndk))]
                 $crate::IBinderInternal::set_requesting_sid(&mut binder, features.set_requesting_sid);
                 $crate::Strong::new(Box::new(binder))
             }
@@ -850,7 +764,7 @@ macro_rules! declare_binder_interface {
                 $descriptor
             }
 
-            fn on_transact(&self, code: $crate::TransactionCode, data: &$crate::BorrowedParcel<'_>, reply: &mut $crate::BorrowedParcel<'_>) -> $crate::Result<()> {
+            fn on_transact(&self, code: $crate::TransactionCode, data: &$crate::Parcel, reply: &mut $crate::Parcel) -> $crate::Result<()> {
                 match $on_transact(&*self.0, code, data, reply) {
                     // The C++ backend converts UNEXPECTED_NULL into an exception
                     Err($crate::StatusCode::UNEXPECTED_NULL) => {
@@ -862,10 +776,6 @@ macro_rules! declare_binder_interface {
                     },
                     result => result
                 }
-            }
-
-            fn on_dump(&self, file: &std::fs::File, args: &[&std::ffi::CStr]) -> $crate::Result<()> {
-                self.0.dump(file, args)
             }
 
             fn get_class() -> $crate::InterfaceClass {
@@ -925,19 +835,19 @@ macro_rules! declare_binder_interface {
         where
             dyn $interface: $crate::Interface
         {
-            fn serialize(&self, parcel: &mut $crate::parcel::BorrowedParcel<'_>) -> $crate::Result<()> {
+            fn serialize(&self, parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
                 let binder = $crate::Interface::as_binder(self);
                 parcel.write(&binder)
             }
         }
 
         impl $crate::parcel::SerializeOption for dyn $interface + '_ {
-            fn serialize_option(this: Option<&Self>, parcel: &mut $crate::parcel::BorrowedParcel<'_>) -> $crate::Result<()> {
+            fn serialize_option(this: Option<&Self>, parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
                 parcel.write(&this.map($crate::Interface::as_binder))
             }
         }
 
-        impl std::fmt::Debug for dyn $interface + '_ {
+        impl std::fmt::Debug for dyn $interface {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.pad(stringify!($interface))
             }
@@ -951,73 +861,6 @@ macro_rules! declare_binder_interface {
                     .expect(concat!("Error cloning interface ", stringify!($interface)))
             }
         }
-
-        $(
-        // Async interface trait implementations.
-        impl<P: $crate::BinderAsyncPool> $crate::FromIBinder for dyn $async_interface<P> {
-            fn try_from(mut ibinder: $crate::SpIBinder) -> $crate::Result<$crate::Strong<dyn $async_interface<P>>> {
-                use $crate::AssociateClass;
-
-                let existing_class = ibinder.get_class();
-                if let Some(class) = existing_class {
-                    if class != <$native as $crate::Remotable>::get_class() &&
-                        class.get_descriptor() == <$native as $crate::Remotable>::get_descriptor()
-                    {
-                        // The binder object's descriptor string matches what we
-                        // expect. We still need to treat this local or already
-                        // associated object as remote, because we can't cast it
-                        // into a Rust service object without a matching class
-                        // pointer.
-                        return Ok($crate::Strong::new(Box::new(<$proxy as $crate::Proxy>::from_binder(ibinder)?)));
-                    }
-                }
-
-                if ibinder.associate_class(<$native as $crate::Remotable>::get_class()) {
-                    let service: $crate::Result<$crate::Binder<$native>> =
-                        std::convert::TryFrom::try_from(ibinder.clone());
-                    if let Ok(service) = service {
-                        // We were able to associate with our expected class and
-                        // the service is local.
-                        todo!()
-                        //return Ok($crate::Strong::new(Box::new(service)));
-                    } else {
-                        // Service is remote
-                        return Ok($crate::Strong::new(Box::new(<$proxy as $crate::Proxy>::from_binder(ibinder)?)));
-                    }
-                }
-
-                Err($crate::StatusCode::BAD_TYPE.into())
-            }
-        }
-
-        impl<P: $crate::BinderAsyncPool> $crate::parcel::Serialize for dyn $async_interface<P> + '_ {
-            fn serialize(&self, parcel: &mut $crate::parcel::BorrowedParcel<'_>) -> $crate::Result<()> {
-                let binder = $crate::Interface::as_binder(self);
-                parcel.write(&binder)
-            }
-        }
-
-        impl<P: $crate::BinderAsyncPool> $crate::parcel::SerializeOption for dyn $async_interface<P> + '_ {
-            fn serialize_option(this: Option<&Self>, parcel: &mut $crate::parcel::BorrowedParcel<'_>) -> $crate::Result<()> {
-                parcel.write(&this.map($crate::Interface::as_binder))
-            }
-        }
-
-        impl<P: $crate::BinderAsyncPool> std::fmt::Debug for dyn $async_interface<P> + '_ {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.pad(stringify!($async_interface))
-            }
-        }
-
-        /// Convert a &dyn $async_interface to Strong<dyn $async_interface>
-        impl<P: $crate::BinderAsyncPool> std::borrow::ToOwned for dyn $async_interface<P> {
-            type Owned = $crate::Strong<dyn $async_interface<P>>;
-            fn to_owned(&self) -> Self::Owned {
-                self.as_binder().into_interface()
-                    .expect(concat!("Error cloning interface ", stringify!($async_interface)))
-            }
-        }
-        )?
     };
 }
 
@@ -1027,7 +870,7 @@ macro_rules! declare_binder_interface {
 #[macro_export]
 macro_rules! declare_binder_enum {
     {
-        $enum:ident : [$backing:ty; $size:expr] {
+        $enum:ident : $backing:ty {
             $( $name:ident = $value:expr, )*
         }
     } => {
@@ -1035,34 +878,29 @@ macro_rules! declare_binder_enum {
         pub struct $enum(pub $backing);
         impl $enum {
             $( pub const $name: Self = Self($value); )*
-
-            #[inline(always)]
-            pub const fn enum_values() -> [Self; $size] {
-                [$(Self::$name),*]
-            }
         }
 
         impl $crate::parcel::Serialize for $enum {
-            fn serialize(&self, parcel: &mut $crate::parcel::BorrowedParcel<'_>) -> $crate::Result<()> {
+            fn serialize(&self, parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
                 parcel.write(&self.0)
             }
         }
 
         impl $crate::parcel::SerializeArray for $enum {
-            fn serialize_array(slice: &[Self], parcel: &mut $crate::parcel::BorrowedParcel<'_>) -> $crate::Result<()> {
+            fn serialize_array(slice: &[Self], parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
                 let v: Vec<$backing> = slice.iter().map(|x| x.0).collect();
                 <$backing as binder::parcel::SerializeArray>::serialize_array(&v[..], parcel)
             }
         }
 
         impl $crate::parcel::Deserialize for $enum {
-            fn deserialize(parcel: &$crate::parcel::BorrowedParcel<'_>) -> $crate::Result<Self> {
+            fn deserialize(parcel: &$crate::parcel::Parcel) -> $crate::Result<Self> {
                 parcel.read().map(Self)
             }
         }
 
         impl $crate::parcel::DeserializeArray for $enum {
-            fn deserialize_array(parcel: &$crate::parcel::BorrowedParcel<'_>) -> $crate::Result<Option<Vec<Self>>> {
+            fn deserialize_array(parcel: &$crate::parcel::Parcel) -> $crate::Result<Option<Vec<Self>>> {
                 let v: Option<Vec<$backing>> =
                     <$backing as binder::parcel::DeserializeArray>::deserialize_array(parcel)?;
                 Ok(v.map(|v| v.into_iter().map(Self).collect()))

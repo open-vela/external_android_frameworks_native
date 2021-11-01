@@ -18,8 +18,6 @@
 package android.content.pm;
 
 import android.content.pm.IPackageChangeObserver;
-import android.content.pm.IStagedApexObserver;
-import android.content.pm.StagedApexInfo;
 
 /**
  * Parallel implementation of certain {@link PackageManager} APIs that need to
@@ -125,24 +123,4 @@ interface IPackageManagerNative {
      * requested version.
      */
     boolean hasSystemFeature(in String featureName, in int version);
-
-    /** Register a observer for change in set of staged APEX ready for installation */
-    void registerStagedApexObserver(in IStagedApexObserver observer);
-
-    /**
-     * Unregister an existing staged apex observer.
-     * This does nothing if this observer was not already registered.
-     */
-    void unregisterStagedApexObserver(in IStagedApexObserver observer);
-
-    /**
-     * Get APEX module names of all APEX that are staged ready for installation
-     */
-    @utf8InCpp String[] getStagedApexModuleNames();
-
-    /**
-     * Get information of APEX which is staged ready for installation.
-     * Returns null if no such APEX is found.
-     */
-    @nullable StagedApexInfo getStagedApexInfo(in @utf8InCpp String moduleName);
 }

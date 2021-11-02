@@ -713,14 +713,12 @@ macro_rules! declare_binder_interface {
         $interface:path[$descriptor:expr] {
             native: $native:ident($on_transact:path),
             proxy: $proxy:ident,
-            $(async: $async_interface:ident,)?
         }
     } => {
         $crate::declare_binder_interface! {
             $interface[$descriptor] {
                 native: $native($on_transact),
                 proxy: $proxy {},
-                $(async: $async_interface,)?
                 stability: $crate::Stability::default(),
             }
         }
@@ -730,7 +728,6 @@ macro_rules! declare_binder_interface {
         $interface:path[$descriptor:expr] {
             native: $native:ident($on_transact:path),
             proxy: $proxy:ident,
-            $(async: $async_interface:ident,)?
             stability: $stability:expr,
         }
     } => {
@@ -738,7 +735,6 @@ macro_rules! declare_binder_interface {
             $interface[$descriptor] {
                 native: $native($on_transact),
                 proxy: $proxy {},
-                $(async: $async_interface,)?
                 stability: $stability,
             }
         }
@@ -750,7 +746,6 @@ macro_rules! declare_binder_interface {
             proxy: $proxy:ident {
                 $($fname:ident: $fty:ty = $finit:expr),*
             },
-            $(async: $async_interface:ident,)?
         }
     } => {
         $crate::declare_binder_interface! {
@@ -759,7 +754,6 @@ macro_rules! declare_binder_interface {
                 proxy: $proxy {
                     $($fname: $fty = $finit),*
                 },
-                $(async: $async_interface,)?
                 stability: $crate::Stability::default(),
             }
         }
@@ -771,7 +765,6 @@ macro_rules! declare_binder_interface {
             proxy: $proxy:ident {
                 $($fname:ident: $fty:ty = $finit:expr),*
             },
-            $(async: $async_interface:ident,)?
             stability: $stability:expr,
         }
     } => {
@@ -783,7 +776,6 @@ macro_rules! declare_binder_interface {
                 proxy: $proxy {
                     $($fname: $fty = $finit),*
                 },
-                $(async: $async_interface,)?
                 stability: $stability,
             }
         }
@@ -798,8 +790,6 @@ macro_rules! declare_binder_interface {
             proxy: $proxy:ident {
                 $($fname:ident: $fty:ty = $finit:expr),*
             },
-
-            $( async: $async_interface:ident, )?
 
             stability: $stability:expr,
         }
@@ -934,7 +924,7 @@ macro_rules! declare_binder_interface {
             }
         }
 
-        impl std::fmt::Debug for dyn $interface + '_ {
+        impl std::fmt::Debug for dyn $interface {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.pad(stringify!($interface))
             }
@@ -948,73 +938,6 @@ macro_rules! declare_binder_interface {
                     .expect(concat!("Error cloning interface ", stringify!($interface)))
             }
         }
-
-        $(
-        // Async interface trait implementations.
-        impl<P: $crate::BinderAsyncPool> $crate::FromIBinder for dyn $async_interface<P> {
-            fn try_from(mut ibinder: $crate::SpIBinder) -> $crate::Result<$crate::Strong<dyn $async_interface<P>>> {
-                use $crate::AssociateClass;
-
-                let existing_class = ibinder.get_class();
-                if let Some(class) = existing_class {
-                    if class != <$native as $crate::Remotable>::get_class() &&
-                        class.get_descriptor() == <$native as $crate::Remotable>::get_descriptor()
-                    {
-                        // The binder object's descriptor string matches what we
-                        // expect. We still need to treat this local or already
-                        // associated object as remote, because we can't cast it
-                        // into a Rust service object without a matching class
-                        // pointer.
-                        return Ok($crate::Strong::new(Box::new(<$proxy as $crate::Proxy>::from_binder(ibinder)?)));
-                    }
-                }
-
-                if ibinder.associate_class(<$native as $crate::Remotable>::get_class()) {
-                    let service: $crate::Result<$crate::Binder<$native>> =
-                        std::convert::TryFrom::try_from(ibinder.clone());
-                    if let Ok(service) = service {
-                        // We were able to associate with our expected class and
-                        // the service is local.
-                        todo!()
-                        //return Ok($crate::Strong::new(Box::new(service)));
-                    } else {
-                        // Service is remote
-                        return Ok($crate::Strong::new(Box::new(<$proxy as $crate::Proxy>::from_binder(ibinder)?)));
-                    }
-                }
-
-                Err($crate::StatusCode::BAD_TYPE.into())
-            }
-        }
-
-        impl<P: $crate::BinderAsyncPool> $crate::parcel::Serialize for dyn $async_interface<P> + '_ {
-            fn serialize(&self, parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
-                let binder = $crate::Interface::as_binder(self);
-                parcel.write(&binder)
-            }
-        }
-
-        impl<P: $crate::BinderAsyncPool> $crate::parcel::SerializeOption for dyn $async_interface<P> + '_ {
-            fn serialize_option(this: Option<&Self>, parcel: &mut $crate::parcel::Parcel) -> $crate::Result<()> {
-                parcel.write(&this.map($crate::Interface::as_binder))
-            }
-        }
-
-        impl<P: $crate::BinderAsyncPool> std::fmt::Debug for dyn $async_interface<P> + '_ {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.pad(stringify!($async_interface))
-            }
-        }
-
-        /// Convert a &dyn $async_interface to Strong<dyn $async_interface>
-        impl<P: $crate::BinderAsyncPool> std::borrow::ToOwned for dyn $async_interface<P> {
-            type Owned = $crate::Strong<dyn $async_interface<P>>;
-            fn to_owned(&self) -> Self::Owned {
-                self.as_binder().into_interface()
-                    .expect(concat!("Error cloning interface ", stringify!($async_interface)))
-            }
-        }
-        )?
     };
 }
 

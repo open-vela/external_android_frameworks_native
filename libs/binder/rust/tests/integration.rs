@@ -377,33 +377,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn check_services_async() {
-        let mut sm = binder::get_service("manager").expect("Did not get manager binder service");
-        assert!(sm.is_binder_alive());
-        assert!(sm.ping_binder().is_ok());
-
-        assert!(binder::get_service("this_service_does_not_exist").is_none());
-        assert_eq!(
-            binder_tokio::get_interface::<dyn ITest>("this_service_does_not_exist").await.err(),
-            Some(StatusCode::NAME_NOT_FOUND)
-        );
-        assert_eq!(
-            binder_tokio::get_interface::<dyn IATest<Tokio>>("this_service_does_not_exist").await.err(),
-            Some(StatusCode::NAME_NOT_FOUND)
-        );
-
-        // The service manager service isn't an ITest, so this must fail.
-        assert_eq!(
-            binder_tokio::get_interface::<dyn ITest>("manager").await.err(),
-            Some(StatusCode::BAD_TYPE)
-        );
-        assert_eq!(
-            binder_tokio::get_interface::<dyn IATest<Tokio>>("manager").await.err(),
-            Some(StatusCode::BAD_TYPE)
-        );
-    }
-
     #[test]
     fn check_wait_for_service() {
         let mut sm =
@@ -436,7 +409,7 @@ mod tests {
         let service_name = "trivial_client_test";
         let _process = ScopedServiceProcess::new(service_name);
         let test_client: Strong<dyn IATest<Tokio>> =
-            binder_tokio::get_interface(service_name).await.expect("Did not get manager binder service");
+            binder::get_interface(service_name).expect("Did not get manager binder service");
         assert_eq!(test_client.test().await.unwrap(), "trivial_client_test");
     }
 
@@ -454,7 +427,7 @@ mod tests {
         let service_name = "wait_for_trivial_client_test";
         let _process = ScopedServiceProcess::new(service_name);
         let test_client: Strong<dyn IATest<Tokio>> =
-            binder_tokio::wait_for_interface(service_name).await.expect("Did not get manager binder service");
+            binder::wait_for_interface(service_name).expect("Did not get manager binder service");
         assert_eq!(test_client.test().await.unwrap(), "wait_for_trivial_client_test");
     }
 
@@ -486,7 +459,7 @@ mod tests {
         let service_name = "get_selinux_context";
         let _process = ScopedServiceProcess::new(service_name);
         let test_client: Strong<dyn IATest<Tokio>> =
-            binder_tokio::get_interface(service_name).await.expect("Did not get manager binder service");
+            binder::get_interface(service_name).expect("Did not get manager binder service");
         assert_eq!(
             test_client.get_selinux_context().await.unwrap(),
             get_expected_selinux_context()

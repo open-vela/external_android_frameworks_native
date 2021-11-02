@@ -98,7 +98,6 @@ mod proxy;
 
 #[macro_use]
 mod binder;
-mod binder_async;
 mod error;
 mod native;
 mod state;
@@ -112,7 +111,6 @@ pub use crate::binder::{
     Stability, Strong, TransactionCode, TransactionFlags, Weak, FIRST_CALL_TRANSACTION,
     FLAG_CLEAR_BUF, FLAG_ONEWAY, FLAG_PRIVATE_LOCAL, LAST_CALL_TRANSACTION,
 };
-pub use crate::binder_async::{BoxFuture, BinderAsyncPool};
 pub use error::{status_t, ExceptionCode, Result, Status, StatusCode};
 pub use native::{add_service, force_lazy_services_persist, register_lazy_service, Binder};
 pub use parcel::{OwnedParcel, Parcel};
@@ -135,9 +133,8 @@ pub mod public_api {
         wait_for_interface,
     };
     pub use super::{
-        BinderAsyncPool, BinderFeatures, BoxFuture, DeathRecipient, ExceptionCode, IBinder,
-        Interface, ProcessState, SpIBinder, Status, StatusCode, Strong, ThreadState, Weak,
-        WpIBinder,
+        BinderFeatures, DeathRecipient, ExceptionCode, IBinder, Interface, ProcessState, SpIBinder,
+        Status, StatusCode, Strong, ThreadState, Weak, WpIBinder,
     };
 
     /// Binder result containing a [`Status`] on error.

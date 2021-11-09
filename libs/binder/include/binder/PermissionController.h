@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_PERMISSION_CONTROLLER_H
+#define ANDROID_PERMISSION_CONTROLLER_H
 
 #ifndef __ANDROID_VNDK__
 
@@ -64,3 +65,5 @@ private:
 #else // __ANDROID_VNDK__
 #error "This header is not visible to vendors"
 #endif // __ANDROID_VNDK__
+
+#endif // ANDROID_PERMISSION_CONTROLLER_H

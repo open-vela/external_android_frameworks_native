@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_IPC_THREAD_STATE_H
+#define ANDROID_IPC_THREAD_STATE_H
 
 #include <utils/Errors.h>
 #include <binder/Parcel.h>
@@ -31,8 +32,6 @@ namespace android {
 class IPCThreadState
 {
 public:
-    using CallRestriction = ProcessState::CallRestriction;
-
     static  IPCThreadState*     self();
     static  IPCThreadState*     selfOrNull();  // self(), but won't instantiate
 
@@ -48,69 +47,24 @@ public:
     // binder transactions to be processed.
     //
     // returns: 0 in case of success, a value < 0 in case of error
+    __attribute__((weak))
     static  status_t            freeze(pid_t pid, bool enabled, uint32_t timeout_ms);
 
     // Provide information about the state of a frozen process
-    static  status_t            getProcessFreezeInfo(pid_t pid, uint32_t *sync_received,
-                                                    uint32_t *async_received);
-
+    __attribute__((weak))
+    static  status_t            getProcessFreezeInfo(pid_t pid, bool *sync_received,
+                                                    bool *async_received);
             sp<ProcessState>    process();
-
+            
             status_t            clearLastError();
 
-            /**
-             * Returns the PID of the process which has made the current binder
-             * call. If not in a binder call, this will return getpid. If the
-             * call is oneway, this will return 0.
-             */
-            [[nodiscard]] pid_t getCallingPid() const;
-
-            /**
-             * Returns the SELinux security identifier of the process which has
-             * made the current binder call. If not in a binder call this will
-             * return nullptr. If this isn't requested with
-             * Binder::setRequestingSid, it will also return nullptr.
-             *
-             * This can't be restored once it's cleared, and it does not return the
-             * context of the current process when not in a binder call.
-             */
-            [[nodiscard]] const char* getCallingSid() const;
-
-            /**
-             * Returns the UID of the process which has made the current binder
-             * call. If not in a binder call, this will return 0.
-             */
-            [[nodiscard]] uid_t getCallingUid() const;
-
-            /**
-             * Make it an abort to rely on getCalling* for a section of
-             * execution.
-             *
-             * Usage:
-             *     IPCThreadState::SpGuard guard {
-             *        .address = __builtin_frame_address(0),
-             *        .context = "...",
-             *     };
-             *     const auto* orig = pushGetCallingSpGuard(&guard);
-             *     {
-             *         // will abort if you call getCalling*, unless you are
-             *         // serving a nested binder transaction
-             *     }
-             *     restoreCallingSpGuard(orig);
-             */
-            struct SpGuard {
-                const void* address;
-                const char* context;
-            };
-            const SpGuard* pushGetCallingSpGuard(const SpGuard* guard);
-            void restoreGetCallingSpGuard(const SpGuard* guard);
-            /**
-             * Used internally by getCalling*. Can also be used to assert that
-             * you are in a binder context (getCalling* is valid). This is
-             * intentionally not exposed as a boolean API since code should be
-             * written to know its environment.
-             */
-            void checkContextIsBinderForUse(const char* use) const;
+            pid_t               getCallingPid() const;
+            // nullptr if unavailable
+            //
+            // this can't be restored once it's cleared, and it does not return the
+            // context of the current process when not in a binder call.
+            const char*         getCallingSid() const;
+            uid_t               getCallingUid() const;
 
             void                setStrictModePolicy(int32_t policy);
             int32_t             getStrictModePolicy() const;
@@ -131,17 +85,13 @@ public:
             void                setLastTransactionBinderFlags(int32_t flags);
             int32_t             getLastTransactionBinderFlags() const;
 
-            void                setCallRestriction(CallRestriction restriction);
-            CallRestriction     getCallRestriction() const;
-
             int64_t             clearCallingIdentity();
             // Restores PID/UID (not SID)
             void                restoreCallingIdentity(int64_t token);
-
-            status_t            setupPolling(int* fd);
+            
+            int                 setupPolling(int* fd);
             status_t            handlePolledCommands();
             void                flushCommands();
-            bool                flushIfNeeded();
 
             void                joinThreadPool(bool isMain = true);
             
@@ -178,7 +128,7 @@ public:
             void                blockUntilThreadAvailable();
 
             // Service manager registration
-            void                setTheContextObject(const sp<BBinder>& obj);
+            void                setTheContextObject(sp<BBinder> obj);
 
             // WARNING: DO NOT USE THIS API
             //
@@ -193,6 +143,7 @@ public:
             // This constant needs to be kept in sync with Binder.UNSET_WORKSOURCE from the Java
             // side.
             static const int32_t kUnsetWorkSource = -1;
+
 private:
                                 IPCThreadState();
                                 ~IPCThreadState();
@@ -217,8 +168,9 @@ private:
     static  void                threadDestructor(void *st);
     static  void                freeBuffer(Parcel* parcel,
                                            const uint8_t* data, size_t dataSize,
-                                           const binder_size_t* objects, size_t objectsSize);
-
+                                           const binder_size_t* objects, size_t objectsSize,
+                                           void* cookie);
+    
     const   sp<ProcessState>    mProcess;
             Vector<BBinder*>    mPendingStrongDerefs;
             Vector<RefBase::weakref_type*> mPendingWeakDerefs;
@@ -228,7 +180,6 @@ private:
             Parcel              mOut;
             status_t            mLastError;
             const void*         mServingStackPointer;
-            const SpGuard* mServingStackPointerGuard;
             pid_t               mCallingPid;
             const char*         mCallingSid;
             uid_t               mCallingUid;
@@ -237,13 +188,14 @@ private:
             int32_t             mWorkSource;
             // Whether the work source should be propagated.
             bool                mPropagateWorkSource;
-            bool                mIsLooper;
-            bool mIsFlushing;
             int32_t             mStrictModePolicy;
             int32_t             mLastTransactionBinderFlags;
-            CallRestriction     mCallRestriction;
+
+            ProcessState::CallRestriction mCallRestriction;
 };
 
 } // namespace android
 
 // ---------------------------------------------------------------------------
+
+#endif // ANDROID_IPC_THREAD_STATE_H

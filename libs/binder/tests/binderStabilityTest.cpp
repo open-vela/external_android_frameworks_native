@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#include <android/binder_libbinder.h>
 #include <android/binder_manager.h>
 #include <android/binder_stability.h>
 #include <binder/Binder.h>
@@ -102,7 +101,7 @@ public:
         return Status::ok();
     }
     Status sendAndCallBinder(const sp<IBinder>& binder) override {
-        ALOGI("Debug log stability: %s", Stability::debugToString(binder).c_str());
+        Stability::debugLogStability("sendAndCallBinder got binder", binder);
         return Status::fromExceptionCode(BadStableBinder::doUserTransaction(binder));
     }
     Status returnNoStabilityBinder(sp<IBinder>* _aidl_return) override {
@@ -132,55 +131,6 @@ TEST(BinderStability, OnlyVintfStabilityBinderNeedsVintfDeclaration) {
     EXPECT_TRUE(Stability::requiresVintfDeclaration(BadStableBinder::vintf()));
 }
 
-TEST(BinderStability, ForceDowngradeToLocalStability) {
-    sp<IBinder> someBinder = BadStableBinder::vintf();
-
-    EXPECT_TRUE(Stability::requiresVintfDeclaration(someBinder));
-
-    // silly to do this after already using the binder, but it's for the test
-    Stability::forceDowngradeToLocalStability(someBinder);
-
-    EXPECT_FALSE(Stability::requiresVintfDeclaration(someBinder));
-}
-
-TEST(BinderStability, NdkForceDowngradeToLocalStability) {
-    sp<IBinder> someBinder = BadStableBinder::vintf();
-
-    EXPECT_TRUE(Stability::requiresVintfDeclaration(someBinder));
-
-    // silly to do this after already using the binder, but it's for the test
-    AIBinder_forceDowngradeToLocalStability(AIBinder_fromPlatformBinder(someBinder));
-
-    EXPECT_FALSE(Stability::requiresVintfDeclaration(someBinder));
-}
-
-TEST(BinderStability, ForceDowngradeToVendorStability) {
-    sp<IBinder> serverBinder = android::defaultServiceManager()->getService(kSystemStabilityServer);
-    auto server = interface_cast<IBinderStabilityTest>(serverBinder);
-
-    ASSERT_NE(nullptr, server.get());
-    ASSERT_NE(nullptr, IInterface::asBinder(server)->remoteBinder());
-
-    {
-        sp<BadStableBinder> binder = BadStableBinder::vintf();
-
-        EXPECT_TRUE(Stability::requiresVintfDeclaration(binder));
-        EXPECT_TRUE(server->sendAndCallBinder(binder).isOk());
-        EXPECT_TRUE(binder->gotUserTransaction);
-    }
-    {
-        sp<BadStableBinder> binder = BadStableBinder::vintf();
-
-        // This method should never be called directly. This is done only for the test.
-        Stability::forceDowngradeToVendorStability(binder);
-
-        // Binder downgraded to vendor stability, cannot be called from system context
-        EXPECT_FALSE(Stability::requiresVintfDeclaration(binder));
-        EXPECT_EQ(BAD_TYPE, server->sendAndCallBinder(binder).exceptionCode());
-        EXPECT_FALSE(binder->gotUserTransaction);
-    }
-}
-
 TEST(BinderStability, VintfStabilityServerMustBeDeclaredInManifest) {
     sp<IBinder> vintfServer = BadStableBinder::vintf();
 
@@ -192,19 +142,9 @@ TEST(BinderStability, VintfStabilityServerMustBeDeclaredInManifest) {
         EXPECT_EQ(Status::EX_ILLEGAL_ARGUMENT,
             android::defaultServiceManager()->addService(String16("."), vintfServer)) << instance8;
         EXPECT_FALSE(android::defaultServiceManager()->isDeclared(instance)) << instance8;
-        EXPECT_EQ(std::nullopt, android::defaultServiceManager()->updatableViaApex(instance))
-                << instance8;
     }
 }
 
-TEST(BinderStability, ConnectionInfoRequiresManifestEntries) {
-    sp<IServiceManager> sm = android::defaultServiceManager();
-    sp<IBinder> systemBinder = BadStableBinder::system();
-    EXPECT_EQ(OK, sm->addService(String16("no.connection.foo"), systemBinder));
-    std::optional<android::IServiceManager::ConnectionInfo> connectionInfo;
-    connectionInfo = sm->getConnectionInfo(String16("no.connection.foo"));
-    EXPECT_EQ(connectionInfo, std::nullopt);
-}
 TEST(BinderStability, CantCallVendorBinderInSystemContext) {
     sp<IBinder> serverBinder = android::defaultServiceManager()->getService(kSystemStabilityServer);
     auto server = interface_cast<IBinderStabilityTest>(serverBinder);

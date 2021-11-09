@@ -31,6 +31,7 @@
 #include <jni.h>
 
 __BEGIN_DECLS
+#if __ANDROID_API__ >= 29
 
 /**
  * Converts an android.os.IBinder object into an AIBinder* object.
@@ -66,6 +67,7 @@ __attribute__((warn_unused_result)) AIBinder* AIBinder_fromJavaBinder(JNIEnv* en
 __attribute__((warn_unused_result)) jobject AIBinder_toJavaBinder(JNIEnv* env, AIBinder* binder)
         __INTRODUCED_IN(29);
 
+#endif  //__ANDROID_API__ >= 29
 __END_DECLS
 
 /** @} */

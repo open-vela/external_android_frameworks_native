@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef ANDROID_MEMORY_BASE_H
+#define ANDROID_MEMORY_BASE_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -46,3 +47,5 @@ private:
 
 // ---------------------------------------------------------------------------
 } // namespace android
+
+#endif // ANDROID_MEMORY_BASE_H

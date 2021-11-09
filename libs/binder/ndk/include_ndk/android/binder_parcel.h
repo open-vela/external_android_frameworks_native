@@ -26,7 +26,6 @@
 
 #pragma once
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <sys/cdefs.h>
 
@@ -36,6 +35,7 @@ struct AIBinder;
 typedef struct AIBinder AIBinder;
 
 __BEGIN_DECLS
+#if __ANDROID_API__ >= 29
 
 /**
  * This object represents a package of data that can be sent between processes. When transacting, an
@@ -1118,90 +1118,7 @@ binder_status_t AParcel_readByteArray(const AParcel* parcel, void* arrayData,
 
 // @END-PRIMITIVE-READ-WRITE
 
-/**
- * Reset the parcel to the initial status.
- *
- * Available since API level 31.
- *
- * \param parcel The parcel of which to be reset.
- *
- * \return STATUS_OK on success.
- */
-binder_status_t AParcel_reset(AParcel* parcel) __INTRODUCED_IN(31);
-
-/**
- * Gets the size of the parcel.
- *
- * Available since API level 31.
- *
- * \param parcel The parcel of which to get the size.
- *
- * \return The size of the parcel.
- */
-int32_t AParcel_getDataSize(const AParcel* parcel) __INTRODUCED_IN(31);
-
-/**
- * Copy the data of a parcel to other parcel.
- *
- * Available since API level 31.
- *
- * \param from The source
- * \param to The detination
- * \param start The position where the copied data starts.
- * \param size The amount of data which will be copied.
- *
- * \return STATUS_OK on success.
- */
-binder_status_t AParcel_appendFrom(const AParcel* from, AParcel* to, int32_t start, int32_t size)
-        __INTRODUCED_IN(31);
-
-/**
- * Creates a parcel.
- *
- * Available since API level 31.
- *
- * \return A parcel which is not related to any IBinder objects.
- */
-AParcel* AParcel_create() __INTRODUCED_IN(31);
-
-/**
- * Marshals the raw bytes of the Parcel to a buffer.
- *
- * Available since API level 33.
- *
- * The parcel must not contain any binders or file descriptors.
- *
- * The data you retrieve here must not be placed in any kind of persistent storage. (on local disk,
- * across a network, etc). For that, you should use standard serialization or another kind of
- * general serialization mechanism. The Parcel marshalled representation is highly optimized for
- * local IPC, and as such does not attempt to maintain compatibility with data created in different
- * versions of the platform.
- *
- * \param parcel The parcel of which to get the data.
- * \param buffer The buffer to copy the raw bytes to.
- * \param start The start position in the buffer to copy from.
- * \param len The size of the data to copy, buffer size must be larger or equal to this.
- *
- * \return STATUS_OK on success, STATUS_INVALID_OPERATION if parcel contains binders or file
- * descriptors. STATUS_BAD_VALUE if the buffer size is less than parcel size.
- */
-binder_status_t AParcel_marshal(const AParcel* parcel, uint8_t* buffer, size_t start, size_t len)
-        __INTRODUCED_IN(33);
-
-/**
- * Set the data in the parcel to the raw bytes from the buffer.
- *
- * Available since API level 33.
- *
- * \param parcel The parcel to set data.
- * \param buffer The data buffer to set.
- * \param len The size of the data to set.
- *
- * \return STATUS_OK on success.
- */
-binder_status_t AParcel_unmarshal(AParcel* parcel, const uint8_t* buffer, size_t len)
-        __INTRODUCED_IN(33);
-
+#endif  //__ANDROID_API__ >= 29
 __END_DECLS
 
 /** @} */

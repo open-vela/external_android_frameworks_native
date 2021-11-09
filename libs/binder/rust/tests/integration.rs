@@ -17,12 +17,15 @@
 //! Rust Binder crate integration tests
 
 use binder::declare_binder_interface;
-use binder::parcel::Parcel;
+use binder::parcel::{Parcel, OwnedParcel};
 use binder::{
     Binder, BinderFeatures, IBinderInternal, Interface, StatusCode, ThreadState, TransactionCode,
     FIRST_CALL_TRANSACTION,
 };
 use std::convert::{TryFrom, TryInto};
+use std::ffi::CStr;
+use std::fs::File;
+use std::sync::Mutex;
 
 /// Name of service runner.
 ///
@@ -50,13 +53,11 @@ fn main() -> Result<(), &'static str> {
     let extension_name = args.next();
 
     {
-        let mut service = Binder::new(BnTest(Box::new(TestService {
-            s: service_name.clone(),
-        })));
+        let mut service = Binder::new(BnTest(Box::new(TestService::new(&service_name))));
         service.set_requesting_sid(true);
         if let Some(extension_name) = extension_name {
             let extension =
-                BnTest::new_binder(TestService { s: extension_name }, BinderFeatures::default());
+                BnTest::new_binder(TestService::new(&extension_name), BinderFeatures::default());
             service
                 .set_extension(&mut extension.as_binder())
                 .expect("Could not add extension");
@@ -80,14 +81,24 @@ fn print_usage() {
     ));
 }
 
-#[derive(Clone)]
 struct TestService {
     s: String,
+    dump_args: Mutex<Vec<String>>,
+}
+
+impl TestService {
+    fn new(s: &str) -> Self {
+        Self {
+            s: s.to_string(),
+            dump_args: Mutex::new(Vec::new()),
+        }
+    }
 }
 
 #[repr(u32)]
 enum TestTransactionCode {
     Test = FIRST_CALL_TRANSACTION,
+    GetDumpArgs,
     GetSelinuxContext,
 }
 
@@ -97,6 +108,7 @@ impl TryFrom<u32> for TestTransactionCode {
     fn try_from(c: u32) -> Result<Self, Self::Error> {
         match c {
             _ if c == TestTransactionCode::Test as u32 => Ok(TestTransactionCode::Test),
+            _ if c == TestTransactionCode::GetDumpArgs as u32 => Ok(TestTransactionCode::GetDumpArgs),
             _ if c == TestTransactionCode::GetSelinuxContext as u32 => {
                 Ok(TestTransactionCode::GetSelinuxContext)
             }
@@ -105,11 +117,22 @@ impl TryFrom<u32> for TestTransactionCode {
     }
 }
 
-impl Interface for TestService {}
+impl Interface for TestService {
+    fn dump(&self, _file: &File, args: &[&CStr]) -> binder::Result<()> {
+        let mut dump_args = self.dump_args.lock().unwrap();
+        dump_args.extend(args.iter().map(|s| s.to_str().unwrap().to_owned()));
+        Ok(())
+    }
+}
 
 impl ITest for TestService {
     fn test(&self) -> binder::Result<String> {
         Ok(self.s.clone())
+    }
+
+    fn get_dump_args(&self) -> binder::Result<Vec<String>> {
+        let args = self.dump_args.lock().unwrap().clone();
+        Ok(args)
     }
 
     fn get_selinux_context(&self) -> binder::Result<String> {
@@ -124,8 +147,23 @@ pub trait ITest: Interface {
     /// Returns a test string
     fn test(&self) -> binder::Result<String>;
 
+    /// Return the arguments sent via dump
+    fn get_dump_args(&self) -> binder::Result<Vec<String>>;
+
     /// Returns the caller's SELinux context
     fn get_selinux_context(&self) -> binder::Result<String>;
+}
+
+/// Async trivial testing binder interface
+pub trait IATest<P>: Interface {
+    /// Returns a test string
+    fn test(&self) -> binder::BoxFuture<'static, binder::Result<String>>;
+
+    /// Return the arguments sent via dump
+    fn get_dump_args(&self) -> binder::BoxFuture<'static, binder::Result<Vec<String>>>;
+
+    /// Returns the caller's SELinux context
+    fn get_selinux_context(&self) -> binder::BoxFuture<'static, binder::Result<String>>;
 }
 
 declare_binder_interface! {
@@ -134,6 +172,7 @@ declare_binder_interface! {
         proxy: BpTest {
             x: i32 = 100
         },
+        async: IATest,
     }
 }
 
@@ -145,6 +184,7 @@ fn on_transact(
 ) -> binder::Result<()> {
     match code.try_into()? {
         TestTransactionCode::Test => reply.write(&service.test()?),
+        TestTransactionCode::GetDumpArgs => reply.write(&service.get_dump_args()?),
         TestTransactionCode::GetSelinuxContext => reply.write(&service.get_selinux_context()?),
     }
 }
@@ -154,6 +194,13 @@ impl ITest for BpTest {
         let reply =
             self.binder
                 .transact(TestTransactionCode::Test as TransactionCode, 0, |_| Ok(()))?;
+        reply.read()
+    }
+
+    fn get_dump_args(&self) -> binder::Result<Vec<String>> {
+        let reply =
+            self.binder
+                .transact(TestTransactionCode::GetDumpArgs as TransactionCode, 0, |_| Ok(()))?;
         reply.read()
     }
 
@@ -167,13 +214,60 @@ impl ITest for BpTest {
     }
 }
 
+impl<P: binder::BinderAsyncPool> IATest<P> for BpTest {
+    fn test(&self) -> binder::BoxFuture<'static, binder::Result<String>> {
+        let binder = self.binder.clone();
+        P::spawn(
+            move || binder.transact(TestTransactionCode::Test as TransactionCode, 0, |_| Ok(())).map(|p| OwnedParcel::try_from(p).unwrap()),
+            |reply| async move { reply?.into_parcel().read() }
+        )
+    }
+
+    fn get_dump_args(&self) -> binder::BoxFuture<'static, binder::Result<Vec<String>>> {
+        let binder = self.binder.clone();
+        P::spawn(
+            move || binder.transact(TestTransactionCode::GetDumpArgs as TransactionCode, 0, |_| Ok(())).map(|p| OwnedParcel::try_from(p).unwrap()),
+            |reply| async move { reply?.into_parcel().read() }
+        )
+    }
+
+    fn get_selinux_context(&self) -> binder::BoxFuture<'static, binder::Result<String>> {
+        let binder = self.binder.clone();
+        P::spawn(
+            move || binder.transact(TestTransactionCode::GetSelinuxContext as TransactionCode, 0, |_| Ok(())).map(|p| OwnedParcel::try_from(p).unwrap()),
+            |reply| async move { reply?.into_parcel().read() }
+        )
+    }
+}
+
 impl ITest for Binder<BnTest> {
     fn test(&self) -> binder::Result<String> {
         self.0.test()
     }
 
+    fn get_dump_args(&self) -> binder::Result<Vec<String>> {
+        self.0.get_dump_args()
+    }
+
     fn get_selinux_context(&self) -> binder::Result<String> {
         self.0.get_selinux_context()
+    }
+}
+
+impl<P: binder::BinderAsyncPool> IATest<P> for Binder<BnTest> {
+    fn test(&self) -> binder::BoxFuture<'static, binder::Result<String>> {
+        let res = self.0.test();
+        Box::pin(async move { res })
+    }
+
+    fn get_dump_args(&self) -> binder::BoxFuture<'static, binder::Result<Vec<String>>> {
+        let res = self.0.get_dump_args();
+        Box::pin(async move { res })
+    }
+
+    fn get_selinux_context(&self) -> binder::BoxFuture<'static, binder::Result<String>> {
+        let res = self.0.get_selinux_context();
+        Box::pin(async move { res })
     }
 }
 
@@ -217,7 +311,9 @@ mod tests {
         SpIBinder, StatusCode, Strong,
     };
 
-    use super::{BnTest, ITest, ITestSameDescriptor, TestService, RUST_SERVICE_BINARY};
+    use binder_tokio::Tokio;
+
+    use super::{BnTest, ITest, IATest, ITestSameDescriptor, TestService, RUST_SERVICE_BINARY};
 
     pub struct ScopedServiceProcess(Child);
 
@@ -265,10 +361,63 @@ mod tests {
             binder::get_interface::<dyn ITest>("this_service_does_not_exist").err(),
             Some(StatusCode::NAME_NOT_FOUND)
         );
+        assert_eq!(
+            binder::get_interface::<dyn IATest<Tokio>>("this_service_does_not_exist").err(),
+            Some(StatusCode::NAME_NOT_FOUND)
+        );
 
         // The service manager service isn't an ITest, so this must fail.
         assert_eq!(
             binder::get_interface::<dyn ITest>("manager").err(),
+            Some(StatusCode::BAD_TYPE)
+        );
+        assert_eq!(
+            binder::get_interface::<dyn IATest<Tokio>>("manager").err(),
+            Some(StatusCode::BAD_TYPE)
+        );
+    }
+
+    #[tokio::test]
+    async fn check_services_async() {
+        let mut sm = binder::get_service("manager").expect("Did not get manager binder service");
+        assert!(sm.is_binder_alive());
+        assert!(sm.ping_binder().is_ok());
+
+        assert!(binder::get_service("this_service_does_not_exist").is_none());
+        assert_eq!(
+            binder_tokio::get_interface::<dyn ITest>("this_service_does_not_exist").await.err(),
+            Some(StatusCode::NAME_NOT_FOUND)
+        );
+        assert_eq!(
+            binder_tokio::get_interface::<dyn IATest<Tokio>>("this_service_does_not_exist").await.err(),
+            Some(StatusCode::NAME_NOT_FOUND)
+        );
+
+        // The service manager service isn't an ITest, so this must fail.
+        assert_eq!(
+            binder_tokio::get_interface::<dyn ITest>("manager").await.err(),
+            Some(StatusCode::BAD_TYPE)
+        );
+        assert_eq!(
+            binder_tokio::get_interface::<dyn IATest<Tokio>>("manager").await.err(),
+            Some(StatusCode::BAD_TYPE)
+        );
+    }
+
+    #[test]
+    fn check_wait_for_service() {
+        let mut sm =
+            binder::wait_for_service("manager").expect("Did not get manager binder service");
+        assert!(sm.is_binder_alive());
+        assert!(sm.ping_binder().is_ok());
+
+        // The service manager service isn't an ITest, so this must fail.
+        assert_eq!(
+            binder::wait_for_interface::<dyn ITest>("manager").err(),
+            Some(StatusCode::BAD_TYPE)
+        );
+        assert_eq!(
+            binder::wait_for_interface::<dyn IATest<Tokio>>("manager").err(),
             Some(StatusCode::BAD_TYPE)
         );
     }
@@ -282,33 +431,120 @@ mod tests {
         assert_eq!(test_client.test().unwrap(), "trivial_client_test");
     }
 
+    #[tokio::test]
+    async fn trivial_client_async() {
+        let service_name = "trivial_client_test";
+        let _process = ScopedServiceProcess::new(service_name);
+        let test_client: Strong<dyn IATest<Tokio>> =
+            binder_tokio::get_interface(service_name).await.expect("Did not get manager binder service");
+        assert_eq!(test_client.test().await.unwrap(), "trivial_client_test");
+    }
+
+    #[test]
+    fn wait_for_trivial_client() {
+        let service_name = "wait_for_trivial_client_test";
+        let _process = ScopedServiceProcess::new(service_name);
+        let test_client: Strong<dyn ITest> =
+            binder::wait_for_interface(service_name).expect("Did not get manager binder service");
+        assert_eq!(test_client.test().unwrap(), "wait_for_trivial_client_test");
+    }
+
+    #[tokio::test]
+    async fn wait_for_trivial_client_async() {
+        let service_name = "wait_for_trivial_client_test";
+        let _process = ScopedServiceProcess::new(service_name);
+        let test_client: Strong<dyn IATest<Tokio>> =
+            binder_tokio::wait_for_interface(service_name).await.expect("Did not get manager binder service");
+        assert_eq!(test_client.test().await.unwrap(), "wait_for_trivial_client_test");
+    }
+
+    fn get_expected_selinux_context() -> &'static str {
+        unsafe {
+            let mut out_ptr = ptr::null_mut();
+            assert_eq!(selinux_sys::getcon(&mut out_ptr), 0);
+            assert!(!out_ptr.is_null());
+            CStr::from_ptr(out_ptr)
+                .to_str()
+                .expect("context was invalid UTF-8")
+        }
+    }
+
     #[test]
     fn get_selinux_context() {
         let service_name = "get_selinux_context";
         let _process = ScopedServiceProcess::new(service_name);
         let test_client: Strong<dyn ITest> =
             binder::get_interface(service_name).expect("Did not get manager binder service");
-        let expected_context = unsafe {
-            let mut out_ptr = ptr::null_mut();
-            assert_eq!(selinux_sys::getcon(&mut out_ptr), 0);
-            assert!(!out_ptr.is_null());
-            CStr::from_ptr(out_ptr)
-        };
         assert_eq!(
             test_client.get_selinux_context().unwrap(),
-            expected_context
-                .to_str()
-                .expect("context was invalid UTF-8"),
+            get_expected_selinux_context()
         );
     }
 
-    fn register_death_notification(binder: &mut SpIBinder) -> (Arc<AtomicBool>, DeathRecipient) {
+    #[tokio::test]
+    async fn get_selinux_context_async() {
+        let service_name = "get_selinux_context";
+        let _process = ScopedServiceProcess::new(service_name);
+        let test_client: Strong<dyn IATest<Tokio>> =
+            binder_tokio::get_interface(service_name).await.expect("Did not get manager binder service");
+        assert_eq!(
+            test_client.get_selinux_context().await.unwrap(),
+            get_expected_selinux_context()
+        );
+    }
+
+    struct Bools {
+        binder_died: Arc<AtomicBool>,
+        binder_dealloc: Arc<AtomicBool>,
+    }
+
+    impl Bools {
+        fn is_dead(&self) -> bool {
+            self.binder_died.load(Ordering::Relaxed)
+        }
+        fn assert_died(&self) {
+            assert!(
+                self.is_dead(),
+                "Did not receive death notification"
+            );
+        }
+        fn assert_dropped(&self) {
+            assert!(
+                self.binder_dealloc.load(Ordering::Relaxed),
+                "Did not dealloc death notification"
+            );
+        }
+        fn assert_not_dropped(&self) {
+            assert!(
+                !self.binder_dealloc.load(Ordering::Relaxed),
+                "Dealloc death notification too early"
+            );
+        }
+    }
+
+    fn register_death_notification(binder: &mut SpIBinder) -> (Bools, DeathRecipient) {
         let binder_died = Arc::new(AtomicBool::new(false));
+        let binder_dealloc = Arc::new(AtomicBool::new(false));
+
+        struct SetOnDrop {
+            binder_dealloc: Arc<AtomicBool>,
+        }
+        impl Drop for SetOnDrop {
+            fn drop(&mut self) {
+                self.binder_dealloc.store(true, Ordering::Relaxed);
+            }
+        }
 
         let mut death_recipient = {
             let flag = binder_died.clone();
+            let set_on_drop = SetOnDrop {
+                binder_dealloc: binder_dealloc.clone(),
+            };
             DeathRecipient::new(move || {
                 flag.store(true, Ordering::Relaxed);
+                // Force the closure to take ownership of set_on_drop. When the closure is
+                // dropped, the destructor of `set_on_drop` will run.
+                let _ = &set_on_drop;
             })
         };
 
@@ -316,7 +552,12 @@ mod tests {
             .link_to_death(&mut death_recipient)
             .expect("link_to_death failed");
 
-        (binder_died, death_recipient)
+        let bools = Bools {
+            binder_died,
+            binder_dealloc,
+        };
+
+        (bools, death_recipient)
     }
 
     /// Killing a remote service should unregister the service and trigger
@@ -329,7 +570,7 @@ mod tests {
         let service_process = ScopedServiceProcess::new(service_name);
         let mut remote = binder::get_service(service_name).expect("Could not retrieve service");
 
-        let (binder_died, _recipient) = register_death_notification(&mut remote);
+        let (bools, recipient) = register_death_notification(&mut remote);
 
         drop(service_process);
         remote
@@ -339,10 +580,12 @@ mod tests {
         // Pause to ensure any death notifications get delivered
         thread::sleep(Duration::from_secs(1));
 
-        assert!(
-            binder_died.load(Ordering::Relaxed),
-            "Did not receive death notification"
-        );
+        bools.assert_died();
+        bools.assert_not_dropped();
+
+        drop(recipient);
+
+        bools.assert_dropped();
     }
 
     /// Test unregistering death notifications.
@@ -354,7 +597,7 @@ mod tests {
         let service_process = ScopedServiceProcess::new(service_name);
         let mut remote = binder::get_service(service_name).expect("Could not retrieve service");
 
-        let (binder_died, mut recipient) = register_death_notification(&mut remote);
+        let (bools, mut recipient) = register_death_notification(&mut remote);
 
         remote
             .unlink_to_death(&mut recipient)
@@ -369,9 +612,13 @@ mod tests {
         thread::sleep(Duration::from_secs(1));
 
         assert!(
-            !binder_died.load(Ordering::Relaxed),
+            !bools.is_dead(),
             "Received unexpected death notification after unlinking",
         );
+
+        bools.assert_not_dropped();
+        drop(recipient);
+        bools.assert_dropped();
     }
 
     /// Dropping a remote handle should unregister any death notifications.
@@ -383,7 +630,7 @@ mod tests {
         let service_process = ScopedServiceProcess::new(service_name);
         let mut remote = binder::get_service(service_name).expect("Could not retrieve service");
 
-        let (binder_died, _recipient) = register_death_notification(&mut remote);
+        let (bools, recipient) = register_death_notification(&mut remote);
 
         // This should automatically unregister our death notification.
         drop(remote);
@@ -396,9 +643,13 @@ mod tests {
         // We dropped the remote handle, so we should not receive the death
         // notification when the remote process dies here.
         assert!(
-            !binder_died.load(Ordering::Relaxed),
+            !bools.is_dead(),
             "Received unexpected death notification after dropping remote handle"
         );
+
+        bools.assert_not_dropped();
+        drop(recipient);
+        bools.assert_dropped();
     }
 
     /// Test IBinder interface methods not exercised elsewhere.
@@ -409,18 +660,22 @@ mod tests {
         {
             let _process = ScopedServiceProcess::new(service_name);
 
-            let mut remote = binder::get_service(service_name);
+            let test_client: Strong<dyn ITest> =
+                binder::get_interface(service_name)
+                .expect("Did not get test binder service");
+            let mut remote = test_client.as_binder();
             assert!(remote.is_binder_alive());
             remote.ping_binder().expect("Could not ping remote service");
 
-            // We're not testing the output of dump here, as that's really a
-            // property of the C++ implementation. There is the risk that the
-            // method just does nothing, but we don't want to depend on any
-            // particular output from the underlying library.
+            let dump_args = ["dump", "args", "for", "testing"];
+
             let null_out = File::open("/dev/null").expect("Could not open /dev/null");
             remote
-                .dump(&null_out, &[])
+                .dump(&null_out, &dump_args)
                 .expect("Could not dump remote service");
+
+            let remote_args = test_client.get_dump_args().expect("Could not fetched dumped args");
+            assert_eq!(dump_args, remote_args[..], "Remote args don't match call to dump");
         }
 
         // get/set_extensions is tested in test_extensions()
@@ -481,9 +736,7 @@ mod tests {
     /// rust_ndk_interop.rs
     #[test]
     fn associate_existing_class() {
-        let service = Binder::new(BnTest(Box::new(TestService {
-            s: "testing_service".to_string(),
-        })));
+        let service = Binder::new(BnTest(Box::new(TestService::new("testing_service"))));
 
         // This should succeed although we will have to treat the service as
         // remote.
@@ -497,9 +750,7 @@ mod tests {
     fn reassociate_rust_binder() {
         let service_name = "testing_service";
         let service_ibinder = BnTest::new_binder(
-            TestService {
-                s: service_name.to_string(),
-            },
+            TestService::new(service_name),
             BinderFeatures::default(),
         )
         .as_binder();
@@ -515,9 +766,7 @@ mod tests {
     fn weak_binder_upgrade() {
         let service_name = "testing_service";
         let service = BnTest::new_binder(
-            TestService {
-                s: service_name.to_string(),
-            },
+            TestService::new(service_name),
             BinderFeatures::default(),
         );
 
@@ -533,9 +782,7 @@ mod tests {
         let service_name = "testing_service";
         let weak = {
             let service = BnTest::new_binder(
-                TestService {
-                    s: service_name.to_string(),
-                },
+                TestService::new(service_name),
                 BinderFeatures::default(),
             );
 
@@ -549,9 +796,7 @@ mod tests {
     fn weak_binder_clone() {
         let service_name = "testing_service";
         let service = BnTest::new_binder(
-            TestService {
-                s: service_name.to_string(),
-            },
+            TestService::new(service_name),
             BinderFeatures::default(),
         );
 
@@ -570,20 +815,39 @@ mod tests {
     #[allow(clippy::eq_op)]
     fn binder_ord() {
         let service1 = BnTest::new_binder(
-            TestService {
-                s: "testing_service1".to_string(),
-            },
+            TestService::new("testing_service1"),
             BinderFeatures::default(),
         );
         let service2 = BnTest::new_binder(
-            TestService {
-                s: "testing_service2".to_string(),
-            },
+            TestService::new("testing_service2"),
             BinderFeatures::default(),
         );
 
         assert!(!(service1 < service1));
         assert!(!(service1 > service1));
         assert_eq!(service1 < service2, !(service2 < service1));
+    }
+
+    #[test]
+    fn binder_parcel_mixup() {
+        let service1 = BnTest::new_binder(
+            TestService::new("testing_service1"),
+            BinderFeatures::default(),
+        );
+        let service2 = BnTest::new_binder(
+            TestService::new("testing_service2"),
+            BinderFeatures::default(),
+        );
+
+        let service1 = service1.as_binder();
+        let service2 = service2.as_binder();
+
+        let parcel = service1.prepare_transact().unwrap();
+        let res = service2.submit_transact(super::TestTransactionCode::Test as binder::TransactionCode, parcel, 0);
+
+        match res {
+            Ok(_) => panic!("submit_transact should fail"),
+            Err(err) => assert_eq!(err, binder::StatusCode::BAD_VALUE),
+        }
     }
 }

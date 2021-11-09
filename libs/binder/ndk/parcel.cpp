@@ -46,8 +46,7 @@ using ArrayGetter = T (*)(const void* arrayData, size_t index);
 template <typename T>
 using ArraySetter = void (*)(void* arrayData, size_t index, T value);
 
-static binder_status_t WriteAndValidateArraySize(AParcel* parcel, bool isNullArray,
-                                                 int32_t length) {
+binder_status_t WriteAndValidateArraySize(AParcel* parcel, bool isNullArray, int32_t length) {
     // only -1 can be used to represent a null array
     if (length < -1) return STATUS_BAD_VALUE;
 
@@ -62,20 +61,8 @@ static binder_status_t WriteAndValidateArraySize(AParcel* parcel, bool isNullArr
 
     Parcel* rawParcel = parcel->get();
 
-    status_t status = rawParcel->writeInt32(length);
+    status_t status = rawParcel->writeInt32(static_cast<int32_t>(length));
     if (status != STATUS_OK) return PruneStatusT(status);
-
-    return STATUS_OK;
-}
-
-static binder_status_t ReadAndValidateArraySize(const AParcel* parcel, int32_t* length) {
-    if (status_t status = parcel->get()->readInt32(length); status != STATUS_OK) {
-        return PruneStatusT(status);
-    }
-
-    if (*length < -1) return STATUS_BAD_VALUE;  // libbinder_ndk reserves these
-    if (*length <= 0) return STATUS_OK;         // null
-    if (static_cast<size_t>(*length) > parcel->get()->dataAvail()) return STATUS_NO_MEMORY;
 
     return STATUS_OK;
 }
@@ -124,9 +111,10 @@ binder_status_t ReadArray(const AParcel* parcel, void* arrayData,
     const Parcel* rawParcel = parcel->get();
 
     int32_t length;
-    if (binder_status_t status = ReadAndValidateArraySize(parcel, &length); status != STATUS_OK) {
-        return status;
-    }
+    status_t status = rawParcel->readInt32(&length);
+
+    if (status != STATUS_OK) return PruneStatusT(status);
+    if (length < -1) return STATUS_BAD_VALUE;
 
     T* array;
     if (!allocator(arrayData, length, &array)) return STATUS_NO_MEMORY;
@@ -152,9 +140,10 @@ binder_status_t ReadArray<char16_t>(const AParcel* parcel, void* arrayData,
     const Parcel* rawParcel = parcel->get();
 
     int32_t length;
-    if (binder_status_t status = ReadAndValidateArraySize(parcel, &length); status != STATUS_OK) {
-        return status;
-    }
+    status_t status = rawParcel->readInt32(&length);
+
+    if (status != STATUS_OK) return PruneStatusT(status);
+    if (length < -1) return STATUS_BAD_VALUE;
 
     char16_t* array;
     if (!allocator(arrayData, length, &array)) return STATUS_NO_MEMORY;
@@ -166,7 +155,7 @@ binder_status_t ReadArray<char16_t>(const AParcel* parcel, void* arrayData,
     if (__builtin_smul_overflow(sizeof(char16_t), length, &size)) return STATUS_NO_MEMORY;
 
     for (int32_t i = 0; i < length; i++) {
-        status_t status = rawParcel->readChar(array + i);
+        status = rawParcel->readChar(array + i);
 
         if (status != STATUS_OK) return PruneStatusT(status);
     }
@@ -200,9 +189,10 @@ binder_status_t ReadArray(const AParcel* parcel, void* arrayData, ArrayAllocator
     const Parcel* rawParcel = parcel->get();
 
     int32_t length;
-    if (binder_status_t status = ReadAndValidateArraySize(parcel, &length); status != STATUS_OK) {
-        return status;
-    }
+    status_t status = rawParcel->readInt32(&length);
+
+    if (status != STATUS_OK) return PruneStatusT(status);
+    if (length < -1) return STATUS_BAD_VALUE;
 
     if (!allocator(arrayData, length)) return STATUS_NO_MEMORY;
 
@@ -210,7 +200,7 @@ binder_status_t ReadArray(const AParcel* parcel, void* arrayData, ArrayAllocator
 
     for (int32_t i = 0; i < length; i++) {
         T readTarget;
-        status_t status = (rawParcel->*read)(&readTarget);
+        status = (rawParcel->*read)(&readTarget);
         if (status != STATUS_OK) return PruneStatusT(status);
 
         setter(arrayData, i, readTarget);
@@ -412,10 +402,13 @@ struct StringArrayElementAllocationAdapter {
 binder_status_t AParcel_readStringArray(const AParcel* parcel, void* arrayData,
                                         AParcel_stringArrayAllocator allocator,
                                         AParcel_stringArrayElementAllocator elementAllocator) {
+    const Parcel* rawParcel = parcel->get();
+
     int32_t length;
-    if (binder_status_t status = ReadAndValidateArraySize(parcel, &length); status != STATUS_OK) {
-        return status;
-    }
+    status_t status = rawParcel->readInt32(&length);
+
+    if (status != STATUS_OK) return PruneStatusT(status);
+    if (length < -1) return STATUS_BAD_VALUE;
 
     if (!allocator(arrayData, length)) return STATUS_NO_MEMORY;
 
@@ -456,10 +449,13 @@ binder_status_t AParcel_writeParcelableArray(AParcel* parcel, const void* arrayD
 binder_status_t AParcel_readParcelableArray(const AParcel* parcel, void* arrayData,
                                             AParcel_parcelableArrayAllocator allocator,
                                             AParcel_readParcelableElement elementReader) {
+    const Parcel* rawParcel = parcel->get();
+
     int32_t length;
-    if (binder_status_t status = ReadAndValidateArraySize(parcel, &length); status != STATUS_OK) {
-        return status;
-    }
+    status_t status = rawParcel->readInt32(&length);
+
+    if (status != STATUS_OK) return PruneStatusT(status);
+    if (length < -1) return STATUS_BAD_VALUE;
 
     if (!allocator(arrayData, length)) return STATUS_NO_MEMORY;
 
@@ -671,34 +667,6 @@ binder_status_t AParcel_appendFrom(const AParcel* from, AParcel* to, int32_t sta
 
 AParcel* AParcel_create() {
     return new AParcel(nullptr);
-}
-
-binder_status_t AParcel_marshal(const AParcel* parcel, uint8_t* buffer, size_t start, size_t len) {
-    if (parcel->get()->objectsCount()) {
-        return STATUS_INVALID_OPERATION;
-    }
-    int32_t dataSize = AParcel_getDataSize(parcel);
-    if (len > static_cast<size_t>(dataSize) || start > static_cast<size_t>(dataSize) - len) {
-        return STATUS_BAD_VALUE;
-    }
-    const uint8_t* internalBuffer = parcel->get()->data();
-    memcpy(buffer, internalBuffer + start, len);
-    return STATUS_OK;
-}
-
-binder_status_t AParcel_unmarshal(AParcel* parcel, const uint8_t* buffer, size_t len) {
-    status_t status = parcel->get()->setDataSize(len);
-    if (status != ::android::OK) {
-        return PruneStatusT(status);
-    }
-    parcel->get()->setDataPosition(0);
-
-    void* raw = parcel->get()->writeInplace(len);
-    if (raw == nullptr) {
-        return STATUS_NO_MEMORY;
-    }
-    memcpy(raw, buffer, len);
-    return STATUS_OK;
 }
 
 // @END

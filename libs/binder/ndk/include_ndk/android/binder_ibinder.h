@@ -26,7 +26,6 @@
 
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <sys/cdefs.h>
 #include <sys/types.h>
@@ -36,9 +35,14 @@
 
 __BEGIN_DECLS
 
-/**
- * Flags for AIBinder_transact.
- */
+#ifndef __ANDROID_API__
+#error Android builds must be compiled against a specific API. If this is an \
+ android platform host build, you must use libbinder_ndk_host_user.
+#endif
+
+#if __ANDROID_API__ >= 29
+
+// Also see TF_* in kernel's binder.h
 typedef uint32_t binder_flags_t;
 enum {
     /**
@@ -50,10 +54,7 @@ enum {
     FLAG_ONEWAY = 0x01,
 };
 
-/**
- * Codes for AIBinder_transact. This defines the range of codes available for
- * usage. Other codes are used or reserved by the Android system.
- */
+// Also see IBinder.h in libbinder
 typedef uint32_t transaction_code_t;
 enum {
     /**
@@ -150,11 +151,6 @@ typedef void (*AIBinder_Class_onDestroy)(void* userData);
 /**
  * This is called whenever a transaction needs to be processed by a local implementation.
  *
- * This method will be called after the equivalent of
- * android.os.Parcel#enforceInterface is called. That is, the interface
- * descriptor associated with the AIBinder_Class descriptor will already be
- * checked.
- *
  * \param binder the object being transacted on.
  * \param code implementation-specific code representing which transaction should be taken.
  * \param in the implementation-specific input data to this transaction.
@@ -178,7 +174,7 @@ typedef binder_status_t (*AIBinder_Class_onTransact)(AIBinder* binder, transacti
  * Available since API level 29.
  *
  * \param interfaceDescriptor this is a unique identifier for the class. This is used internally for
- * validity checks on transactions. This should be utf-8.
+ * sanity checks on transactions.
  * \param onCreate see AIBinder_Class_onCreate.
  * \param onDestroy see AIBinder_Class_onDestroy.
  * \param onTransact see AIBinder_Class_onTransact.
@@ -213,25 +209,9 @@ typedef binder_status_t (*AIBinder_onDump)(AIBinder* binder, int fd, const char*
  *
  * Available since API level 29.
  *
- * \param clazz class which should use this dump function
- * \param onDump function to call when an instance of this binder class is being dumped.
+ * \param dump function to call when an instance of this binder class is being dumped.
  */
 void AIBinder_Class_setOnDump(AIBinder_Class* clazz, AIBinder_onDump onDump) __INTRODUCED_IN(29);
-
-/**
- * This tells users of this class not to use a transaction header. By default, libbinder_ndk users
- * read/write transaction headers implicitly (in the SDK, this must be manually written by
- * android.os.Parcel#writeInterfaceToken, and it is read/checked with
- * android.os.Parcel#enforceInterface). This method is provided in order to talk to legacy code
- * which does not write an interface token. When this is disabled, type safety is reduced, so you
- * must have a separate way of determining the binder you are talking to is the right type. Must
- * be called before any instance of the class is created.
- *
- * Available since API level 33.
- *
- * \param clazz class to disable interface header on.
- */
-void AIBinder_Class_disableInterfaceTokenHeader(AIBinder_Class* clazz) __INTRODUCED_IN(33);
 
 /**
  * Creates a new binder object of the appropriate class.
@@ -289,7 +269,7 @@ bool AIBinder_isAlive(const AIBinder* binder) __INTRODUCED_IN(29);
 /**
  * Built-in transaction for all binder objects. This sends a transaction that will immediately
  * return. Usually this is used to make sure that a binder is alive, as a placeholder call, or as a
- * consistency check.
+ * sanity check.
  *
  * Available since API level 29.
  *
@@ -319,9 +299,9 @@ binder_status_t AIBinder_dump(AIBinder* binder, int fd, const char** args, uint3
 /**
  * Registers for notifications that the associated binder is dead. The same death recipient may be
  * associated with multiple different binders. If the binder is local, then no death recipient will
- * be given (since if the local process dies, then no recipient will exist to receive a
+ * be given (since if the local process dies, then no recipient will exist to recieve a
  * transaction). The cookie is passed to recipient in the case that this binder dies and can be
- * null. The exact cookie must also be used to unlink this transaction (see AIBinder_unlinkToDeath).
+ * null. The exact cookie must also be used to unlink this transaction (see AIBinder_linkToDeath).
  * This function may return a binder transaction failure. The cookie can be used both for
  * identification and holding user data.
  *
@@ -347,10 +327,6 @@ binder_status_t AIBinder_linkToDeath(AIBinder* binder, AIBinder_DeathRecipient* 
  * AIBinder objects. If the death recipient is deleted, all binders will automatically be unlinked.
  * If the binder dies, it will automatically unlink. If the binder is deleted, it will be
  * automatically unlinked.
- *
- * Be aware that it is not safe to immediately deallocate the cookie when this call returns. If you
- * need to clean up the cookie, you should do so in the onUnlinked callback, which can be set using
- * AIBinder_DeathRecipient_setOnUnlinked.
  *
  * Available since API level 29.
  *
@@ -393,14 +369,6 @@ uid_t AIBinder_getCallingUid() __INTRODUCED_IN(29);
 pid_t AIBinder_getCallingPid() __INTRODUCED_IN(29);
 
 /**
- * Determine whether the current thread is currently executing an incoming transaction.
- *
- * \return true if the current thread is currently executing an incoming transaction, and false
- * otherwise.
- */
-bool AIBinder_isHandlingTransaction() __INTRODUCED_IN(33);
-
-/**
  * This can only be called if a strong reference to this object already exists in process.
  *
  * Available since API level 29.
@@ -438,8 +406,6 @@ int32_t AIBinder_debugGetRefCount(AIBinder* binder) __INTRODUCED_IN(29);
  *
  * This returns true if the class association succeeds. If it fails, no change is made to the
  * binder object.
- *
- * Warning: this may fail if the binder is dead.
  *
  * Available since API level 29.
  *
@@ -484,14 +450,12 @@ void* AIBinder_getUserData(AIBinder* binder) __INTRODUCED_IN(29);
  */
 
 /**
- * Creates a parcel to start filling out for a transaction. This will add a header to the
- * transaction that corresponds to android.os.Parcel#writeInterfaceToken. This may add debugging
- * or other information to the transaction for platform use or to enable other features to work. The
- * contents of this header is a platform implementation detail, and it is required to use
- * libbinder_ndk. This parcel is to be sent via AIBinder_transact and it represents the input data
- * to the transaction. It is recommended to check if the object is local and call directly into its
- * user data before calling this as the parceling and unparceling cost can be avoided. This AIBinder
- * must be either built with a class or associated with a class before using this API.
+ * Creates a parcel to start filling out for a transaction. This may add data to the parcel for
+ * security, debugging, or other purposes. This parcel is to be sent via AIBinder_transact and it
+ * represents the input data to the transaction. It is recommended to check if the object is local
+ * and call directly into its user data before calling this as the parceling and unparceling cost
+ * can be avoided. This AIBinder must be either built with a class or associated with a class before
+ * using this API.
  *
  * This does not affect the ownership of binder. When this function succeeds, the in parcel's
  * ownership is passed to the caller. At this point, the parcel can be filled out and passed to
@@ -580,22 +544,6 @@ __attribute__((warn_unused_result)) AIBinder* AIBinder_Weak_promote(AIBinder_Wea
 typedef void (*AIBinder_DeathRecipient_onBinderDied)(void* cookie) __INTRODUCED_IN(29);
 
 /**
- * This function is intended for cleaning up the data in the provided cookie, and it is executed
- * when the DeathRecipient is unlinked. When the DeathRecipient is unlinked due to a death receipt,
- * this method is called after the call to onBinderDied.
- *
- * This method is called once for each binder that is unlinked. Hence, if the same cookie is passed
- * to multiple binders, then the caller is responsible for reference counting the cookie.
- *
- * See also AIBinder_linkToDeath/AIBinder_unlinkToDeath.
- *
- * Available since API level 33.
- *
- * \param cookie the cookie passed to AIBinder_linkToDeath.
- */
-typedef void (*AIBinder_DeathRecipient_onBinderUnlinked)(void* cookie) __INTRODUCED_IN(33);
-
-/**
  * Creates a new binder death recipient. This can be attached to multiple different binder objects.
  *
  * Available since API level 29.
@@ -608,52 +556,18 @@ __attribute__((warn_unused_result)) AIBinder_DeathRecipient* AIBinder_DeathRecip
         AIBinder_DeathRecipient_onBinderDied onBinderDied) __INTRODUCED_IN(29);
 
 /**
- * Set the callback to be called when this DeathRecipient is unlinked from a binder. The callback is
- * called in the following situations:
- *
- *  1. If the binder died, shortly after the call to onBinderDied.
- *  2. If the binder is explicitly unlinked with AIBinder_unlinkToDeath or
- *     AIBinder_DeathRecipient_delete.
- *  3. During or shortly after the AIBinder_linkToDeath call if it returns an error.
- *
- * It is guaranteed that the callback is called exactly once for each call to linkToDeath unless the
- * process is aborted before the binder is unlinked.
- *
- * Be aware that when the binder is explicitly unlinked, it is not guaranteed that onUnlinked has
- * been called before the call to AIBinder_unlinkToDeath or AIBinder_DeathRecipient_delete returns.
- * For example, if the binder dies concurrently with a call to AIBinder_unlinkToDeath, the binder is
- * not unlinked until after the death notification is delivered, even if AIBinder_unlinkToDeath
- * returns before that happens.
- *
- * This method should be called before linking the DeathRecipient to a binder because the function
- * pointer is cached. If you change it after linking to a binder, it is unspecified whether the old
- * binder will call the old or new onUnlinked callback.
- *
- * The onUnlinked argument may be null. In this case, no notification is given when the binder is
- * unlinked.
- *
- * Available since API level 33.
- *
- * \param recipient the DeathRecipient to set the onUnlinked callback for.
- * \param onUnlinked the callback to call when a binder is unlinked from recipient.
- */
-void AIBinder_DeathRecipient_setOnUnlinked(AIBinder_DeathRecipient* recipient,
-                                           AIBinder_DeathRecipient_onBinderUnlinked onUnlinked)
-        __INTRODUCED_IN(33);
-
-/**
  * Deletes a binder death recipient. It is not necessary to call AIBinder_unlinkToDeath before
  * calling this as these will all be automatically unlinked.
- *
- * Be aware that it is not safe to immediately deallocate the cookie when this call returns. If you
- * need to clean up the cookie, you should do so in the onUnlinked callback, which can be set using
- * AIBinder_DeathRecipient_setOnUnlinked.
  *
  * Available since API level 29.
  *
  * \param recipient the binder to delete (previously created with AIBinder_DeathRecipient_new).
  */
 void AIBinder_DeathRecipient_delete(AIBinder_DeathRecipient* recipient) __INTRODUCED_IN(29);
+
+#endif  //__ANDROID_API__ >= 29
+
+#if __ANDROID_API__ >= 30
 
 /**
  * Gets the extension registered with AIBinder_setExtension.
@@ -724,91 +638,7 @@ binder_status_t AIBinder_getExtension(AIBinder* binder, AIBinder** outExt) __INT
  */
 binder_status_t AIBinder_setExtension(AIBinder* binder, AIBinder* ext) __INTRODUCED_IN(30);
 
-/**
- * Retrieve the class descriptor for the class.
- *
- * Available since API level 31.
- *
- * \param clazz the class to fetch the descriptor from
- *
- * \return the class descriptor string. This pointer will never be null; a
- * descriptor is required to define a class. The pointer is owned by the class
- * and will remain valid as long as the class does. For a local class, this will
- * be the same value (not necessarily pointer equal) as is passed into
- * AIBinder_Class_define. Format is utf-8.
- */
-const char* AIBinder_Class_getDescriptor(const AIBinder_Class* clazz) __INTRODUCED_IN(31);
-
-/**
- * Whether AIBinder is less than another.
- *
- * This provides a per-process-unique total ordering of binders where a null
- * AIBinder* object is considered to be before all other binder objects.
- * For instance, two binders refer to the same object in a local or remote
- * process when both AIBinder_lt(a, b) and AIBinder(b, a) are false. This API
- * might be used to insert and lookup binders in binary search trees.
- *
- * AIBinder* pointers themselves actually also create a per-process-unique total
- * ordering. However, this ordering is inconsistent with AIBinder_Weak_lt for
- * remote binders. So, in general, this function should be preferred.
- *
- * Available since API level 31.
- *
- * \param lhs comparison object
- * \param rhs comparison object
- *
- * \return whether "lhs < rhs" is true
- */
-bool AIBinder_lt(const AIBinder* lhs, const AIBinder* rhs) __INTRODUCED_IN(31);
-
-/**
- * Clone an AIBinder_Weak. Useful because even if a weak binder promotes to a
- * null value, after further binder transactions, it may no longer promote to a
- * null value.
- *
- * Available since API level 31.
- *
- * \param weak Object to clone
- *
- * \return clone of the input parameter. This must be deleted with
- * AIBinder_Weak_delete. Null if weak input parameter is also null.
- */
-AIBinder_Weak* AIBinder_Weak_clone(const AIBinder_Weak* weak) __INTRODUCED_IN(31);
-
-/**
- * Whether AIBinder_Weak is less than another.
- *
- * This provides a per-process-unique total ordering of binders which is exactly
- * the same as AIBinder_lt. Similarly, a null AIBinder_Weak* is considered to be
- * ordered before all other weak references.
- *
- * This function correctly distinguishes binders even if one is deallocated. So,
- * for instance, an AIBinder_Weak* entry representing a deleted binder will
- * never compare as equal to an AIBinder_Weak* entry which represents a
- * different allocation of a binder, even if the two binders were originally
- * allocated at the same address. That is:
- *
- *     AIBinder* a = ...; // imagine this has address 0x8
- *     AIBinder_Weak* bWeak = AIBinder_Weak_new(a);
- *     AIBinder_decStrong(a); // a may be deleted, if this is the last reference
- *     AIBinder* b = ...; // imagine this has address 0x8 (same address as b)
- *     AIBinder_Weak* bWeak = AIBinder_Weak_new(b);
- *
- * Then when a/b are compared with other binders, their order will be preserved,
- * and it will either be the case that AIBinder_Weak_lt(aWeak, bWeak) OR
- * AIBinder_Weak_lt(bWeak, aWeak), but not both.
- *
- * Unlike AIBinder*, the AIBinder_Weak* addresses themselves have nothing to do
- * with the underlying binder.
- *
- * Available since API level 31.
- *
- * \param lhs comparison object
- * \param rhs comparison object
- *
- * \return whether "lhs < rhs" is true
- */
-bool AIBinder_Weak_lt(const AIBinder_Weak* lhs, const AIBinder_Weak* rhs) __INTRODUCED_IN(31);
+#endif  //__ANDROID_API__ >= 30
 
 __END_DECLS
 

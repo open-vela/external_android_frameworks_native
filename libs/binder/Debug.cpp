@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#include <binder/Debug.h>
+#include "Debug.h"
+
 #include <binder/ProcessState.h>
 
 #include <utils/misc.h>
@@ -208,7 +209,7 @@ void printHexData(int32_t indent, const void *buf, size_t length,
     }
 
     for (offset = 0; ; offset += bytesPerLine, pos += bytesPerLine) {
-        long remain = length;
+        ssize_t remain = length;
 
         char* c = buffer;
         if (!oneLine && !cStyle) {

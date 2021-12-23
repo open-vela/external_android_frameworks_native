@@ -28,9 +28,6 @@
 
 #ifndef VENDORSERVICEMANAGER
 #include <vintf/VintfObject.h>
-#ifdef __ANDROID_RECOVERY__
-#include <vintf/VintfObjectRecovery.h>
-#endif // __ANDROID_RECOVERY__
 #include <vintf/constants.h>
 #endif  // !VENDORSERVICEMANAGER
 
@@ -40,33 +37,16 @@ using ::android::internal::Stability;
 namespace android {
 
 #ifndef VENDORSERVICEMANAGER
-
 struct ManifestWithDescription {
     std::shared_ptr<const vintf::HalManifest> manifest;
     const char* description;
 };
-static std::vector<ManifestWithDescription> GetManifestsWithDescription() {
-#ifdef __ANDROID_RECOVERY__
-    auto vintfObject = vintf::VintfObjectRecovery::GetInstance();
-    if (vintfObject == nullptr) {
-        LOG(ERROR) << "NULL VintfObjectRecovery!";
-        return {};
-    }
-    return {ManifestWithDescription{vintfObject->getRecoveryHalManifest(), "recovery"}};
-#else
-    auto vintfObject = vintf::VintfObject::GetInstance();
-    if (vintfObject == nullptr) {
-        LOG(ERROR) << "NULL VintfObject!";
-        return {};
-    }
-    return {ManifestWithDescription{vintfObject->getDeviceHalManifest(), "device"},
-            ManifestWithDescription{vintfObject->getFrameworkHalManifest(), "framework"}};
-#endif
-}
-
 // func true -> stop search and forEachManifest will return true
 static bool forEachManifest(const std::function<bool(const ManifestWithDescription&)>& func) {
-    for (const ManifestWithDescription& mwd : GetManifestsWithDescription()) {
+    for (const ManifestWithDescription& mwd : {
+            ManifestWithDescription{ vintf::VintfObject::GetDeviceHalManifest(), "device" },
+            ManifestWithDescription{ vintf::VintfObject::GetFrameworkHalManifest(), "framework" },
+        }) {
         if (mwd.manifest == nullptr) {
           LOG(ERROR) << "NULL VINTF MANIFEST!: " << mwd.description;
           // note, we explicitly do not retry here, so that we can detect VINTF
@@ -113,8 +93,8 @@ static bool isVintfDeclared(const std::string& name) {
     if (!found) {
         // Although it is tested, explicitly rebuilding qualified name, in case it
         // becomes something unexpected.
-        LOG(INFO) << "Could not find " << aname.package << "." << aname.iface << "/"
-                  << aname.instance << " in the VINTF manifest.";
+        LOG(ERROR) << "Could not find " << aname.package << "." << aname.iface << "/"
+                   << aname.instance << " in the VINTF manifest.";
     }
 
     return found;
@@ -139,35 +119,6 @@ static std::optional<std::string> getVintfUpdatableApex(const std::string& name)
     });
 
     return updatableViaApex;
-}
-
-static std::optional<ConnectionInfo> getVintfConnectionInfo(const std::string& name) {
-    AidlName aname;
-    if (!AidlName::fill(name, &aname)) return std::nullopt;
-
-    std::optional<std::string> ip;
-    std::optional<uint64_t> port;
-    forEachManifest([&](const ManifestWithDescription& mwd) {
-        mwd.manifest->forEachInstance([&](const auto& manifestInstance) {
-            if (manifestInstance.format() != vintf::HalFormat::AIDL) return true;
-            if (manifestInstance.package() != aname.package) return true;
-            if (manifestInstance.interface() != aname.iface) return true;
-            if (manifestInstance.instance() != aname.instance) return true;
-            ip = manifestInstance.ip();
-            port = manifestInstance.port();
-            return false; // break (libvintf uses opposite convention)
-        });
-        return false; // continue
-    });
-
-    if (ip.has_value() && port.has_value()) {
-        ConnectionInfo info;
-        info.ipAddress = *ip;
-        info.port = *port;
-        return std::make_optional<ConnectionInfo>(info);
-    } else {
-        return std::nullopt;
-    }
 }
 
 static std::vector<std::string> getVintfInstances(const std::string& interface) {
@@ -482,22 +433,6 @@ Status ServiceManager::updatableViaApex(const std::string& name,
 
 #ifndef VENDORSERVICEMANAGER
     *outReturn = getVintfUpdatableApex(name);
-#endif
-    return Status::ok();
-}
-
-Status ServiceManager::getConnectionInfo(const std::string& name,
-                                         std::optional<ConnectionInfo>* outReturn) {
-    auto ctx = mAccess->getCallingContext();
-
-    if (!mAccess->canFind(ctx, name)) {
-        return Status::fromExceptionCode(Status::EX_SECURITY);
-    }
-
-    *outReturn = std::nullopt;
-
-#ifndef VENDORSERVICEMANAGER
-    *outReturn = getVintfConnectionInfo(name);
 #endif
     return Status::ok();
 }

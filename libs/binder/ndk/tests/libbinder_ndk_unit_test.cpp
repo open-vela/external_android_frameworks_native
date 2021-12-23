@@ -39,7 +39,6 @@
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
-#include <thread>
 #include "android/binder_ibinder.h"
 
 using namespace android;
@@ -224,17 +223,6 @@ bool isServiceRunning(const char* serviceName) {
     return true;
 }
 
-TEST(NdkBinder, DetectDoubleOwn) {
-    auto badService = ndk::SharedRefBase::make<MyBinderNdkUnitTest>();
-    EXPECT_DEATH(std::shared_ptr<MyBinderNdkUnitTest>(badService.get()),
-                 "Is this object double-owned?");
-}
-
-TEST(NdkBinder, DetectNoSharedRefBaseCreated) {
-    EXPECT_DEATH(std::make_shared<MyBinderNdkUnitTest>(),
-                 "SharedRefBase: no ref created during lifetime");
-}
-
 TEST(NdkBinder, GetServiceThatDoesntExist) {
     sp<IFoo> foo = IFoo::getService("asdfghkl;");
     EXPECT_EQ(nullptr, foo.get());
@@ -280,27 +268,6 @@ TEST(NdkBinder, DoubleNumber) {
     int32_t out;
     EXPECT_EQ(STATUS_OK, foo->doubleNumber(1, &out));
     EXPECT_EQ(2, out);
-}
-
-TEST(NdkBinder, GetTestServiceStressTest) {
-    // libbinder has some complicated logic to make sure only one instance of
-    // ABpBinder is associated with each binder.
-
-    constexpr size_t kNumThreads = 10;
-    constexpr size_t kNumCalls = 1000;
-    std::vector<std::thread> threads;
-
-    for (size_t i = 0; i < kNumThreads; i++) {
-        threads.push_back(std::thread([&]() {
-            for (size_t j = 0; j < kNumCalls; j++) {
-                auto binder =
-                        ndk::SpAIBinder(AServiceManager_checkService(IFoo::kSomeInstanceName));
-                EXPECT_EQ(STATUS_OK, AIBinder_ping(binder.get()));
-            }
-        }));
-    }
-
-    for (auto& thread : threads) thread.join();
 }
 
 void defaultInstanceCounter(const char* instance, void* context) {
@@ -395,16 +362,9 @@ TEST(NdkBinder, ActiveServicesCallbackTest) {
             << "Service failed to shut down.";
 }
 
-struct DeathRecipientCookie {
-    std::function<void(void)>*onDeath, *onUnlink;
-};
 void LambdaOnDeath(void* cookie) {
-    auto funcs = static_cast<DeathRecipientCookie*>(cookie);
-    (*funcs->onDeath)();
-};
-void LambdaOnUnlink(void* cookie) {
-    auto funcs = static_cast<DeathRecipientCookie*>(cookie);
-    (*funcs->onUnlink)();
+    auto onDeath = static_cast<std::function<void(void)>*>(cookie);
+    (*onDeath)();
 };
 TEST(NdkBinder, DeathRecipient) {
     using namespace std::chrono_literals;
@@ -416,46 +376,26 @@ TEST(NdkBinder, DeathRecipient) {
 
     std::mutex deathMutex;
     std::condition_variable deathCv;
-    bool deathReceived = false;
+    bool deathRecieved = false;
 
     std::function<void(void)> onDeath = [&] {
         std::cerr << "Binder died (as requested)." << std::endl;
-        deathReceived = true;
+        deathRecieved = true;
         deathCv.notify_one();
     };
 
-    std::mutex unlinkMutex;
-    std::condition_variable unlinkCv;
-    bool unlinkReceived = false;
-    bool wasDeathReceivedFirst = false;
-
-    std::function<void(void)> onUnlink = [&] {
-        std::cerr << "Binder unlinked (as requested)." << std::endl;
-        wasDeathReceivedFirst = deathReceived;
-        unlinkReceived = true;
-        unlinkCv.notify_one();
-    };
-
-    DeathRecipientCookie cookie = {&onDeath, &onUnlink};
-
     AIBinder_DeathRecipient* recipient = AIBinder_DeathRecipient_new(LambdaOnDeath);
-    AIBinder_DeathRecipient_setOnUnlinked(recipient, LambdaOnUnlink);
 
-    EXPECT_EQ(STATUS_OK, AIBinder_linkToDeath(binder, recipient, static_cast<void*>(&cookie)));
+    EXPECT_EQ(STATUS_OK, AIBinder_linkToDeath(binder, recipient, static_cast<void*>(&onDeath)));
 
     // the binder driver should return this if the service dies during the transaction
     EXPECT_EQ(STATUS_DEAD_OBJECT, foo->die());
 
     foo = nullptr;
 
-    std::unique_lock<std::mutex> lockDeath(deathMutex);
-    EXPECT_TRUE(deathCv.wait_for(lockDeath, 1s, [&] { return deathReceived; }));
-    EXPECT_TRUE(deathReceived);
-
-    std::unique_lock<std::mutex> lockUnlink(unlinkMutex);
-    EXPECT_TRUE(deathCv.wait_for(lockUnlink, 1s, [&] { return unlinkReceived; }));
-    EXPECT_TRUE(unlinkReceived);
-    EXPECT_TRUE(wasDeathReceivedFirst);
+    std::unique_lock<std::mutex> lock(deathMutex);
+    EXPECT_TRUE(deathCv.wait_for(lock, 1s, [&] { return deathRecieved; }));
+    EXPECT_TRUE(deathRecieved);
 
     AIBinder_DeathRecipient_delete(recipient);
     AIBinder_decStrong(binder);
@@ -504,31 +444,6 @@ class MyTestFoo : public IFoo {
         return STATUS_OK;
     }
 };
-
-TEST(NdkBinder, SetInheritRt) {
-    // functional test in binderLibTest
-    sp<IFoo> foo = sp<MyTestFoo>::make();
-    AIBinder* binder = foo->getBinder();
-
-    // does not abort
-    AIBinder_setInheritRt(binder, true);
-    AIBinder_setInheritRt(binder, false);
-    AIBinder_setInheritRt(binder, true);
-
-    AIBinder_decStrong(binder);
-}
-
-TEST(NdkBinder, SetInheritRtNonLocal) {
-    AIBinder* binder = AServiceManager_getService(kExistingNonNdkService);
-    ASSERT_NE(binder, nullptr);
-
-    ASSERT_TRUE(AIBinder_isRemote(binder));
-
-    EXPECT_DEATH(AIBinder_setInheritRt(binder, true), "");
-    EXPECT_DEATH(AIBinder_setInheritRt(binder, false), "");
-
-    AIBinder_decStrong(binder);
-}
 
 TEST(NdkBinder, AddNullService) {
     EXPECT_EQ(EX_ILLEGAL_ARGUMENT, AServiceManager_addService(nullptr, "any-service-name"));
@@ -750,29 +665,6 @@ TEST(NdkBinder, UseHandleShellCommand) {
 
 TEST(NdkBinder, GetClassInterfaceDescriptor) {
     ASSERT_STREQ(IFoo::kIFooDescriptor, AIBinder_Class_getDescriptor(IFoo::kClass));
-}
-
-static void addOne(int* to) {
-    if (!to) return;
-    ++(*to);
-}
-struct FakeResource : public ndk::impl::ScopedAResource<int*, addOne, nullptr> {
-    explicit FakeResource(int* a) : ScopedAResource(a) {}
-};
-
-TEST(NdkBinder_ScopedAResource, GetDelete) {
-    int deleteCount = 0;
-    { FakeResource resource(&deleteCount); }
-    EXPECT_EQ(deleteCount, 1);
-}
-
-TEST(NdkBinder_ScopedAResource, Release) {
-    int deleteCount = 0;
-    {
-        FakeResource resource(&deleteCount);
-        (void)resource.release();
-    }
-    EXPECT_EQ(deleteCount, 0);
 }
 
 int main(int argc, char* argv[]) {

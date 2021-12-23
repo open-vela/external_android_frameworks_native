@@ -13,8 +13,6 @@ rust_test {
     rustlibs: [
         "libbinder_rs",
         "libselinux_bindgen",
-        "libbinder_tokio_rs",
-        "libtokio",
     ],
     shared_libs: [
         "libselinux",
@@ -52,7 +50,7 @@ cc_test {
         "libbinder_ndk",
     ],
     static_libs: [
-        "IBinderRustNdkInteropTest-ndk",
+        "IBinderRustNdkInteropTest-ndk_platform",
         "libbinder_ndk_rust_interop",
     ],
     test_suites: ["general-tests"],

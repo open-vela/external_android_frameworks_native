@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include <array>
 #include <map> // for legacy reasons
 #include <string>
 #include <type_traits>
@@ -54,9 +53,6 @@ class ProcessState;
 class RpcSession;
 class String8;
 class TextOutput;
-namespace binder {
-class Status;
-}
 
 class Parcel {
     friend class IPCThreadState;
@@ -85,15 +81,12 @@ public:
                                    size_t start, size_t len);
 
     int                 compareData(const Parcel& other);
-    status_t compareDataInRange(size_t thisOffset, const Parcel& other, size_t otherOffset,
-                                size_t length, int* result) const;
 
     bool                allowFds() const;
     bool                pushAllowFds(bool allowFds);
     void                restoreAllowFds(bool lastValue);
 
     bool                hasFileDescriptors() const;
-    status_t hasFileDescriptorsInRange(size_t offset, size_t length, bool* result) const;
 
     // Zeros data when reallocating. Other mitigations may be added
     // in the future.
@@ -133,10 +126,6 @@ public:
                                          size_t len,
                                          IPCThreadState* threadState = nullptr) const;
     bool                checkInterface(IBinder*) const;
-
-    // Verify there are no bytes left to be read on the Parcel.
-    // Returns Status(EX_BAD_PARCELABLE) when the Parcel is not consumed.
-    binder::Status enforceNoDataAvail() const;
 
     void                freeData();
 
@@ -215,32 +204,6 @@ public:
     status_t            writeStrongBinderVector(const std::unique_ptr<std::vector<sp<IBinder>>>& val) __attribute__((deprecated("use std::optional version instead")));
     status_t            writeStrongBinderVector(const std::vector<sp<IBinder>>& val);
 
-    // Write an IInterface or a vector of IInterface's
-    template <typename T,
-              std::enable_if_t<std::is_base_of_v<::android::IInterface, T>, bool> = true>
-    status_t writeStrongBinder(const sp<T>& val) {
-        return writeStrongBinder(T::asBinder(val));
-    }
-    template <typename T,
-              std::enable_if_t<std::is_base_of_v<::android::IInterface, T>, bool> = true>
-    status_t writeStrongBinderVector(const std::vector<sp<T>>& val) {
-        return writeData(val);
-    }
-    template <typename T,
-              std::enable_if_t<std::is_base_of_v<::android::IInterface, T>, bool> = true>
-    status_t writeStrongBinderVector(const std::optional<std::vector<sp<T>>>& val) {
-        return writeData(val);
-    }
-
-    template <typename T, size_t N>
-    status_t writeFixedArray(const std::array<T, N>& val) {
-        return writeData(val);
-    }
-    template <typename T, size_t N>
-    status_t writeFixedArray(const std::optional<std::array<T, N>>& val) {
-        return writeData(val);
-    }
-
     // Write an Enum vector with underlying type int8_t.
     // Does not use padding; each byte is contiguous.
     template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
@@ -282,10 +245,9 @@ public:
     template<typename T>
     status_t            writeNullableParcelable(const std::optional<T>& parcelable)
             { return writeData(parcelable); }
-    template <typename T>
-    status_t writeNullableParcelable(const std::unique_ptr<T>& parcelable) {
-        return writeData(parcelable);
-    }
+    template<typename T>
+    status_t            writeNullableParcelable(const std::unique_ptr<T>& parcelable) __attribute__((deprecated("use std::optional version instead")))
+            { return writeData(parcelable); }
 
     status_t            writeParcelable(const Parcelable& parcelable);
 
@@ -439,10 +401,9 @@ public:
     template<typename T>
     status_t            readParcelable(std::optional<T>* parcelable) const
             { return readData(parcelable); }
-    template <typename T>
-    status_t readParcelable(std::unique_ptr<T>* parcelable) const {
-        return readData(parcelable);
-    }
+    template<typename T>
+    status_t            readParcelable(std::unique_ptr<T>* parcelable) const __attribute__((deprecated("use std::optional version instead")))
+            { return readData(parcelable); }
 
     // If strong binder would be nullptr, readStrongBinder() returns an error.
     // TODO: T must be derived from IInterface, fix for clarity.
@@ -455,16 +416,6 @@ public:
     status_t            readStrongBinderVector(std::optional<std::vector<sp<IBinder>>>* val) const;
     status_t            readStrongBinderVector(std::unique_ptr<std::vector<sp<IBinder>>>* val) const __attribute__((deprecated("use std::optional version instead")));
     status_t            readStrongBinderVector(std::vector<sp<IBinder>>* val) const;
-    template <typename T,
-              std::enable_if_t<std::is_base_of_v<::android::IInterface, T>, bool> = true>
-    status_t readStrongBinderVector(std::vector<sp<T>>* val) const {
-        return readData(val);
-    }
-    template <typename T,
-              std::enable_if_t<std::is_base_of_v<::android::IInterface, T>, bool> = true>
-    status_t readStrongBinderVector(std::optional<std::vector<sp<T>>>* val) const {
-        return readData(val);
-    }
 
     status_t            readByteVector(std::optional<std::vector<int8_t>>* val) const;
     status_t            readByteVector(std::unique_ptr<std::vector<int8_t>>* val) const __attribute__((deprecated("use std::optional version instead")));
@@ -503,15 +454,6 @@ public:
     status_t            readUtf8VectorFromUtf16Vector(
                             std::unique_ptr<std::vector<std::unique_ptr<std::string>>>* val) const __attribute__((deprecated("use std::optional version instead")));
     status_t            readUtf8VectorFromUtf16Vector(std::vector<std::string>* val) const;
-
-    template <typename T, size_t N>
-    status_t readFixedArray(std::array<T, N>* val) const {
-        return readData(val);
-    }
-    template <typename T, size_t N>
-    status_t readFixedArray(std::optional<std::array<T, N>>* val) const {
-        return readData(val);
-    }
 
     template<typename T>
     status_t            read(Flattenable<T>& val) const;
@@ -618,8 +560,6 @@ private:
     status_t            finishUnflattenBinder(const sp<IBinder>& binder, sp<IBinder>* out) const;
     status_t            flattenBinder(const sp<IBinder>& binder);
     status_t            unflattenBinder(sp<IBinder>* out) const;
-
-    status_t readOutVectorSizeWithCheck(size_t elmSize, int32_t* size) const;
 
     template<class T>
     status_t            readAligned(T *pArg) const;
@@ -844,16 +784,6 @@ private:
             || is_specialization_v<T, std::unique_ptr>
             || is_specialization_v<T, std::shared_ptr>;
 
-    // Tells if T is a fixed-size array.
-    template <typename T>
-    struct is_fixed_array : std::false_type {};
-
-    template <typename T, size_t N>
-    struct is_fixed_array<std::array<T, N>> : std::true_type {};
-
-    template <typename T>
-    static inline constexpr bool is_fixed_array_v = is_fixed_array<T>::value;
-
     // special int32 value to indicate NonNull or Null parcelables
     // This is fixed to be only 0 or 1 by contract, do not change.
     static constexpr int32_t kNonNullParcelableFlag = 1;
@@ -958,9 +888,7 @@ private:
             if (!c) return writeData(static_cast<int32_t>(kNullVectorSize));
         } else if constexpr (std::is_base_of_v<Parcelable, T>) {
             if (!c) return writeData(static_cast<int32_t>(kNullParcelableFlag));
-        } else if constexpr (is_fixed_array_v<T>) {
-            if (!c) return writeData(static_cast<int32_t>(kNullVectorSize));
-        } else /* constexpr */ { // could define this, but raise as error.
+        } else /* constexpr */ {  // could define this, but raise as error.
             static_assert(dependent_false_v<CT>);
         }
         return writeData(*c);
@@ -997,23 +925,6 @@ private:
             }
         }
         return OK;
-    }
-
-    template <typename T, size_t N>
-    status_t writeData(const std::array<T, N>& val) {
-        static_assert(N <= std::numeric_limits<int32_t>::max());
-        status_t status = writeData(static_cast<int32_t>(N));
-        if (status != OK) return status;
-        if constexpr (is_pointer_equivalent_array_v<T>) {
-            static_assert(N <= std::numeric_limits<size_t>::max() / sizeof(T));
-            return write(val.data(), val.size() * sizeof(T));
-        } else /* constexpr */ {
-            for (const auto& t : val) {
-                status = writeData(t);
-                if (status != OK) return status;
-            }
-            return OK;
-        }
     }
 
     // readData function overloads.
@@ -1108,8 +1019,9 @@ private:
         int32_t peek;
         status_t status = readData(&peek);
         if (status != OK) return status;
-        if constexpr (is_specialization_v<T, std::vector> || is_fixed_array_v<T> ||
-                      std::is_same_v<T, String16> || std::is_same_v<T, std::string>) {
+        if constexpr (is_specialization_v<T, std::vector>
+                || std::is_same_v<T, String16>
+                || std::is_same_v<T, std::string>) {
             if (peek == kNullVectorSize) {
                 c->reset();
                 return OK;
@@ -1119,15 +1031,12 @@ private:
                 c->reset();
                 return OK;
             }
-        } else /* constexpr */ { // could define this, but raise as error.
+        } else /* constexpr */ {  // could define this, but raise as error.
             static_assert(dependent_false_v<CT>);
         }
         // create a new object.
         if constexpr (is_specialization_v<CT, std::optional>) {
-            // Call default constructor explicitly
-            // - Clang bug: https://bugs.llvm.org/show_bug.cgi?id=35748
-            //   std::optional::emplace() doesn't work with nested types.
-            c->emplace(T());
+            c->emplace();
         } else /* constexpr */ {
             T* const t = new (std::nothrow) T;  // contents read from Parcel below.
             if (t == nullptr) return NO_MEMORY;
@@ -1136,7 +1045,7 @@ private:
         // rewind data ptr to reread (this is pretty quick), otherwise we could
         // pass an optional argument to readData to indicate a peeked value.
         setDataPosition(startPos);
-        if constexpr (is_specialization_v<T, std::vector> || is_fixed_array_v<T>) {
+        if constexpr (is_specialization_v<T, std::vector>) {
             return readData(&**c, READ_FLAG_SP_NULLABLE);  // nullable sp<> allowed now
         } else {
             return readData(&**c);
@@ -1199,41 +1108,6 @@ private:
         return OK;
     }
 
-    template <typename T, size_t N>
-    status_t readData(std::array<T, N>* val, ReadFlags readFlags = READ_FLAG_NONE) const {
-        static_assert(N <= std::numeric_limits<int32_t>::max());
-        int32_t size;
-        status_t status = readInt32(&size);
-        if (status != OK) return status;
-        if (size < 0) return UNEXPECTED_NULL;
-        if (size != static_cast<int32_t>(N)) return BAD_VALUE;
-        if constexpr (is_pointer_equivalent_array_v<T>) {
-            auto data = reinterpret_cast<const T*>(readInplace(N * sizeof(T)));
-            if (data == nullptr) return BAD_VALUE;
-            memcpy(val->data(), data, N * sizeof(T));
-        } else if constexpr (is_specialization_v<T, sp>) {
-            for (auto& t : *val) {
-                if (readFlags & READ_FLAG_SP_NULLABLE) {
-                    status = readNullableStrongBinder(&t); // allow nullable
-                } else {
-                    status = readStrongBinder(&t);
-                }
-                if (status != OK) return status;
-            }
-        } else if constexpr (is_fixed_array_v<T>) { // pass readFlags down to nested arrays
-            for (auto& t : *val) {
-                status = readData(&t, readFlags);
-                if (status != OK) return status;
-            }
-        } else /* constexpr */ {
-            for (auto& t : *val) {
-                status = readData(&t);
-                if (status != OK) return status;
-            }
-        }
-        return OK;
-    }
-
     //-----------------------------------------------------------------------------
     private:
 
@@ -1263,7 +1137,6 @@ private:
     release_func        mOwner;
 
     sp<RpcSession> mSession;
-    size_t mReserved;
 
     class Blob {
     public:
@@ -1348,19 +1221,13 @@ public:
         inline void* data() { return mData; }
     };
 
-    /**
-     * Returns the total amount of ashmem memory owned by this object.
-     *
-     * Note: for historical reasons, this does not include ashmem memory which
-     * is referenced by this Parcel, but which this parcel doesn't own (e.g.
-     * writeFileDescriptor is called without 'takeOwnership' true).
-     */
-    size_t getOpenAshmemSize() const;
-
 private:
-    // TODO(b/202029388): Remove 'getBlobAshmemSize' once no prebuilts reference
-    // this
+    size_t mOpenAshmemSize;
+
+public:
+    // TODO: Remove once ABI can be changed.
     size_t getBlobAshmemSize() const;
+    size_t getOpenAshmemSize() const;
 };
 
 // ---------------------------------------------------------------------------
@@ -1448,7 +1315,7 @@ status_t Parcel::writeVectorSize(const std::unique_ptr<std::vector<T>>& val) {
 template<typename T>
 status_t Parcel::resizeOutVector(std::vector<T>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }
@@ -1463,7 +1330,7 @@ status_t Parcel::resizeOutVector(std::vector<T>* val) const {
 template<typename T>
 status_t Parcel::resizeOutVector(std::optional<std::vector<T>>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }
@@ -1479,7 +1346,7 @@ status_t Parcel::resizeOutVector(std::optional<std::vector<T>>* val) const {
 template<typename T>
 status_t Parcel::resizeOutVector(std::unique_ptr<std::vector<T>>* val) const {
     int32_t size;
-    status_t err = readOutVectorSizeWithCheck(sizeof(T), &size);
+    status_t err = readInt32(&size);
     if (err != NO_ERROR) {
         return err;
     }

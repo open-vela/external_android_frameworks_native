@@ -27,5 +27,7 @@ parcelable StagedApexInfo {
   @utf8InCpp String diskImagePath;
   long versionCode;
   @utf8InCpp String versionName;
-  boolean hasClassPathJars;
+  boolean hasBootClassPathJars;
+  boolean hasDex2OatBootClassPathJars;
+  boolean hasSystemServerClassPathJars;
 }

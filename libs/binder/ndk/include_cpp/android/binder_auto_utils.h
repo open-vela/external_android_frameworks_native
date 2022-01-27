@@ -163,6 +163,15 @@ class ScopedAResource {
     const T get() const { return mT; }
 
     /**
+     * Release the underlying resource.
+     */
+    [[nodiscard]] T release() {
+        T a = mT;
+        mT = DEFAULT;
+        return a;
+    }
+
+    /**
      * This allows the value in this class to be set from beneath it. If you call this method and
      * then change the value of T*, you must take ownership of the value you are replacing and add
      * ownership to the object that is put in here.
@@ -364,6 +373,8 @@ class ScopedFileDescriptor : public impl::ScopedAResource<int, internal::closeWi
     ~ScopedFileDescriptor() {}
     ScopedFileDescriptor(ScopedFileDescriptor&&) = default;
     ScopedFileDescriptor& operator=(ScopedFileDescriptor&&) = default;
+
+    ScopedFileDescriptor dup() const { return ScopedFileDescriptor(::dup(get())); }
 
     bool operator!=(const ScopedFileDescriptor& rhs) const { return get() != rhs.get(); }
     bool operator<(const ScopedFileDescriptor& rhs) const { return get() < rhs.get(); }

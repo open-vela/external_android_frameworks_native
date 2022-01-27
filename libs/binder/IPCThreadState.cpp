@@ -352,11 +352,6 @@ bool IPCThreadState::backgroundSchedulingDisabled()
     return gDisableBackgroundScheduling.load(std::memory_order_relaxed);
 }
 
-sp<ProcessState> IPCThreadState::process()
-{
-    return mProcess;
-}
-
 status_t IPCThreadState::clearLastError()
 {
     const status_t err = mLastError;
@@ -366,17 +361,44 @@ status_t IPCThreadState::clearLastError()
 
 pid_t IPCThreadState::getCallingPid() const
 {
+    checkContextIsBinderForUse(__func__);
     return mCallingPid;
 }
 
 const char* IPCThreadState::getCallingSid() const
 {
+    checkContextIsBinderForUse(__func__);
     return mCallingSid;
 }
 
 uid_t IPCThreadState::getCallingUid() const
 {
+    checkContextIsBinderForUse(__func__);
     return mCallingUid;
+}
+
+const IPCThreadState::SpGuard* IPCThreadState::pushGetCallingSpGuard(const SpGuard* guard) {
+    const SpGuard* orig = mServingStackPointerGuard;
+    mServingStackPointerGuard = guard;
+    return orig;
+}
+
+void IPCThreadState::restoreGetCallingSpGuard(const SpGuard* guard) {
+    mServingStackPointerGuard = guard;
+}
+
+void IPCThreadState::checkContextIsBinderForUse(const char* use) const {
+    if (LIKELY(mServingStackPointerGuard == nullptr)) return;
+
+    if (!mServingStackPointer || mServingStackPointerGuard->address < mServingStackPointer) {
+        LOG_ALWAYS_FATAL("In context %s, %s does not make sense (binder sp: %p, guard: %p).",
+                         mServingStackPointerGuard->context, use, mServingStackPointer,
+                         mServingStackPointerGuard->address);
+    }
+
+    // in the case mServingStackPointer is deeper in the stack than the guard,
+    // we must be serving a binder transaction (maybe nested). This is a binder
+    // context, so we don't abort
 }
 
 int64_t IPCThreadState::clearCallingIdentity()
@@ -845,6 +867,7 @@ status_t IPCThreadState::clearDeathNotification(int32_t handle, BpBinder* proxy)
 IPCThreadState::IPCThreadState()
       : mProcess(ProcessState::self()),
         mServingStackPointer(nullptr),
+        mServingStackPointerGuard(nullptr),
         mWorkSource(kUnsetWorkSource),
         mPropagateWorkSource(false),
         mIsLooper(false),
@@ -1226,7 +1249,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                 tr.offsets_size/sizeof(binder_size_t), freeBuffer);
 
             const void* origServingStackPointer = mServingStackPointer;
-            mServingStackPointer = &origServingStackPointer; // anything on the stack
+            mServingStackPointer = __builtin_frame_address(0);
 
             const pid_t origPid = mCallingPid;
             const char* origSid = mCallingSid;
@@ -1382,7 +1405,8 @@ void IPCThreadState::threadDestructor(void *st)
         }
 }
 
-status_t IPCThreadState::getProcessFreezeInfo(pid_t pid, bool *sync_received, bool *async_received)
+status_t IPCThreadState::getProcessFreezeInfo(pid_t pid, uint32_t *sync_received,
+                                              uint32_t *async_received)
 {
     int ret = 0;
     binder_frozen_status_info info;

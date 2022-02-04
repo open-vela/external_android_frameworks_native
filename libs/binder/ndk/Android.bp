@@ -32,6 +32,16 @@ license {
     ],
 }
 
+// TODO(b/211908498): remove this
+cc_defaults {
+    name: "libbinder_ndk_host_user",
+    target: {
+        darwin: {
+            enabled: false,
+        },
+    },
+}
+
 cc_library {
     name: "libbinder_ndk",
 

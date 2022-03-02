@@ -200,6 +200,7 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
     }
 
     flat_binder_object obj;
+    obj.flags = FLAT_BINDER_FLAG_ACCEPTS_FDS;
 
     int schedBits = 0;
     if (!IPCThreadState::self()->backgroundSchedulingDisabled()) {
@@ -220,7 +221,6 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
             const int32_t handle = proxy ? proxy->getPrivateAccessor().binderHandle() : 0;
             obj.hdr.type = BINDER_TYPE_HANDLE;
             obj.binder = 0; /* Don't pass uninitialized stack data to a remote process */
-            obj.flags = 0;
             obj.handle = handle;
             obj.cookie = 0;
         } else {
@@ -231,7 +231,6 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
                 // override value, since it is set explicitly
                 schedBits = schedPolicyMask(policy, priority);
             }
-            obj.flags = FLAT_BINDER_FLAG_ACCEPTS_FDS;
             if (local->isRequestingSid()) {
                 obj.flags |= FLAT_BINDER_FLAG_TXN_SECURITY_CTX;
             }
@@ -244,7 +243,6 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
         }
     } else {
         obj.hdr.type = BINDER_TYPE_BINDER;
-        obj.flags = 0;
         obj.binder = 0;
         obj.cookie = 0;
     }

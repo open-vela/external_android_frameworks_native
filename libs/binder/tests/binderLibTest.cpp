@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <pthread.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -152,18 +153,7 @@ pid_t start_server_process(int arg2, bool usePoll = false)
     snprintf(strpipefd1, sizeof(strpipefd1), "%d", pipefd[1]);
     snprintf(usepoll, sizeof(usepoll), "%d", usePoll ? 1 : 0);
 
-    pid = fork();
-    if (pid == -1)
-        return pid;
-    if (pid == 0) {
-        prctl(PR_SET_PDEATHSIG, SIGHUP);
-        close(pipefd[0]);
-        execv(binderservername, childargv);
-        status = -errno;
-        write(pipefd[1], &status, sizeof(status));
-        fprintf(stderr, "execv failed, %s\n", strerror(errno));
-        _exit(EXIT_FAILURE);
-    }
+    posix_spawn(&pid, binderservername, NULL, NULL, childargv, NULL);
     close(pipefd[1]);
     ret = read(pipefd[0], &status, sizeof(status));
     //printf("pipe read returned %d, status %d\n", ret, status);

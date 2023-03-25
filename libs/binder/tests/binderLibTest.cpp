@@ -23,6 +23,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <string>
 #include <thread>
 
 #include <gmock/gmock.h>
@@ -84,15 +85,14 @@ static ::testing::AssertionResult IsPageAligned(void *buf) {
 }
 
 static testing::Environment* binder_env;
-static char *binderservername;
-static char *binderserversuffix;
 static char binderserverarg[] = "--binderserver";
+static char binderserverprefix[] = "test.binderLib";
 
 static constexpr int kSchedPolicy = SCHED_RR;
 static constexpr int kSchedPriority = 7;
 static constexpr int kSchedPriorityMore = 8;
 
-static String16 binderLibTestServiceName = String16("test.binderLib");
+static String16 binderLibTestServiceName;
 
 enum BinderLibTestTranscationCode {
     BINDER_LIB_TEST_NOP_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
@@ -126,7 +126,7 @@ enum BinderLibTestTranscationCode {
     BINDER_LIB_TEST_CAN_GET_SID,
 };
 
-pid_t start_server_process(int arg2, bool usePoll = false)
+pid_t start_server_process(const char *binderservername, const char *binderserversuffix, int arg2, bool usePoll = false)
 {
     int ret;
     pid_t pid;
@@ -135,13 +135,13 @@ pid_t start_server_process(int arg2, bool usePoll = false)
     char stri[16];
     char strpipefd1[16];
     char usepoll[2];
-    char *childargv[] = {
-        binderservername,
+    char* const childargv[] = {
+        const_cast<char*>(binderservername),
         binderserverarg,
         stri,
         strpipefd1,
         usepoll,
-        binderserversuffix,
+        const_cast<char*>(binderserversuffix),
         nullptr
     };
 
@@ -189,14 +189,17 @@ android::base::Result<int32_t> GetId(sp<IBinder> service) {
 
 class BinderLibTestEnv : public ::testing::Environment {
     public:
-        BinderLibTestEnv() {}
+        BinderLibTestEnv(const char *binderServerName, const char *binderServerSuffix)
+          : m_binderServerName(binderServerName),
+            m_binderServerSuffix(binderServerSuffix) {
+        }
         sp<IBinder> getServer(void) {
             return m_server;
         }
 
     private:
         virtual void SetUp() {
-            m_serverpid = start_server_process(0);
+            m_serverpid = start_server_process(m_binderServerName.c_str(), m_binderServerSuffix.c_str(), 0);
             //printf("m_serverpid %d\n", m_serverpid);
             ASSERT_GT(m_serverpid, 0);
 
@@ -228,6 +231,8 @@ class BinderLibTestEnv : public ::testing::Environment {
             }
         }
 
+        std::string m_binderServerName;
+        std::string m_binderServerSuffix;
         pid_t m_serverpid;
         sp<IBinder> m_server;
 };
@@ -1328,8 +1333,10 @@ INSTANTIATE_TEST_CASE_P(BinderLibTest, BinderLibRpcTestP, testing::Bool(),
 
 class BinderLibTestService : public BBinder {
 public:
-    explicit BinderLibTestService(int32_t id, bool exitOnDestroy = true)
-          : m_id(id),
+    explicit BinderLibTestService(const char* binderServerName, const char *binderServerSuffix, int32_t id, bool exitOnDestroy = true)
+          : m_binderServerName(binderServerName),
+            m_binderServerSuffix(binderServerSuffix),
+            m_id(id),
             m_nextServerId(id + 1),
             m_serverStartRequested(false),
             m_callback(nullptr),
@@ -1394,7 +1401,7 @@ public:
                     bool usePoll = code == BINDER_LIB_TEST_ADD_POLL_SERVER;
 
                     pthread_mutex_unlock(&m_serverWaitMutex);
-                    ret = start_server_process(serverid, usePoll);
+                    ret = start_server_process(m_binderServerName.c_str(), m_binderServerSuffix.c_str(), serverid, usePoll);
                     pthread_mutex_lock(&m_serverWaitMutex);
                 }
                 if (ret > 0) {
@@ -1646,6 +1653,8 @@ public:
     }
 
 private:
+    std::string m_binderServerName;
+    std::string m_binderServerSuffix;
     int32_t m_id;
     int32_t m_nextServerId;
     pthread_mutex_t m_serverWaitMutex;
@@ -1657,9 +1666,9 @@ private:
     bool m_exitOnDestroy;
 };
 
-int run_server(int index, int readypipefd, bool usePoll)
+int run_server(const char *binderservername, const char *binderserversuffix, int index, int readypipefd, bool usePoll)
 {
-    binderLibTestServiceName += String16(binderserversuffix);
+    binderLibTestServiceName = String16(binderserverprefix) + String16(binderserversuffix);
 
     // Testing to make sure that calls that we are serving can use getCallin*
     // even though we don't here.
@@ -1673,7 +1682,7 @@ int run_server(int index, int readypipefd, bool usePoll)
     sp<IServiceManager> sm = defaultServiceManager();
     BinderLibTestService* testServicePtr;
     {
-        sp<BinderLibTestService> testService = new BinderLibTestService(index);
+        sp<BinderLibTestService> testService = new BinderLibTestService(binderservername, binderserversuffix, index);
 
         testService->setMinSchedulerPolicy(kSchedPolicy, kSchedPriority);
 
@@ -1764,6 +1773,9 @@ int run_server(int index, int readypipefd, bool usePoll)
 }
 
 extern "C" int main(int argc, char **argv) {
+    const char *binderservername;
+    char *binderserversuffix;
+
     ExitIfWrongAbi();
 
     if (argc == 4 && !strcmp(argv[1], "--servername")) {
@@ -1774,14 +1786,15 @@ extern "C" int main(int argc, char **argv) {
 
     if (argc == 6 && !strcmp(argv[1], binderserverarg)) {
         binderserversuffix = argv[5];
-        return run_server(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]) == 1);
+        return run_server(binderservername, binderserversuffix, atoi(argv[2]), atoi(argv[3]), atoi(argv[4]) == 1);
     }
     binderserversuffix = new char[16];
     snprintf(binderserversuffix, 16, "%d", getpid());
-    binderLibTestServiceName += String16(binderserversuffix);
+    binderLibTestServiceName = String16(binderserverprefix) + String16(binderserversuffix);
 
     ::testing::InitGoogleTest(&argc, argv);
-    binder_env = AddGlobalTestEnvironment(new BinderLibTestEnv());
+    binder_env = AddGlobalTestEnvironment(new BinderLibTestEnv(binderservername, binderserversuffix));
+    delete[] binderserversuffix;
     ProcessState::self()->startThreadPool();
     return RUN_ALL_TESTS();
 }

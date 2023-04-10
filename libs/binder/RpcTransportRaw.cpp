@@ -19,6 +19,7 @@
 
 #include <poll.h>
 
+#include <android-base/macros.h>
 #include <binder/RpcTransportRaw.h>
 
 #include "FdTrigger.h"

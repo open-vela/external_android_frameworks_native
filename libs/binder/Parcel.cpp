@@ -1567,7 +1567,7 @@ status_t Parcel::readOutVectorSizeWithCheck(size_t elmSize, int32_t* size) const
     // approximation, can't know max element size (e.g. if it makes heap
     // allocations)
     static_assert(sizeof(int) == sizeof(int32_t), "Android is LP64");
-    int32_t allocationSize;
+    int allocationSize;
     if (__builtin_smul_overflow(elmSize, *size, &allocationSize)) return NO_MEMORY;
 
     // High limit of 1MB since something this big could never be returned. Could
@@ -1934,7 +1934,7 @@ int32_t Parcel::readExceptionCode() const
 
 native_handle* Parcel::readNativeHandle() const
 {
-    int numFds, numInts;
+    int32_t numFds, numInts;
     status_t err;
     err = readInt32(&numFds);
     if (err != NO_ERROR) return nullptr;

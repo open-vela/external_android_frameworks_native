@@ -17,7 +17,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include <android/permission_manager.h>
 #include <binder/ActivityManager.h>
 #include <binder/IActivityManager.h>
 #include <binder/Parcel.h>

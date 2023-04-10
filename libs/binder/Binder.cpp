@@ -32,7 +32,7 @@
 #include <utils/misc.h>
 
 #include <inttypes.h>
-#include <linux/sched.h>
+#include <sched.h>
 #include <stdio.h>
 
 #include "RpcState.h"

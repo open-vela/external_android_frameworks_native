@@ -95,7 +95,7 @@ protected:
 private:
     status_t mapfd(int fd, bool writeableByCaller, size_t size, off_t offset = 0);
 
-    int         mFD;
+    int32_t     mFD;
     size_t      mSize;
     void*       mBase;
     uint32_t    mFlags;

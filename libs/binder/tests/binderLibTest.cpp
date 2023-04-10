@@ -181,11 +181,11 @@ android::base::Result<int32_t> GetId(sp<IBinder> service) {
     data.markForBinder(service);
     const char *prefix = data.isForRpc() ? "On RPC server, " : "On binder server, ";
     status_t status = service->transact(BINDER_LIB_TEST_GET_ID_TRANSACTION, data, &reply);
-    if (status != OK)
+    if (status != android::OK)
         return Error(status) << prefix << "transact(GET_ID): " << statusToString(status);
     int32_t result = 0;
     status = reply.readInt32(&result);
-    if (status != OK) return Error(status) << prefix << "readInt32: " << statusToString(status);
+    if (status != android::OK) return Error(status) << prefix << "readInt32: " << statusToString(status);
     return result;
 }
 
@@ -671,7 +671,7 @@ TEST_F(BinderLibTest, DeathNotificationStrongRef)
     {
         Parcel data, reply;
         EXPECT_THAT(sbinder->transact(BINDER_LIB_TEST_EXIT_TRANSACTION, data, &reply, TF_ONE_WAY),
-                    StatusEq(OK));
+                    StatusEq(android::OK));
     }
     IPCThreadState::self()->flushCommands();
     EXPECT_THAT(testDeathRecipient->waitEvent(5), StatusEq(NO_ERROR));
@@ -902,7 +902,7 @@ TEST_F(BinderLibTest, FreedBinder) {
     sp<IBinder> server = addServer();
     ASSERT_TRUE(server != nullptr);
 
-    __u32 freedHandle;
+    uint32_t freedHandle;
     wp<IBinder> keepFreedBinder;
     {
         Parcel data, reply;
@@ -922,7 +922,7 @@ TEST_F(BinderLibTest, FreedBinder) {
         data.writeStrongBinder(server);
         /* Replace original handle with handle to the freed binder */
         struct flat_binder_object *strong = (struct flat_binder_object *)(data.data());
-        __u32 oldHandle = strong->handle;
+        uint32_t oldHandle = strong->handle;
         strong->handle = freedHandle;
         ret = server->transact(BINDER_LIB_TEST_ADD_STRONG_REF_TRANSACTION, data, &reply);
         /* Returns DEAD_OBJECT (-32) if target crashes and
@@ -1142,7 +1142,7 @@ TEST_F(BinderLibTest, VectorSent) {
 
     EXPECT_THAT(server->transact(BINDER_LIB_TEST_ECHO_VECTOR, data, &reply), StatusEq(NO_ERROR));
     std::vector<uint64_t> readValue;
-    EXPECT_THAT(reply.readUint64Vector(&readValue), StatusEq(OK));
+    EXPECT_THAT(reply.readUint64Vector(&readValue), StatusEq(android::OK));
     EXPECT_EQ(readValue, testValue);
 }
 
@@ -1200,7 +1200,7 @@ TEST_F(BinderLibTest, WeakRejected) {
 
     // a previous bug caused other objects to be released an extra time, so we
     // test with an object that libbinder will actually try to release
-    EXPECT_EQ(OK, data.writeStrongBinder(sp<BBinder>::make()));
+    EXPECT_EQ(android::OK, data.writeStrongBinder(sp<BBinder>::make()));
 
     EXPECT_EQ(data.objectsCount(), 2);
 
@@ -1218,7 +1218,7 @@ TEST_F(BinderLibTest, GotSid) {
     sp<IBinder> server = addServer();
 
     Parcel data;
-    EXPECT_THAT(server->transact(BINDER_LIB_TEST_CAN_GET_SID, data, nullptr), StatusEq(OK));
+    EXPECT_THAT(server->transact(BINDER_LIB_TEST_CAN_GET_SID, data, nullptr), StatusEq(android::OK));
 }
 
 TEST(ServiceNotifications, Unregister) {
@@ -1230,8 +1230,8 @@ TEST(ServiceNotifications, Unregister) {
     };
     sp<LocalRegistrationCallback> cb = sp<LocalRegistrationCallbackImpl>::make();
 
-    EXPECT_EQ(sm->registerForNotifications(String16("RogerRafa"), cb), OK);
-    EXPECT_EQ(sm->unregisterForNotifications(String16("RogerRafa"), cb), OK);
+    EXPECT_EQ(sm->registerForNotifications(String16("RogerRafa"), cb), android::OK);
+    EXPECT_EQ(sm->unregisterForNotifications(String16("RogerRafa"), cb), android::OK);
 }
 
 class BinderLibRpcTestBase : public BinderLibTest {
@@ -1249,7 +1249,7 @@ public:
         EXPECT_NE(nullptr, rpcServer);
         if (rpcServer == nullptr) return {};
         unsigned int port;
-        if (status_t status = rpcServer->setupInetServer("127.0.0.1", 0, &port); status != OK) {
+        if (status_t status = rpcServer->setupInetServer("127.0.0.1", 0, &port); status != android::OK) {
             ADD_FAILURE() << "setupInetServer failed" << statusToString(status);
             return {};
         }
@@ -1275,7 +1275,7 @@ TEST_F(BinderLibRpcTest, SetRpcClientDebug) {
     auto [socket, port] = CreateSocket();
     ASSERT_TRUE(socket.ok());
     EXPECT_THAT(binder->setRpcClientDebug(std::move(socket), sp<BBinder>::make()),
-                Debuggable(StatusEq(OK)));
+                Debuggable(StatusEq(android::OK)));
 }
 
 // Tests for multiple RpcServer's on the same binder object.
@@ -1287,13 +1287,13 @@ TEST_F(BinderLibRpcTest, SetRpcClientDebugTwice) {
     ASSERT_TRUE(socket1.ok());
     auto keepAliveBinder1 = sp<BBinder>::make();
     EXPECT_THAT(binder->setRpcClientDebug(std::move(socket1), keepAliveBinder1),
-                Debuggable(StatusEq(OK)));
+                Debuggable(StatusEq(android::OK)));
 
     auto [socket2, port2] = CreateSocket();
     ASSERT_TRUE(socket2.ok());
     auto keepAliveBinder2 = sp<BBinder>::make();
     EXPECT_THAT(binder->setRpcClientDebug(std::move(socket2), keepAliveBinder2),
-                Debuggable(StatusEq(OK)));
+                Debuggable(StatusEq(android::OK)));
 }
 
 // Negative tests for RPC APIs on IBinder. Call should fail in the same way on both remote and

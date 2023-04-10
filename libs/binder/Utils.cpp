@@ -18,6 +18,8 @@
 
 #include <string.h>
 
+#include <android-base/macros.h>
+
 using android::base::ErrnoError;
 using android::base::Result;
 

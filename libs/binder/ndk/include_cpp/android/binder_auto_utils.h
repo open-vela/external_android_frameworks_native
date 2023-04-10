@@ -31,8 +31,6 @@
 #include <android/binder_parcel.h>
 #include <android/binder_status.h>
 
-#include <assert.h>
-
 #include <unistd.h>
 #include <cstddef>
 #include <string>

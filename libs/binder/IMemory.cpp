@@ -17,7 +17,6 @@
 #define LOG_TAG "IMemory"
 
 #include <atomic>
-#include <stdatomic.h>
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -36,6 +35,8 @@
 #include <map>
 
 #define VERBOSE   0
+
+using namespace std;
 
 namespace android {
 // ---------------------------------------------------------------------------

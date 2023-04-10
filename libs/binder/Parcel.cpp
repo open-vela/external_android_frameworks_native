@@ -20,7 +20,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <linux/sched.h>
+#include <sched.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>

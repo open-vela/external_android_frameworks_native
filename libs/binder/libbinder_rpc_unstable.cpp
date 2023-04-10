@@ -19,7 +19,8 @@
 #include <android/binder_libbinder.h>
 #include <binder/RpcServer.h>
 #include <binder/RpcSession.h>
-#include <linux/vm_sockets.h>
+
+#include "vm_sockets.h"
 
 using android::OK;
 using android::RpcServer;

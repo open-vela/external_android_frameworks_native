@@ -35,8 +35,6 @@
 #define HAS_BINDER_SHELL_COMMAND
 #endif  //_has_include
 
-#include <assert.h>
-
 #include <memory>
 #include <mutex>
 

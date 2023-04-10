@@ -495,7 +495,12 @@ ProcessState::ProcessState(const char* driver)
         mForked(false),
         mThreadPoolStarted(false),
         mThreadPoolSeq(1),
-        mCallRestriction(CallRestriction::NONE) {
+        mCallRestriction(CallRestriction::NONE),
+        mTLS(0),
+        mShutdown(false),
+        mDisableBackgroundScheduling(false) {
+    pthread_key_create(&mTLS, IPCThreadState::threadDestructor);
+
     base::Result<int> opened = open_driver(driver);
 
     if (opened.ok()) {
@@ -523,6 +528,7 @@ ProcessState::ProcessState(const char* driver)
 
 ProcessState::~ProcessState()
 {
+    pthread_key_delete(mTLS);
     if (mDriverFD >= 0) {
         if (mVMStart != MAP_FAILED) {
             munmap(mVMStart, BINDER_VM_SIZE);

@@ -280,77 +280,51 @@ static const void* printCommand(TextOutput& out, const void* _cmd)
     return cmd;
 }
 
-static pthread_mutex_t gTLSMutex = PTHREAD_MUTEX_INITIALIZER;
-static std::atomic<bool> gHaveTLS(false);
-static pthread_key_t gTLS = 0;
-static std::atomic<bool> gShutdown = false;
-static std::atomic<bool> gDisableBackgroundScheduling = false;
-
 IPCThreadState* IPCThreadState::self()
 {
-    if (gHaveTLS.load(std::memory_order_acquire)) {
-restart:
-        const pthread_key_t k = gTLS;
-        IPCThreadState* st = (IPCThreadState*)pthread_getspecific(k);
-        if (st) return st;
-        return new IPCThreadState;
-    }
+    sp<ProcessState> proc(ProcessState::self());
 
     // Racey, heuristic test for simultaneous shutdown.
-    if (gShutdown.load(std::memory_order_relaxed)) {
+    if (proc->mShutdown.load(std::memory_order_relaxed)) {
         ALOGW("Calling IPCThreadState::self() during shutdown is dangerous, expect a crash.\n");
         return nullptr;
     }
 
-    pthread_mutex_lock(&gTLSMutex);
-    if (!gHaveTLS.load(std::memory_order_relaxed)) {
-        int key_create_value = pthread_key_create(&gTLS, threadDestructor);
-        if (key_create_value != 0) {
-            pthread_mutex_unlock(&gTLSMutex);
-            ALOGW("IPCThreadState::self() unable to create TLS key, expect a crash: %s\n",
-                    strerror(key_create_value));
-            return nullptr;
-        }
-        gHaveTLS.store(true, std::memory_order_release);
-    }
-    pthread_mutex_unlock(&gTLSMutex);
-    goto restart;
+    IPCThreadState* st = (IPCThreadState*)pthread_getspecific(proc->mTLS);
+    if (st) return st;
+    return new IPCThreadState;
 }
 
 IPCThreadState* IPCThreadState::selfOrNull()
 {
-    if (gHaveTLS.load(std::memory_order_acquire)) {
-        const pthread_key_t k = gTLS;
-        IPCThreadState* st = (IPCThreadState*)pthread_getspecific(k);
-        return st;
-    }
-    return nullptr;
+    sp<ProcessState> proc(ProcessState::self());
+    return (IPCThreadState*)pthread_getspecific(proc->mTLS);
 }
 
 void IPCThreadState::shutdown()
 {
-    gShutdown.store(true, std::memory_order_relaxed);
+    sp<ProcessState> proc(ProcessState::self());
 
-    if (gHaveTLS.load(std::memory_order_acquire)) {
-        // XXX Need to wait for all thread pool threads to exit!
-        IPCThreadState* st = (IPCThreadState*)pthread_getspecific(gTLS);
-        if (st) {
-            delete st;
-            pthread_setspecific(gTLS, nullptr);
-        }
-        pthread_key_delete(gTLS);
-        gHaveTLS.store(false, std::memory_order_release);
+    proc->mShutdown.store(true, std::memory_order_relaxed);
+
+    // XXX Need to wait for all thread pool threads to exit!
+    IPCThreadState* st = (IPCThreadState*)pthread_getspecific(proc->mTLS);
+    if (st) {
+        delete st;
+        pthread_setspecific(proc->mTLS, nullptr);
     }
 }
 
 void IPCThreadState::disableBackgroundScheduling(bool disable)
 {
-    gDisableBackgroundScheduling.store(disable, std::memory_order_relaxed);
+    sp<ProcessState> proc(ProcessState::self());
+    proc->mDisableBackgroundScheduling.store(disable, std::memory_order_relaxed);
 }
 
 bool IPCThreadState::backgroundSchedulingDisabled()
 {
-    return gDisableBackgroundScheduling.load(std::memory_order_relaxed);
+    sp<ProcessState> proc(ProcessState::self());
+    return proc->mDisableBackgroundScheduling.load(std::memory_order_relaxed);
 }
 
 status_t IPCThreadState::clearLastError()
@@ -878,7 +852,7 @@ IPCThreadState::IPCThreadState()
         mStrictModePolicy(0),
         mLastTransactionBinderFlags(0),
         mCallRestriction(mProcess->mCallRestriction) {
-    pthread_setspecific(gTLS, this);
+    pthread_setspecific(mProcess->mTLS, this);
     clearCaller();
     mIn.setDataCapacity(256);
     mOut.setDataCapacity(256);
@@ -1143,11 +1117,10 @@ status_t IPCThreadState::writeTransactionData(int32_t cmd, uint32_t binderFlags,
     return NO_ERROR;
 }
 
-sp<BBinder> the_context_object;
-
 void IPCThreadState::setTheContextObject(const sp<BBinder>& obj)
 {
-    the_context_object = obj;
+    sp<ProcessState> proc(ProcessState::self());
+    proc->mContextObject = obj;
 }
 
 status_t IPCThreadState::executeCommand(int32_t cmd)
@@ -1304,7 +1277,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                 }
 
             } else {
-                error = the_context_object->transact(tr.code, buffer, &reply, tr.flags);
+                error = mProcess->mContextObject->transact(tr.code, buffer, &reply, tr.flags);
             }
 
             //ALOGI("<<<< TRANSACT from pid %d restore pid %d sid %s uid %d\n",

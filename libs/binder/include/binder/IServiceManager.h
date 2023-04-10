@@ -203,7 +203,7 @@ bool checkCallingPermission(const String16& permission,
 bool checkPermission(const String16& permission, pid_t pid, uid_t uid,
                      bool logPermissionFailure = true);
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__NuttX__)
 // Create an IServiceManager that delegates the service manager on the device via adb.
 // This is can be set as the default service manager at program start, so that
 // defaultServiceManager() returns it:

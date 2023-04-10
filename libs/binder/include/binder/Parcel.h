@@ -35,10 +35,10 @@
 
 #ifdef BINDER_IPC_32BIT
 //NOLINTNEXTLINE(google-runtime-int) b/173188702
-typedef unsigned int binder_size_t;
+typedef uint32_t binder_size_t;
 #else
 //NOLINTNEXTLINE(google-runtime-int) b/173188702
-typedef unsigned long long binder_size_t;
+typedef uint64_t binder_size_t;
 #endif
 
 struct flat_binder_object;

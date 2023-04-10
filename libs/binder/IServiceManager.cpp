@@ -33,7 +33,7 @@
 #include <binder/IPermissionController.h>
 #endif
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__NuttX__)
 #include <cutils/properties.h>
 #else
 #include "ServiceManagerHost.h"
@@ -167,7 +167,7 @@ void setDefaultServiceManager(const sp<IServiceManager>& sm) {
     }
 }
 
-#if !defined(__ANDROID_VNDK__) && defined(__ANDROID__)
+#if !defined(__ANDROID_VNDK__) && (defined(__ANDROID__) || defined(__NuttX__))
 // IPermissionController is not accessible to vendors
 
 bool checkCallingPermission(const String16& permission)
@@ -562,7 +562,7 @@ std::vector<IServiceManager::ServiceDebugInfo> ServiceManagerShim::getServiceDeb
     return ret;
 }
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__NuttX__)
 // ServiceManagerShim for host. Implements the old libbinder android::IServiceManager API.
 // The internal implementation of the AIDL interface android::os::IServiceManager calls into
 // on-device service manager.

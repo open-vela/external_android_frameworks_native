@@ -1052,7 +1052,7 @@ status_t IPCThreadState::talkWithDriver(bool doReceive)
         IF_LOG_COMMANDS() {
             alog << "About to read/write, write size = " << mOut.dataSize() << endl;
         }
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(__NuttX__)
         if (ioctl(mProcess->mDriverFD, BINDER_WRITE_READ, &bwr) >= 0)
             err = NO_ERROR;
         else
@@ -1402,7 +1402,7 @@ void IPCThreadState::threadDestructor(void *st)
         IPCThreadState* const self = static_cast<IPCThreadState*>(st);
         if (self) {
                 self->flushCommands();
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(__NuttX__)
         if (self->mProcess->mDriverFD >= 0) {
             ioctl(self->mProcess->mDriverFD, BINDER_THREAD_EXIT, 0);
         }
@@ -1418,7 +1418,7 @@ status_t IPCThreadState::getProcessFreezeInfo(pid_t pid, uint32_t *sync_received
     binder_frozen_status_info info = {};
     info.pid = pid;
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(__NuttX__)
     if (ioctl(self()->mProcess->mDriverFD, BINDER_GET_FROZEN_INFO, &info) < 0)
         ret = -errno;
 #endif
@@ -1437,7 +1437,7 @@ status_t IPCThreadState::freeze(pid_t pid, bool enable, uint32_t timeout_ms) {
     info.timeout_ms = timeout_ms;
 
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(__NuttX__)
     if (ioctl(self()->mProcess->mDriverFD, BINDER_FREEZE, &info) < 0)
         ret = -errno;
 #endif

@@ -192,6 +192,8 @@ public:
             // side.
             static const int32_t kUnsetWorkSource = -1;
 private:
+            friend class ProcessState;
+
                                 IPCThreadState();
                                 ~IPCThreadState();
 

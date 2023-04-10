@@ -22,6 +22,7 @@
 #include <utils/String16.h>
 #include <utils/String8.h>
 
+#include <atomic>
 #include <pthread.h>
 
 // ---------------------------------------------------------------------------
@@ -146,6 +147,11 @@ private:
     volatile int32_t mThreadPoolSeq;
 
     CallRestriction mCallRestriction;
+
+    pthread_key_t mTLS;
+    std::atomic<bool> mShutdown;
+    std::atomic<bool> mDisableBackgroundScheduling;
+    sp<BBinder> mContextObject;
 };
 
 } // namespace android

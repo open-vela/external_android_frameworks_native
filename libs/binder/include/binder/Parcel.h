@@ -256,7 +256,7 @@ public:
     status_t            writeEnumVector(const std::optional<std::vector<T>>& val)
             { return writeData(val); }
     template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
-    status_t            writeEnumVector(const std::unique_ptr<std::vector<T>>& val) __attribute__((deprecated("use std::optional version instead")))
+    status_t            writeEnumVector(const std::unique_ptr<std::vector<T>>& val)
             { return writeData(val); }
     // Write an Enum vector with underlying type != int8_t.
     template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
@@ -266,17 +266,17 @@ public:
     status_t            writeEnumVector(const std::optional<std::vector<T>>& val)
             { return writeData(val); }
     template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
-    status_t            writeEnumVector(const std::unique_ptr<std::vector<T>>& val) __attribute__((deprecated("use std::optional version instead")))
+    status_t            writeEnumVector(const std::unique_ptr<std::vector<T>>& val)
             { return writeData(val); }
 
     template<typename T>
     status_t            writeParcelableVector(const std::optional<std::vector<std::optional<T>>>& val)
             { return writeData(val); }
     template<typename T>
-    status_t            writeParcelableVector(const std::unique_ptr<std::vector<std::unique_ptr<T>>>& val) __attribute__((deprecated("use std::optional version instead")))
+    status_t            writeParcelableVector(const std::unique_ptr<std::vector<std::unique_ptr<T>>>& val)
             { return writeData(val); }
     template<typename T>
-    status_t            writeParcelableVector(const std::shared_ptr<std::vector<std::unique_ptr<T>>>& val) __attribute__((deprecated("use std::optional version instead")))
+    status_t            writeParcelableVector(const std::shared_ptr<std::vector<std::unique_ptr<T>>>& val)
             { return writeData(val); }
     template<typename T>
     status_t            writeParcelableVector(const std::shared_ptr<std::vector<std::optional<T>>>& val)
@@ -412,7 +412,7 @@ public:
     status_t            readEnumVector(std::vector<T>* val) const
             { return readData(val); }
     template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
-    status_t            readEnumVector(std::unique_ptr<std::vector<T>>* val) const __attribute__((deprecated("use std::optional version instead")))
+    status_t            readEnumVector(std::unique_ptr<std::vector<T>>* val) const
             { return readData(val); }
     template<typename T, std::enable_if_t<std::is_enum_v<T> && std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
     status_t            readEnumVector(std::optional<std::vector<T>>* val) const
@@ -422,7 +422,7 @@ public:
     status_t            readEnumVector(std::vector<T>* val) const
             { return readData(val); }
     template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
-    status_t            readEnumVector(std::unique_ptr<std::vector<T>>* val) const __attribute__((deprecated("use std::optional version instead")))
+    status_t            readEnumVector(std::unique_ptr<std::vector<T>>* val) const
             { return readData(val); }
     template<typename T, std::enable_if_t<std::is_enum_v<T> && !std::is_same_v<typename std::underlying_type_t<T>,int8_t>, bool> = 0>
     status_t            readEnumVector(std::optional<std::vector<T>>* val) const
@@ -434,7 +434,7 @@ public:
             { return readData(val); }
     template<typename T>
     status_t            readParcelableVector(
-                            std::unique_ptr<std::vector<std::unique_ptr<T>>>* val) const __attribute__((deprecated("use std::optional version instead")))
+                            std::unique_ptr<std::vector<std::unique_ptr<T>>>* val) const
             { return readData(val); }
     template<typename T>
     status_t            readParcelableVector(std::vector<T>* val) const

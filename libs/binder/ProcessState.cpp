@@ -511,7 +511,7 @@ ProcessState::ProcessState(const char* driver)
         }
     }
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__NuttX__)
     LOG_ALWAYS_FATAL_IF(!opened.ok(), "Binder driver '%s' could not be opened. Terminating: %s",
                         driver, opened.error().message().c_str());
 #endif

@@ -17,7 +17,6 @@
 #include <mutex>
 #include <unistd.h>
 
-#include <android/permission_manager.h>
 #include <binder/ActivityManager.h>
 #include <binder/Binder.h>
 #include <binder/IServiceManager.h>

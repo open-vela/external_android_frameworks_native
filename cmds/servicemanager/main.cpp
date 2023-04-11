@@ -110,7 +110,7 @@ private:
     sp<ServiceManager> mManager;
 };
 
-int main(int argc, char** argv) {
+extern "C" int main(int argc, char** argv) {
 #ifdef __ANDROID_RECOVERY__
     android::base::InitLogging(argv, android::base::KernelLogger);
 #endif

@@ -367,7 +367,7 @@ TEST_F(BinderDriverInterfaceTest, RequestDeathNotification) {
     binderTestReadEmpty();
 }
 
-int main(int argc, char **argv) {
+extern "C" int main(int argc, char **argv) {
     ExitIfWrongAbi();
     ::testing::InitGoogleTest(&argc, argv);
 

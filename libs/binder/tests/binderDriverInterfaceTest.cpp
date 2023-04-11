@@ -20,8 +20,13 @@
 #include <stdlib.h>
 
 #include <gtest/gtest.h>
+#ifdef __NuttX__
+#include <nuttx/android/binder.h>
+#else
 #include <linux/android/binder.h>
+#endif
 #include <binder/IBinder.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <poll.h>
 

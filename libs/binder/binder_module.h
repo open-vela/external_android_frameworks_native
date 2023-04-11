@@ -29,6 +29,10 @@
 #undef B_PACK_CHARS
 #endif
 
+#ifdef __NuttX__
+#include <nuttx/android/binder.h>
+#include <nuttx/tls.h>
+#else
 #include <linux/android/binder.h>
 #include <sys/ioctl.h>
 
@@ -100,4 +104,5 @@ struct binder_frozen_status_info {
 #define BINDER_ENABLE_ONEWAY_SPAM_DETECTION _IOW('b', 16, __u32)
 #endif // BINDER_ENABLE_ONEWAY_SPAM_DETECTION
 
+#endif // __NuttX__
 #endif // _BINDER_MODULE_H_

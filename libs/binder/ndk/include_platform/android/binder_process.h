@@ -55,7 +55,7 @@ void ABinderProcess_joinThreadPool();
  * process.
  * \return STATUS_OK on success
  */
-__attribute__((weak)) binder_status_t ABinderProcess_setupPolling(int* fd) __INTRODUCED_IN(31);
+binder_status_t ABinderProcess_setupPolling(int* fd) __INTRODUCED_IN(31);
 
 /**
  * This will handle all queued binder commands in this process and then return.
@@ -63,6 +63,6 @@ __attribute__((weak)) binder_status_t ABinderProcess_setupPolling(int* fd) __INT
  *
  * \return STATUS_OK on success
  */
-__attribute__((weak)) binder_status_t ABinderProcess_handlePolledCommands() __INTRODUCED_IN(31);
+binder_status_t ABinderProcess_handlePolledCommands() __INTRODUCED_IN(31);
 
 __END_DECLS

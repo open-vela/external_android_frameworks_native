@@ -40,7 +40,7 @@
 #include <binder/RpcServer.h>
 #include <binder/RpcSession.h>
 
-#include <linux/sched.h>
+#include <sys/wait.h>
 #include <sys/epoll.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>

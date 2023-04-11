@@ -62,6 +62,14 @@ status_t RpcServer::setupUnixDomainServer(const char* path) {
     return setupSocketServer(UnixSocketAddress(path));
 }
 
+status_t RpcServer::setupRpmsgSockServer(const char* cpu, const char* name) {
+    return setupSocketServer(RpmsgSocketAddress(cpu, name));
+}
+
+status_t RpcServer::setupRpmsgSockServer(const char* name) {
+    return setupSocketServer(RpmsgSocketAddress(name));
+}
+
 status_t RpcServer::setupVsockServer(unsigned int port) {
     // realizing value w/ this type at compile time to avoid ubsan abort
     constexpr unsigned int kAnyCid = VMADDR_CID_ANY;
@@ -160,7 +168,7 @@ static void joinRpcServer(sp<RpcServer>&& thiz) {
 
 void RpcServer::start() {
     std::lock_guard<std::mutex> _l(mLock);
-    LOG_ALWAYS_FATAL_IF(mJoinThread.get(), "Already started!");
+    LOG_ALWAYS_FATAL_IF(!!mJoinThread.get(), "Already started!");
     mJoinThread = std::make_unique<std::thread>(&joinRpcServer, sp<RpcServer>::fromExisting(this));
 }
 

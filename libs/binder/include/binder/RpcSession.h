@@ -95,6 +95,12 @@ public:
     [[nodiscard]] status_t setupUnixDomainClient(const char* path);
 
     /**
+     * Creates an Rpmsg Client at the current cpu and name, eg :
+     * name = "poweroff" we set sockaddr_rpmsg.rp_cpu = cpu sockaddr_rpmsg.rp_name = "poweroff"
+     */
+    [[nodiscard]] status_t setupRpmsgSockClient(const char* cpu, const char* name);
+
+    /**
      * Connects to an RPC server at the CVD & port.
      */
     [[nodiscard]] status_t setupVsockClient(unsigned int cvd, unsigned int port);

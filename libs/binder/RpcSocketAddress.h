@@ -23,6 +23,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <netpacket/rpmsg.h>
 
 #include "vm_sockets.h"
 
@@ -55,6 +56,31 @@ public:
 
 private:
     sockaddr_un mAddr;
+};
+
+class RpmsgSocketAddress : public RpcSocketAddress {
+public:
+    explicit RpmsgSocketAddress(const char* name) : RpmsgSocketAddress("", name) {
+    }
+    explicit RpmsgSocketAddress(const char* cpu, const char* name) : mAddr({.rp_family = PF_RPMSG}) {
+        unsigned int len = strlen(cpu) + 1;
+        LOG_ALWAYS_FATAL_IF(len > sizeof(mAddr.rp_cpu), "Socket cpu is too long: %u %s",
+                            len, cpu);
+        memcpy(mAddr.rp_cpu, cpu, len);
+        len = strlen(name) + 1;
+        LOG_ALWAYS_FATAL_IF(len > sizeof(mAddr.rp_name), "Socket name is too long: %u %s",
+                            len, name);
+        memcpy(mAddr.rp_name, name, len);
+    }
+    virtual ~RpmsgSocketAddress() {}
+    std::string toString() const override {
+        return String8::format("path '%s:%s'", mAddr.rp_cpu, mAddr.rp_name).c_str();
+    }
+    const sockaddr* addr() const override { return reinterpret_cast<const sockaddr*>(&mAddr); }
+    size_t addrSize() const override { return sizeof(mAddr); }
+
+private:
+    struct sockaddr_rpmsg mAddr;
 };
 
 class VsockSocketAddress : public RpcSocketAddress {

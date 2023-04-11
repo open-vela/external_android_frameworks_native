@@ -51,6 +51,14 @@
 
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 
+#ifndef SCHED_RESET_ON_FORK
+#define SCHED_RESET_ON_FORK 0x40000000
+#endif
+
+#ifndef PAGE_SIZE
+#define PAGE_SIZE 4096
+#endif
+
 using namespace android;
 using namespace std::string_literals;
 using namespace std::chrono_literals;
@@ -1763,7 +1771,7 @@ int run_server(int index, int readypipefd, bool usePoll)
     return 1; /* joinThreadPool should not return */
 }
 
-int main(int argc, char **argv) {
+extern "C" int main(int argc, char **argv) {
     ExitIfWrongAbi();
 
     if (argc == 4 && !strcmp(argv[1], "--servername")) {

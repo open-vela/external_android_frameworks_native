@@ -19,8 +19,10 @@
 #include <android-base/logging.h>
 #include <binder/IPCThreadState.h>
 #include <log/log_safetynet.h>
+#ifdef __ANDROID__
 #include <selinux/android.h>
 #include <selinux/avc.h>
+#endif
 
 namespace android {
 
@@ -30,6 +32,7 @@ constexpr bool kIsVendor = true;
 constexpr bool kIsVendor = false;
 #endif
 
+#ifdef __ANDROID__
 static std::string getPidcon(pid_t pid) {
     android_errorWriteLog(0x534e4554, "121035042");
 
@@ -78,8 +81,10 @@ static int auditCallback(void *data, security_class_t /*cls*/, char *buf, size_t
         ad->tname->c_str());
     return 0;
 }
+#endif
 
 Access::Access() {
+#ifdef __ANDROID__
     union selinux_callback cb;
 
     cb.func_audit = auditCallback;
@@ -91,13 +96,17 @@ Access::Access() {
     CHECK(selinux_status_open(true /*fallback*/) >= 0);
 
     CHECK(getcon(&mThisProcessContext) == 0);
+#endif
 }
 
 Access::~Access() {
+#ifdef __ANDROID__
     freecon(mThisProcessContext);
+#endif
 }
 
 Access::CallingContext Access::getCallingContext() {
+#ifdef __ANDROID__
     IPCThreadState* ipc = IPCThreadState::self();
 
     const char* callingSid = ipc->getCallingSid();
@@ -108,6 +117,9 @@ Access::CallingContext Access::getCallingContext() {
         .uid = ipc->getCallingUid(),
         .sid = callingSid ? std::string(callingSid) : getPidcon(callingPid),
     };
+#else
+    return CallingContext();
+#endif
 }
 
 bool Access::canFind(const CallingContext& ctx,const std::string& name) {
@@ -124,6 +136,7 @@ bool Access::canList(const CallingContext& ctx) {
 
 bool Access::actionAllowed(const CallingContext& sctx, const char* tctx, const char* perm,
         const std::string& tname) {
+#ifdef __ANDROID__
     const char* tclass = "service_manager";
 
     AuditCallbackData data = {
@@ -133,9 +146,18 @@ bool Access::actionAllowed(const CallingContext& sctx, const char* tctx, const c
 
     return 0 == selinux_check_access(sctx.sid.c_str(), tctx, tclass, perm,
         reinterpret_cast<void*>(&data));
+#else
+    (void)sctx;
+    (void)tctx;
+    (void)perm;
+    (void)tname;
+
+    return true;
+#endif
 }
 
 bool Access::actionAllowedFromLookup(const CallingContext& sctx, const std::string& name, const char *perm) {
+#ifdef __ANDROID__
     char *tctx = nullptr;
     if (selabel_lookup(getSehandle(), &tctx, name.c_str(), SELABEL_CTX_ANDROID_SERVICE) != 0) {
         LOG(ERROR) << "SELinux: No match for " << name << " in service_contexts.\n";
@@ -145,6 +167,14 @@ bool Access::actionAllowedFromLookup(const CallingContext& sctx, const std::stri
     bool allowed = actionAllowed(sctx, tctx, perm, name);
     freecon(tctx);
     return allowed;
+#else
+    (void)sctx;
+    (void)name;
+    (void)perm;
+    (void)kIsVendor;
+
+    return true;
+#endif
 }
 
 }  // android

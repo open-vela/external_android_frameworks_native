@@ -22,7 +22,7 @@ MODULE    = $(CONFIG_ANDROID_SERVICE)
 PRIORITY  = SCHED_PRIORITY_DEFAULT
 STACKSIZE = $(CONFIG_ANDROID_SERVICE_STACKSIZE)
 
-MAINSRC  += service/service.cpp
+MAINSRC  += service.cpp
 PROGNAME += service
 
 include $(APPDIR)/Application.mk

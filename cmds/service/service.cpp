@@ -46,7 +46,7 @@ void writeString16(Parcel& parcel, const char* string)
     }
 }
 
-int main(int argc, char* const argv[])
+extern "C" int main(int argc, char* const argv[])
 {
     bool wantsUsage = false;
     int result = 0;
@@ -74,7 +74,7 @@ int main(int argc, char* const argv[])
 #ifdef VENDORSERVICES
     ProcessState::initWithDriver("/dev/vndbinder");
 #endif
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__NuttX__)
     setDefaultServiceManager(createRpcDelegateServiceManager({.maxOutgoingThreads = 1}));
 #endif
     sp<IServiceManager> sm = defaultServiceManager();

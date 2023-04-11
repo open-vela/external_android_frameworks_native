@@ -136,6 +136,10 @@ status_t RpcSession::setupUnixDomainClient(const char* path) {
     return setupSocketClient(UnixSocketAddress(path));
 }
 
+status_t RpcSession::setupRpmsgSockClient(const char* cpu, const char* name) {
+    return setupSocketClient(RpmsgSocketAddress(cpu, name));
+}
+
 status_t RpcSession::setupVsockClient(unsigned int cid, unsigned int port) {
     return setupSocketClient(VsockSocketAddress(cid, port));
 }

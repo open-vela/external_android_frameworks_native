@@ -58,6 +58,18 @@ public:
     [[nodiscard]] status_t setupUnixDomainServer(const char* path);
 
     /**
+     * Creates an Rpmsg server at the current cpu and name, eg :
+     * name = "poweroff" we set sockaddr_rpmsg.rp_cpu = cpu sockaddr_rpmsg.rp_name = "poweroff"
+     */
+    [[nodiscard]] status_t setupRpmsgSockServer(const char* cpu, const char* name);
+
+    /**
+     * Creates an Rpmsg server at all cpus and name, eg :
+     * name = "poweroff" we set sockaddr_rpmsg.rp_cpu = "" sockaddr_rpmsg.rp_name = "poweroff"
+     */
+    [[nodiscard]] status_t setupRpmsgSockServer(const char* name);
+
+    /**
      * Creates an RPC server at the current port.
      */
     [[nodiscard]] status_t setupVsockServer(unsigned int port);

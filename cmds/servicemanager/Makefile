@@ -23,9 +23,9 @@ PRIORITY  = SCHED_PRIORITY_DEFAULT
 STACKSIZE = $(CONFIG_ANDROID_SERVICEMANAGER_STACKSIZE)
 
 CXXFLAGS += -DVENDORSERVICEMANAGER
-CXXSRCS  += servicemanager/Access.cpp
-CXXSRCS  += servicemanager/ServiceManager.cpp
-MAINSRC  += servicemanager/main.cpp
+CXXSRCS  += Access.cpp
+CXXSRCS  += ServiceManager.cpp
+MAINSRC  += main.cpp
 PROGNAME += servicemanager
 
 include $(APPDIR)/Application.mk

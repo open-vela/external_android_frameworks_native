@@ -91,7 +91,41 @@ sp<ProcessState> ProcessState::selfOrNull()
     return init(nullptr, false /*requireDefault*/);
 }
 
+#ifdef __NuttX__
+static void FreeProcessState(void* global)
+{
+  if (global) {
+      sp<ProcessState>* proc = static_cast<sp<ProcessState>*>(global);
+      delete proc;
+  }
+}
+
+sp<ProcessState>* GetProcessState(void)
+{
+  sp<ProcessState>* proc = NULL;
+  static int index = -1;
+
+  if (index < 0) {
+    index = task_tls_alloc(FreeProcessState);
+  }
+
+  if (index >= 0) {
+    proc = reinterpret_cast<sp<ProcessState>*>(task_tls_get_value(index));
+    if (proc == NULL) {
+      proc = new sp<ProcessState>;
+      if (proc) {
+          task_tls_set_value(index, reinterpret_cast<uintptr_t>(proc));
+      }
+    }
+  }
+
+  return proc;
+}
+
+#define gProcess (*GetProcessState())
+#else
 [[clang::no_destroy]] static sp<ProcessState> gProcess;
+#endif
 [[clang::no_destroy]] static std::mutex gProcessMutex;
 
 static void verifyNotForked(bool forked) {
@@ -109,24 +143,20 @@ sp<ProcessState> ProcessState::init(const char *driver, bool requireDefault)
         return gProcess;
     }
 
-    [[clang::no_destroy]] static std::once_flag gProcessOnce;
-    std::call_once(gProcessOnce, [&](){
-        if (access(driver, R_OK) == -1) {
-            ALOGE("Binder driver %s is unavailable. Using /dev/binder instead.", driver);
-            driver = "/dev/binder";
-        }
-
-        // we must install these before instantiating the gProcess object,
-        // otherwise this would race with creating it, and there could be the
-        // possibility of an invalid gProcess object forked by another thread
-        // before these are installed
-        int ret = pthread_atfork(ProcessState::onFork, ProcessState::parentPostFork,
-                                 ProcessState::childPostFork);
-        LOG_ALWAYS_FATAL_IF(ret != 0, "pthread_atfork error %s", strerror(ret));
-
+    if (gProcess == nullptr) {
         std::lock_guard<std::mutex> l(gProcessMutex);
-        gProcess = sp<ProcessState>::make(driver);
-    });
+        if (gProcess == nullptr) {
+            // we must install these before instantiating the gProcess object,
+            // otherwise this would race with creating it, and there could be the
+            // possibility of an invalid gProcess object forked by another thread
+            // before these are installed
+            int ret = pthread_atfork(ProcessState::onFork, ProcessState::parentPostFork,
+                                    ProcessState::childPostFork);
+            LOG_ALWAYS_FATAL_IF(ret != 0, "pthread_atfork error %s", strerror(ret));
+
+            gProcess = sp<ProcessState>::make(driver);
+        }
+    }
 
     if (requireDefault) {
         // Detect if we are trying to initialize with a different driver, and

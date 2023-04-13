@@ -65,6 +65,8 @@ CXXSRCS += binder/Status.cpp
 CXXSRCS += binder/TextOutput.cpp
 CXXSRCS += binder/Utils.cpp
 
+CXXSRCS += binderdebug/BinderDebug.cpp
+
 AIDLSRCS += $(shell find binder/aidl -name *.aidl)
 AIDLFLAGS = --lang=cpp -Ibinder/aidl -hbinder/aidl -obinder/aidl
 

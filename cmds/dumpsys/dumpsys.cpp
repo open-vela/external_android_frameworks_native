@@ -345,36 +345,36 @@ void Dumpsys::setServiceArgs(Vector<String16>& args, bool asProto, int priorityF
 static status_t dumpPidToFd(const sp<IBinder>& service, const unique_fd& fd, bool exclusive) {
      pid_t pid;
      status_t status = service->getDebugPid(&pid);
-     if (status != OK) {
+     if (status != android::OK) {
          return status;
      }
      if (!exclusive) {
         WriteStringToFd("Service host process PID: ", fd.get());
      }
      WriteStringToFd(std::to_string(pid) + "\n", fd.get());
-     return OK;
+     return android::OK;
 }
 
 static status_t dumpStabilityToFd(const sp<IBinder>& service, const unique_fd& fd) {
      WriteStringToFd("Stability: " + internal::Stability::debugToString(service) + "\n", fd);
-     return OK;
+     return android::OK;
 }
 
 static status_t dumpThreadsToFd(const sp<IBinder>& service, const unique_fd& fd) {
     pid_t pid;
     status_t status = service->getDebugPid(&pid);
-    if (status != OK) {
+    if (status != android::OK) {
         return status;
     }
     BinderPidInfo pidInfo;
     status = getBinderPidInfo(BinderDebugContext::BINDER, pid, &pidInfo);
-    if (status != OK) {
+    if (status != android::OK) {
         return status;
     }
     WriteStringToFd("Threads in use: " + std::to_string(pidInfo.threadUsage) + "/" +
                         std::to_string(pidInfo.threadCount) + "\n",
                     fd.get());
-    return OK;
+    return android::OK;
 }
 
 static status_t dumpClientsToFd(const sp<IBinder>& service, const unique_fd& fd) {
@@ -382,32 +382,32 @@ static status_t dumpClientsToFd(const sp<IBinder>& service, const unique_fd& fd)
     const auto remoteBinder = service->remoteBinder();
     if (remoteBinder == nullptr) {
         WriteStringToFd("Client PIDs are not available for local binders.\n", fd.get());
-        return OK;
+        return android::OK;
     }
     const auto handle = remoteBinder->getDebugBinderHandle();
     if (handle == std::nullopt) {
-        return OK;
+        return android::OK;
     }
     std::vector<pid_t> pids;
     pid_t myPid = getpid();
     pid_t servicePid;
     status_t status = service->getDebugPid(&servicePid);
-    if (status != OK) {
+    if (status != android::OK) {
         return status;
     }
     status =
         getBinderClientPids(BinderDebugContext::BINDER, myPid, servicePid, handle.value(), &pids);
-    if (status != OK) {
+    if (status != android::OK) {
         return status;
     }
     pids.erase(std::remove_if(pids.begin(), pids.end(), [&](pid_t pid) { return pid == myPid; }),
                pids.end());
     WriteStringToFd("Client PIDs: " + ::android::base::Join(pids, ", ") + "\n", fd.get());
-    return OK;
+    return android::OK;
 }
 
 static void reportDumpError(const String16& serviceName, status_t error, const char* context) {
-    if (error == OK) return;
+    if (error == android::OK) return;
 
     std::cerr << "Error with service '" << serviceName << "' while " << context << ": "
               << statusToString(error) << std::endl;
@@ -457,7 +457,7 @@ status_t Dumpsys::startDumpThread(int dumpTypeFlags, const String16& serviceName
             reportDumpError(serviceName, err, "dumping");
         }
     });
-    return OK;
+    return android::OK;
 }
 
 void Dumpsys::stopDumpThread(bool dumpComplete) {
@@ -489,7 +489,7 @@ void Dumpsys::writeDumpHeader(int fd, const String16& serviceName, int priorityF
 status_t Dumpsys::writeDump(int fd, const String16& serviceName, std::chrono::milliseconds timeout,
                             bool asProto, std::chrono::duration<double>& elapsedDuration,
                             size_t& bytesWritten) const {
-    status_t status = OK;
+    status_t status = android::OK;
     size_t totalBytes = 0;
     auto start = std::chrono::steady_clock::now();
     auto end = start + timeout;

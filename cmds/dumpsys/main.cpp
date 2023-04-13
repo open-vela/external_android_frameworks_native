@@ -27,7 +27,7 @@
 
 using namespace android;
 
-int main(int argc, char* const argv[]) {
+extern "C" int main(int argc, char* const argv[]) {
     signal(SIGPIPE, SIG_IGN);
     sp<IServiceManager> sm = defaultServiceManager();
     fflush(stdout);

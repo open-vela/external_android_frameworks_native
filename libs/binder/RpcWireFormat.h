@@ -17,8 +17,10 @@
 
 namespace android {
 
+#ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic error "-Wpadded"
+#endif
 
 constexpr uint8_t RPC_CONNECTION_OPTION_INCOMING = 0x1; // default is outgoing
 
@@ -143,6 +145,8 @@ struct RpcWireReply {
 };
 static_assert(sizeof(RpcWireReply) == 4);
 
+#ifdef __clang__
 #pragma clang diagnostic pop
+#endif
 
 } // namespace android

@@ -139,7 +139,7 @@ typedef struct AStatus AStatus;
  *
  * \return a newly constructed status object that the caller owns.
  */
-__attribute__((warn_unused_result)) AStatus* AStatus_newOk() __INTRODUCED_IN(29);
+__attribute__((warn_unused_result)) AStatus* AStatus_newOk(void) __INTRODUCED_IN(29);
 
 /**
  * New status with exception code.

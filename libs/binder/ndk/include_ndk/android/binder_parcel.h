@@ -1162,7 +1162,7 @@ binder_status_t AParcel_appendFrom(const AParcel* from, AParcel* to, int32_t sta
  *
  * \return A parcel which is not related to any IBinder objects.
  */
-AParcel* AParcel_create() __INTRODUCED_IN(31);
+AParcel* AParcel_create(void) __INTRODUCED_IN(31);
 
 /**
  * Marshals the raw bytes of the Parcel to a buffer.

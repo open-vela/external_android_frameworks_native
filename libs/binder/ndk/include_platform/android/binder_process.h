@@ -29,7 +29,7 @@ __BEGIN_DECLS
  * When using this, it is expected that ABinderProcess_setupPolling and
  * ABinderProcess_handlePolledCommands are not used.
  */
-void ABinderProcess_startThreadPool();
+void ABinderProcess_startThreadPool(void);
 /**
  * This sets the maximum number of threads that can be started in the threadpool. By default, after
  * startThreadPool is called, this is 15. If it is called additional times, it will only prevent
@@ -40,7 +40,7 @@ bool ABinderProcess_setThreadPoolMaxThreadCount(uint32_t numThreads);
  * This adds the current thread to the threadpool. This may cause the threadpool to exceed the
  * maximum size.
  */
-void ABinderProcess_joinThreadPool();
+void ABinderProcess_joinThreadPool(void);
 
 /**
  * This gives you an fd to wait on. Whenever data is available on the fd,
@@ -63,6 +63,6 @@ binder_status_t ABinderProcess_setupPolling(int* fd) __INTRODUCED_IN(31);
  *
  * \return STATUS_OK on success
  */
-binder_status_t ABinderProcess_handlePolledCommands() __INTRODUCED_IN(31);
+binder_status_t ABinderProcess_handlePolledCommands(void) __INTRODUCED_IN(31);
 
 __END_DECLS

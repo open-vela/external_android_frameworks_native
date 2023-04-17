@@ -374,7 +374,7 @@ binder_status_t AIBinder_unlinkToDeath(AIBinder* binder, AIBinder_DeathRecipient
  *
  * \return calling uid or the current process's UID if this thread isn't processing a transaction.
  */
-uid_t AIBinder_getCallingUid() __INTRODUCED_IN(29);
+uid_t AIBinder_getCallingUid(void) __INTRODUCED_IN(29);
 
 /**
  * This returns the calling PID assuming that this thread is called from a thread that is processing
@@ -390,7 +390,7 @@ uid_t AIBinder_getCallingUid() __INTRODUCED_IN(29);
  * \return calling pid or the current process's PID if this thread isn't processing a transaction.
  * If the transaction being processed is a oneway transaction, then this method will return 0.
  */
-pid_t AIBinder_getCallingPid() __INTRODUCED_IN(29);
+pid_t AIBinder_getCallingPid(void) __INTRODUCED_IN(29);
 
 /**
  * Determine whether the current thread is currently executing an incoming transaction.
@@ -398,7 +398,7 @@ pid_t AIBinder_getCallingPid() __INTRODUCED_IN(29);
  * \return true if the current thread is currently executing an incoming transaction, and false
  * otherwise.
  */
-bool AIBinder_isHandlingTransaction() __INTRODUCED_IN(33);
+bool AIBinder_isHandlingTransaction(void) __INTRODUCED_IN(33);
 
 /**
  * This can only be called if a strong reference to this object already exists in process.

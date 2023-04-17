@@ -185,13 +185,13 @@ void AServiceManager_setActiveServicesCallback(bool (*callback)(bool, void*), vo
  *
  * \return true on success.
  */
-bool AServiceManager_tryUnregister() __INTRODUCED_IN(31);
+bool AServiceManager_tryUnregister(void) __INTRODUCED_IN(31);
 
 /**
  * Re-register services that were unregistered by 'tryUnregister'.
  * This method should be called in the case 'tryUnregister' fails
  * (and should be called on the same thread).
  */
-void AServiceManager_reRegister() __INTRODUCED_IN(31);
+void AServiceManager_reRegister(void) __INTRODUCED_IN(31);
 
 __END_DECLS

@@ -691,7 +691,7 @@ status_t IPCThreadState::transact(int32_t handle,
 
     IF_LOG_TRANSACTIONS() {
         TextOutput::Bundle _b(alog);
-        alog << "BC_TRANSACTION thr " << (void*)pthread_self() << " / hand "
+        alog << "BC_TRANSACTION thr " << (void*)(uintptr_t)pthread_self() << " / hand "
             << handle << " / code " << TypeCode(code) << ": "
             << indent << data << dedent << endl;
     }
@@ -741,7 +741,7 @@ status_t IPCThreadState::transact(int32_t handle,
 
         IF_LOG_TRANSACTIONS() {
             TextOutput::Bundle _b(alog);
-            alog << "BR_REPLY thr " << (void*)pthread_self() << " / hand "
+            alog << "BR_REPLY thr " << (void*)(uintptr_t)pthread_self() << " / hand "
                 << handle << ": ";
             if (reply) alog << indent << *reply << dedent << endl;
             else alog << "(none requested)" << endl;
@@ -1255,7 +1255,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             status_t error;
             IF_LOG_TRANSACTIONS() {
                 TextOutput::Bundle _b(alog);
-                alog << "BR_TRANSACTION thr " << (void*)pthread_self()
+                alog << "BR_TRANSACTION thr " << (void*)(uintptr_t)pthread_self()
                     << " / obj " << tr.target.ptr << " / code "
                     << TypeCode(tr.code) << ": " << indent << buffer
                     << dedent << endl
@@ -1321,7 +1321,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
 
             IF_LOG_TRANSACTIONS() {
                 TextOutput::Bundle _b(alog);
-                alog << "BC_REPLY thr " << (void*)pthread_self() << " / obj "
+                alog << "BC_REPLY thr " << (void*)(uintptr_t)pthread_self() << " / obj "
                     << tr.target.ptr << ": " << indent << reply << dedent << endl;
             }
 

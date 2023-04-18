@@ -198,14 +198,12 @@ Allocation::~Allocation()
             end = free_end;
         start = (start + pagesize-1) & ~(pagesize-1);
         end &= ~(pagesize-1);
-
+#ifndef NDEBUG
         if (start < end) {
             void* const start_ptr = (void*)(intptr_t(getHeap()->base()) + start);
             size_t size = end-start;
 
-#ifndef NDEBUG
             memset(start_ptr, 0xdf, size);
-#endif
 
             // MADV_REMOVE is not defined on Dapper based Goobuntu
 #ifdef MADV_REMOVE
@@ -216,6 +214,7 @@ Allocation::~Allocation()
             }
 #endif
         }
+#endif
 
         // This should be done after madvise(MADV_REMOVE), otherwise madvise()
         // might kick out the memory region that's allocated and/or written
@@ -384,7 +383,7 @@ SimpleBestFitAllocator::chunk_t* SimpleBestFitAllocator::dealloc(size_t start)
     while (cur) {
         if (cur->start == start) {
             LOG_FATAL_IF(cur->free,
-                "block at offset 0x%08lX of size 0x%08X already freed",
+                "block at offset 0x%08zX of size 0x%08X already freed",
                 cur->start*kMemoryAlign, cur->size*kMemoryAlign);
 
             // merge freed blocks together
@@ -408,7 +407,7 @@ SimpleBestFitAllocator::chunk_t* SimpleBestFitAllocator::dealloc(size_t start)
                 }
             #endif
             LOG_FATAL_IF(!freed->free,
-                "freed block at offset 0x%08lX of size 0x%08X is not free!",
+                "freed block at offset 0x%08zX of size 0x%08X is not free!",
                 freed->start * kMemoryAlign, freed->size * kMemoryAlign);
 
             return freed;

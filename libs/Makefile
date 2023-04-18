@@ -67,6 +67,8 @@ CXXSRCS += binder/Utils.cpp
 
 CXXSRCS += binderdebug/BinderDebug.cpp
 
+CXXFLAGS += -Wno-undef -Wno-shadow -Wno-unknown-pragmas
+
 AIDLSRCS += $(shell find binder/aidl -name *.aidl)
 AIDLFLAGS = --lang=cpp -Ibinder/aidl -hbinder/aidl -obinder/aidl
 

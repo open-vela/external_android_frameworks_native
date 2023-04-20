@@ -45,7 +45,7 @@ bool FdTrigger::isTriggered() {
 
 status_t FdTrigger::triggerablePoll(base::borrowed_fd fd, int16_t event) {
     LOG_ALWAYS_FATAL_IF(event == 0, "triggerablePoll %d with event 0 is not allowed", fd.get());
-    pollfd pfd[]{{.fd = fd.get(), .events = event, .revents = 0},
+    pollfd pfd[]{{.fd = fd.get(), .events = (uint16_t)event, .revents = 0},
                  {.fd = mRead.get(), .events = 0, .revents = 0}};
     int ret = TEMP_FAILURE_RETRY(poll(pfd, arraysize(pfd), -1));
     if (ret < 0) {

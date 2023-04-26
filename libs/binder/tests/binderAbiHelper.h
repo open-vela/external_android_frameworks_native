@@ -28,7 +28,11 @@ static constexpr bool kBuild32Abi = false;
 // TODO: remove when CONFIG_ANDROID_BINDER_IPC_32BIT is no longer supported
 static inline bool ReadKernelConfigIs32BitAbi() {
     // failure case implies we run with standard ABI
+#ifndef __NuttX__
     return 0 == system("zcat /proc/config.gz | grep -E \"^CONFIG_ANDROID_BINDER_IPC_32BIT=y$\"");
+#else
+    return 0;
+#endif
 }
 
 static inline void ExitIfWrongAbi() {

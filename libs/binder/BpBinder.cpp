@@ -471,7 +471,7 @@ BpBinder* BpBinder::remoteBinder()
 
 BpBinder::~BpBinder()
 {
-    ALOGV("Destroying BpBinder %p handle %d\n", this, binderHandle());
+    ALOGV("Destroying BpBinder %p\n", this);
 
     if (CC_UNLIKELY(isRpcBinder())) return;
 
@@ -507,7 +507,7 @@ BpBinder::~BpBinder()
 
 void BpBinder::onFirstRef()
 {
-    ALOGV("onFirstRef BpBinder %p handle %d\n", this, binderHandle());
+    ALOGV("onFirstRef BpBinder %p\n", this);
     if (CC_UNLIKELY(isRpcBinder())) return;
     IPCThreadState* ipc = IPCThreadState::self();
     if (ipc) ipc->incStrongHandle(binderHandle(), this);
@@ -515,7 +515,7 @@ void BpBinder::onFirstRef()
 
 void BpBinder::onLastStrongRef(const void* /*id*/)
 {
-    ALOGV("onLastStrongRef BpBinder %p handle %d\n", this, binderHandle());
+    ALOGV("onLastStrongRef BpBinder %p\n", this);
     if (CC_UNLIKELY(isRpcBinder())) {
         (void)rpcSession()->sendDecStrong(this);
         return;

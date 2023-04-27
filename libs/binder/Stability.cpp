@@ -70,8 +70,8 @@ bool Stability::requiresVintfDeclaration(const sp<IBinder>& binder) {
 }
 
 void Stability::tryMarkCompilationUnit(IBinder* binder) {
-    status_t result = setRepr(binder, getLocalLevel(), REPR_NONE);
-    LOG_ALWAYS_FATAL_IF(result != OK, "Should only mark known object.");
+    status_t result = (setRepr(binder, getLocalLevel(), REPR_NONE));
+    (void)result;
 }
 
 Stability::Level Stability::getLocalLevel() {

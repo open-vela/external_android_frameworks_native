@@ -100,8 +100,9 @@ class BinderDriverInterfaceTest : public ::testing::Test {
             ret = ioctl(m_binderFd, cmd, arg);
             EXPECT_EQ(expect_ret, ret);
             if (ret < 0) {
-                if (errno != accept_errno)
+                if (errno != accept_errno) {
                     EXPECT_EQ(expect_errno, errno);
+                }
             }
         }
         void binderTestIoctlErr2(int cmd, void *arg, int expect_errno, int accept_errno) {
@@ -281,12 +282,15 @@ TEST_F(BinderDriverInterfaceTest, Transaction) {
         binderTestIoctl(BINDER_WRITE_READ, &bwr);
     }
     EXPECT_EQ(offsetof(typeof(br), pad), bwr.read_consumed);
-    if (bwr.read_consumed > offsetof(typeof(br), cmd0))
+    if (bwr.read_consumed > offsetof(typeof(br), cmd0)) {
         EXPECT_EQ(BR_NOOP, br.cmd0);
-    if (bwr.read_consumed > offsetof(typeof(br), cmd1))
+    }
+    if (bwr.read_consumed > offsetof(typeof(br), cmd1)) {
         EXPECT_EQ(BR_TRANSACTION_COMPLETE, br.cmd1);
-    if (bwr.read_consumed > offsetof(typeof(br), cmd2))
+    }
+    if (bwr.read_consumed > offsetof(typeof(br), cmd2)) {
         EXPECT_EQ(BR_REPLY, br.cmd2);
+    }
     if (bwr.read_consumed >= offsetof(typeof(br), pad)) {
         EXPECT_EQ(0u, br.arg2.target.ptr);
         EXPECT_EQ(0u, br.arg2.cookie);

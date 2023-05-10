@@ -1328,7 +1328,7 @@ TEST_P(BinderLibRpcTestP, SetRpcClientDebugNoKeepAliveBinder) {
     EXPECT_THAT(binder->setRpcClientDebug(std::move(socket), nullptr),
                 Debuggable(StatusEq(UNEXPECTED_NULL)));
 }
-INSTANTIATE_TEST_CASE_P(BinderLibTest, BinderLibRpcTestP, testing::Bool(),
+INSTANTIATE_TEST_SUITE_P(BinderLibTest, BinderLibRpcTestP, testing::Bool(),
                         BinderLibRpcTestP::ParamToString);
 
 class BinderLibTestService : public BBinder {

@@ -24,7 +24,7 @@ config ANDROID_BINDER
 
 config ANDROID_BINDER_TEST
 	tristate "Android Binder Test Case"
-	depends on ANDROID_BINDER
+	depends on ANDROID_BINDER && LIB_GOOGLETEST
 	default n
 
 config ANDROID_BINDER_TEST_STACKSIZE
@@ -35,6 +35,7 @@ config ANDROID_BINDER_TEST_STACKSIZE
 config ANDROID_BINDER_LIB_TEST
 	bool "Android Binder Lib Test Case"
 	depends on ANDROID_BINDER_TEST
+	depends on LIBC_EXECFUNCS
 	default n
 
 config ANDROID_BINDER_DRIVER_TEST

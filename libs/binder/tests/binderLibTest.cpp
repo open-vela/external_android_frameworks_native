@@ -507,8 +507,8 @@ TEST_F(BinderLibTest, Freeze) {
     EXPECT_EQ(NO_ERROR, IPCThreadState::self()->getProcessFreezeInfo(pid, &sync_received,
                 &async_received));
 
-    EXPECT_EQ(sync_received, 1);
-    EXPECT_EQ(async_received, 0);
+    EXPECT_EQ(sync_received, (uint32_t)1);
+    EXPECT_EQ(async_received, (uint32_t)0);
 
     EXPECT_EQ(NO_ERROR, IPCThreadState::self()->freeze(pid, false, 0));
     EXPECT_EQ(NO_ERROR, m_server->transact(BINDER_LIB_TEST_NOP_TRANSACTION, data, &reply));
@@ -1093,6 +1093,7 @@ TEST_F(BinderLibTest, WorkSourcePropagatedForAllFollowingBinderCalls)
     status_t ret;
     data.writeInterfaceToken(binderLibTestServiceName);
     ret = m_server->transact(BINDER_LIB_TEST_GET_WORK_SOURCE_TRANSACTION, data, &reply);
+    EXPECT_EQ(NO_ERROR, ret);
 
     Parcel data2, reply2;
     status_t ret2;
@@ -1166,13 +1167,13 @@ TEST_F(BinderLibTest, BufRejected) {
     data.setDataCapacity(1024);
     // Write a bogus object at offset 0 to get an entry in the offset table
     data.writeFileDescriptor(0);
-    EXPECT_EQ(data.objectsCount(), 1);
+    EXPECT_EQ(data.objectsCount(), (size_t)1);
     uint8_t *parcelData = const_cast<uint8_t*>(data.data());
     // And now, overwrite it with the buffer object
     memcpy(parcelData, &obj, sizeof(obj));
     data.setDataSize(sizeof(obj));
 
-    EXPECT_EQ(data.objectsCount(), 1);
+    EXPECT_EQ(data.objectsCount(), (size_t)1);
 
     // Either the kernel should reject this transaction (if it's correct), but
     // if it's not, the server implementation should return an error if it
@@ -1197,7 +1198,7 @@ TEST_F(BinderLibTest, WeakRejected) {
     data.setDataCapacity(1024);
     // Write a bogus object at offset 0 to get an entry in the offset table
     data.writeFileDescriptor(0);
-    EXPECT_EQ(data.objectsCount(), 1);
+    EXPECT_EQ(data.objectsCount(), (size_t)1);
     uint8_t *parcelData = const_cast<uint8_t *>(data.data());
     // And now, overwrite it with the weak binder
     memcpy(parcelData, &obj, sizeof(obj));
@@ -1207,7 +1208,7 @@ TEST_F(BinderLibTest, WeakRejected) {
     // test with an object that libbinder will actually try to release
     EXPECT_EQ(android::OK, data.writeStrongBinder(sp<BBinder>::make()));
 
-    EXPECT_EQ(data.objectsCount(), 2);
+    EXPECT_EQ(data.objectsCount(), (size_t)2);
 
     // send it many times, since previous error was memory corruption, make it
     // more likely that the server crashes
@@ -1368,6 +1369,9 @@ public:
                 int32_t id;
                 sp<IBinder> binder;
                 id = data.readInt32();
+                if (id < 0) {
+                    return BAD_VALUE;
+                }
                 binder = data.readStrongBinder();
                 if (binder == nullptr) {
                     return BAD_VALUE;

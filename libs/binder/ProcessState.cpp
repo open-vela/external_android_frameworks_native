@@ -91,35 +91,73 @@ sp<ProcessState> ProcessState::selfOrNull()
     return init(nullptr, false /*requireDefault*/);
 }
 
+void ProcessState::registerThread(pid_t thread)
+{
+    AutoMutex _l(mLock);
+    ALOGD("register thread %d", thread);
+    mThreadPoolSet.insert(thread);
+}
+
+void ProcessState::unregisterThread(pid_t thread)
+{
+    AutoMutex _l(mLock);
+    ALOGD("unregister thread %d", thread);
+    mThreadPoolSet.erase(thread);
+}
+
+void ProcessState::requestExit()
+{
+    mThreadPoolStarted = false;
+
+    if (mDriverFD >= 0) {
+        size_t remain = mThreadPoolSet.count(gettid());
+        do {
+            ALOGD("flush thread");
+            ioctl(mDriverFD, BIOC_FLUSH, NULL);
+            sched_yield();
+        } while (mThreadPoolSet.size() > remain);
+    }
+}
+
 #ifdef __NuttX__
 static void FreeProcessState(void* global)
 {
-  if (global) {
-      sp<ProcessState>* proc = static_cast<sp<ProcessState>*>(global);
-      delete proc;
-  }
+    if (global) {
+        // each IPCThreadState holds a sp<ProcessState>. If these threads do not
+        // quit, ProcessState will leak.
+        ProcessState::self()->requestExit();
+        sp<ProcessState>* proc = static_cast<sp<ProcessState>*>(global);
+        int32_t strong = (*proc)->getStrongCount();
+        if (strong != 1) {
+            ALOGW("%s: strong count %" PRId32 ", possible leak", __func__, strong);
+            do {
+                (*proc)->decStrong((*proc).get());
+            } while ((strong = (*proc)->getStrongCount()) != 1);
+        }
+        delete proc;
+    }
 }
 
 sp<ProcessState>* GetProcessState(void)
 {
-  sp<ProcessState>* proc = NULL;
-  static int index = -1;
+    sp<ProcessState>* proc = NULL;
+    static int index = -1;
 
-  if (index < 0) {
-    index = task_tls_alloc(FreeProcessState);
-  }
-
-  if (index >= 0) {
-    proc = reinterpret_cast<sp<ProcessState>*>(task_tls_get_value(index));
-    if (proc == NULL) {
-      proc = new sp<ProcessState>;
-      if (proc) {
-          task_tls_set_value(index, reinterpret_cast<uintptr_t>(proc));
-      }
+    if (index < 0) {
+        index = task_tls_alloc(FreeProcessState);
     }
-  }
 
-  return proc;
+    if (index >= 0) {
+        proc = reinterpret_cast<sp<ProcessState>*>(task_tls_get_value(index));
+        if (proc == NULL) {
+            proc = new sp<ProcessState>;
+            if (proc) {
+                task_tls_set_value(index, reinterpret_cast<uintptr_t>(proc));
+            }
+        }
+    }
+
+    return proc;
 }
 
 #define gProcess (*GetProcessState())

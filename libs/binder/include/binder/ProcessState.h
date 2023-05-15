@@ -24,6 +24,7 @@
 
 #include <atomic>
 #include <pthread.h>
+#include <unordered_set>
 
 // ---------------------------------------------------------------------------
 namespace android {
@@ -48,6 +49,9 @@ public:
     sp<IBinder> getContextObject(const sp<IBinder>& caller);
 
     void startThreadPool();
+    void registerThread(pid_t thread);
+    void unregisterThread(pid_t thread);
+    void requestExit();
 
     bool becomeContextManager();
 
@@ -145,6 +149,7 @@ private:
     bool mForked;
     bool mThreadPoolStarted;
     volatile int32_t mThreadPoolSeq;
+    std::unordered_set<pid_t> mThreadPoolSet;
 
     CallRestriction mCallRestriction;
 

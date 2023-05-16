@@ -415,7 +415,7 @@ void ProcessState::spawnPooledThread(bool isMain)
         String8 name = makeBinderThreadName();
         ALOGV("Spawning new pooled thread, name=%s\n", name.string());
         sp<Thread> t = sp<PoolThread>::make(isMain);
-        t->run(name.string());
+        t->run(name.string(), 0, CONFIG_ANDROID_BINDER_THREADPOOL_STACKSIZE);
     }
 }
 

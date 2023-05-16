@@ -22,6 +22,11 @@ config ANDROID_BINDER
 	---help---
 		Android binder, the codebase come from AOSP
 
+config ANDROID_BINDER_THREADPOOL_STACKSIZE
+	int "Android Binder Thread pool stacksize"
+	depends on ANDROID_BINDER
+	default 8192
+
 config ANDROID_BINDER_TEST
 	tristate "Android Binder Test Case"
 	depends on ANDROID_BINDER && LIB_GOOGLETEST

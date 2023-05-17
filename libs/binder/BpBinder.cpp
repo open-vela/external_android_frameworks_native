@@ -129,7 +129,7 @@ sp<BpBinder> BpBinder::create(int32_t handle) {
 
             if (trackedValue > lastLimitCallbackAt &&
                 (trackedValue - lastLimitCallbackAt > sBinderProxyCountHighWatermark)) {
-                ALOGE("Still too many binder proxy objects sent to uid %d from uid %d (%d proxies "
+                ALOGE("Still too many binder proxy objects sent to uid %d from uid %" PRId32 " (%" PRIu32 " proxies "
                       "held)",
                       getuid(), trackedUid, trackedValue);
                 if (sLimitCallback) sLimitCallback(trackedUid);
@@ -137,14 +137,14 @@ sp<BpBinder> BpBinder::create(int32_t handle) {
             }
         } else {
             if ((trackedValue & COUNTING_VALUE_MASK) >= sBinderProxyCountHighWatermark) {
-                ALOGE("Too many binder proxy objects sent to uid %d from uid %d (%d proxies held)",
+                ALOGE("Too many binder proxy objects sent to uid %d from uid %" PRId32 " (%" PRIu32 " proxies held)",
                       getuid(), trackedUid, trackedValue);
                 sTrackingMap[trackedUid] |= LIMIT_REACHED_MASK;
                 if (sLimitCallback) sLimitCallback(trackedUid);
                 sLastLimitCallbackMap[trackedUid] = trackedValue & COUNTING_VALUE_MASK;
                 if (sBinderProxyThrottleCreate) {
-                    ALOGI("Throttling binder proxy creates from uid %d in uid %d until binder proxy"
-                          " count drops below %d",
+                    ALOGI("Throttling binder proxy creates from uid %" PRId32 " in uid %d until binder proxy"
+                          " count drops below %" PRIu32 "",
                           trackedUid, getuid(), sBinderProxyCountLowWatermark);
                     return nullptr;
                 }
@@ -179,7 +179,7 @@ BpBinder::BpBinder(Handle&& handle)
 BpBinder::BpBinder(BinderHandle&& handle, int32_t trackedUid) : BpBinder(Handle(handle)) {
     mTrackedUid = trackedUid;
 
-    ALOGV("Creating BpBinder %p handle %d\n", this, this->binderHandle());
+    ALOGV("Creating BpBinder %p handle %" PRId32 "\n", this, this->binderHandle());
 
     IPCThreadState::self()->incWeakHandle(this->binderHandle(), this);
 }
@@ -307,7 +307,7 @@ status_t BpBinder::transact(
         }
         if (data.dataSize() > LOG_TRANSACTIONS_OVER_SIZE) {
             Mutex::Autolock _l(mLock);
-            ALOGW("Large outgoing transaction of %zu bytes, interface descriptor %s, code %d",
+            ALOGW("Large outgoing transaction of %zu bytes, interface descriptor %s, code %" PRIu32,
                   data.dataSize(),
                   mDescriptorCache.size() ? String8(mDescriptorCache).c_str()
                                           : "<uncached descriptor>",
@@ -345,7 +345,7 @@ status_t BpBinder::linkToDeath(
                 if (!mObituaries) {
                     return NO_MEMORY;
                 }
-                ALOGV("Requesting death notification: %p handle %d\n", this, binderHandle());
+                ALOGV("Requesting death notification: %p handle %" PRId32 "\n", this, binderHandle());
                 getWeakRefs()->incWeak(this);
                 IPCThreadState* self = IPCThreadState::self();
                 self->requestDeathNotification(binderHandle(), this);
@@ -383,7 +383,7 @@ status_t BpBinder::unlinkToDeath(
             }
             mObituaries->removeAt(i);
             if (mObituaries->size() == 0) {
-                ALOGV("Clearing death notification: %p handle %d\n", this, binderHandle());
+                ALOGV("Clearing death notification: %p handle %" PRId32 "\n", this, binderHandle());
                 IPCThreadState* self = IPCThreadState::self();
                 self->clearDeathNotification(binderHandle(), this);
                 self->flushCommands();
@@ -401,7 +401,7 @@ void BpBinder::sendObituary()
 {
     LOG_ALWAYS_FATAL_IF(isRpcBinder(), "Cannot send obituary for remote binder.");
 
-    ALOGV("Sending obituary for proxy %p handle %d, mObitsSent=%s\n", this, binderHandle(),
+    ALOGV("Sending obituary for proxy %p handle %" PRId32 ", mObitsSent=%s\n", this, binderHandle(),
           mObitsSent ? "true" : "false");
 
     mAlive = 0;
@@ -410,7 +410,7 @@ void BpBinder::sendObituary()
     mLock.lock();
     Vector<Obituary>* obits = mObituaries;
     if(obits != nullptr) {
-        ALOGV("Clearing sent death notification: %p handle %d\n", this, binderHandle());
+        ALOGV("Clearing sent death notification: %p handle %" PRId32 "\n", this, binderHandle());
         IPCThreadState* self = IPCThreadState::self();
         self->clearDeathNotification(binderHandle(), this);
         self->flushCommands();
@@ -481,14 +481,14 @@ BpBinder::~BpBinder()
         AutoMutex _l(sTrackingLock);
         uint32_t trackedValue = sTrackingMap[mTrackedUid];
         if (CC_UNLIKELY((trackedValue & COUNTING_VALUE_MASK) == 0)) {
-            ALOGE("Unexpected Binder Proxy tracking decrement in %p handle %d\n", this,
+            ALOGE("Unexpected Binder Proxy tracking decrement in %p handle %" PRId32 "\n", this,
                   binderHandle());
         } else {
             if (CC_UNLIKELY(
                 (trackedValue & LIMIT_REACHED_MASK) &&
                 ((trackedValue & COUNTING_VALUE_MASK) <= sBinderProxyCountLowWatermark)
                 )) {
-                ALOGI("Limit reached bit reset for uid %d (fewer than %d proxies from uid %d held)",
+                ALOGI("Limit reached bit reset for uid %d (fewer than %" PRIu32 " proxies from uid %" PRId32 " held)",
                       getuid(), sBinderProxyCountLowWatermark, mTrackedUid);
                 sTrackingMap[mTrackedUid] &= ~LIMIT_REACHED_MASK;
                 sLastLimitCallbackMap.erase(mTrackedUid);
@@ -552,7 +552,7 @@ bool BpBinder::onIncStrongAttempted(uint32_t /*flags*/, const void* /*id*/)
     // RPC binder doesn't currently support inc from weak binders
     if (CC_UNLIKELY(isRpcBinder())) return false;
 
-    ALOGV("onIncStrongAttempted BpBinder %p handle %d\n", this, binderHandle());
+    ALOGV("onIncStrongAttempted BpBinder %p handle %" PRId32 "\n", this, binderHandle());
     IPCThreadState* ipc = IPCThreadState::self();
     return ipc ? ipc->attemptIncStrongHandle(binderHandle()) == NO_ERROR : false;
 }

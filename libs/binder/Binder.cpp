@@ -302,7 +302,7 @@ status_t BBinder::transact(
     if (reply != nullptr) {
         reply->setDataPosition(0);
         if (reply->dataSize() > LOG_REPLIES_OVER_SIZE) {
-            ALOGW("Large reply transaction of %zu bytes, interface descriptor %s, code %d",
+            ALOGW("Large reply transaction of %zu bytes, interface descriptor %s, code %" PRIu32,
                   reply->dataSize(), String8(getInterfaceDescriptor()).c_str(), code);
         }
     }
@@ -502,7 +502,7 @@ status_t BBinder::setRpcClientDebug(const Parcel& data) {
     }
     uid_t uid = IPCThreadState::self()->getCallingUid();
     if (uid != AID_ROOT) {
-        ALOGE("%s: not allowed because client %" PRIu32 " is not root", __PRETTY_FUNCTION__, uid);
+        ALOGE("%s: not allowed because client %u is not root", __PRETTY_FUNCTION__, static_cast<unsigned int>(uid));
         return PERMISSION_DENIED;
     }
     status_t status;

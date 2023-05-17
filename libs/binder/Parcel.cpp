@@ -120,7 +120,7 @@ static void acquire_object(const sp<ProcessState>& proc, const flat_binder_objec
         }
     }
 
-    ALOGD("Invalid object type 0x%08x", obj.hdr.type);
+    ALOGD("Invalid object type 0x%08" PRIx32, obj.hdr.type);
 }
 
 static void release_object(const sp<ProcessState>& proc, const flat_binder_object& obj,
@@ -148,7 +148,7 @@ static void release_object(const sp<ProcessState>& proc, const flat_binder_objec
         }
     }
 
-    ALOGE("Invalid object type 0x%08x", obj.hdr.type);
+    ALOGE("Invalid object type 0x%08" PRIx32, obj.hdr.type);
 }
 
 status_t Parcel::finishFlattenBinder(const sp<IBinder>& binder)
@@ -762,7 +762,7 @@ bool Parcel::enforceInterface(const char16_t* interface,
         // vendor header
         int32_t header = readInt32();
         if (header != kHeader) {
-            ALOGE("Expecting header 0x%x but found 0x%x. Mixing copies of libbinder?", kHeader,
+            ALOGE("Expecting header 0x%" PRIx32 " but found 0x%" PRIx32 ". Mixing copies of libbinder?", kHeader,
                   header);
             return false;
         }
@@ -2646,7 +2646,7 @@ void Parcel::initState()
 
 void Parcel::scanForFds() const {
     status_t status = hasFileDescriptorsInRange(0, dataSize(), &mHasFds);
-    ALOGE_IF(status != NO_ERROR, "Error %d calling hasFileDescriptorsInRange()", status);
+    ALOGE_IF(status != NO_ERROR, "Error %" PRId32 " calling hasFileDescriptorsInRange()", status);
     mFdsKnown = true;
 }
 

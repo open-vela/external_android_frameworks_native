@@ -625,7 +625,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
         result = getAndExecuteCommand();
 
         if (result < NO_ERROR && result != TIMED_OUT && result != -ECONNREFUSED && result != -EBADF) {
-            LOG_ALWAYS_FATAL("getAndExecuteCommand(fd=%d) returned unexpected error %d, aborting",
+            LOG_ALWAYS_FATAL("getAndExecuteCommand(fd=%d) returned unexpected error %" PRId32 ", aborting",
                   mProcess->mDriverFD, result);
         }
 
@@ -636,7 +636,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
         }
     } while (result != -ECONNREFUSED && result != -EBADF);
 
-    LOG_THREADPOOL("**** THREAD %p (PID %d) IS LEAVING THE THREAD POOL err=%d\n",
+    LOG_THREADPOOL("**** THREAD %p (PID %d) IS LEAVING THE THREAD POOL err=%" PRId32 "\n",
         (void*)pthread_self(), getpid(), result);
 
     mOut.writeInt32(BC_EXIT_LOOPER);
@@ -708,13 +708,13 @@ status_t IPCThreadState::transact(int32_t handle,
     if ((flags & TF_ONE_WAY) == 0) {
         if (UNLIKELY(mCallRestriction != ProcessState::CallRestriction::NONE)) {
             if (mCallRestriction == ProcessState::CallRestriction::ERROR_IF_NOT_ONEWAY) {
-                ALOGE("Process making non-oneway call (code: %u) but is restricted.", code);
+                ALOGE("Process making non-oneway call (code: %" PRIu32 ") but is restricted.", code);
 #if defined(__linux__)
                 CallStack::logStack("non-oneway call", CallStack::getCurrent(10).get(),
                     ANDROID_LOG_ERROR);
 #endif
             } else /* FATAL_IF_NOT_ONEWAY */ {
-                LOG_ALWAYS_FATAL("Process may not make non-oneway calls (code: %u).", code);
+                LOG_ALWAYS_FATAL("Process may not make non-oneway calls (code: %" PRIu32 ").", code);
             }
         }
 
@@ -755,7 +755,7 @@ status_t IPCThreadState::transact(int32_t handle,
 
 void IPCThreadState::incStrongHandle(int32_t handle, BpBinder *proxy)
 {
-    LOG_REMOTEREFS("IPCThreadState::incStrongHandle(%d)\n", handle);
+    LOG_REMOTEREFS("IPCThreadState::incStrongHandle(%" PRId32 ")\n", handle);
     mOut.writeInt32(BC_ACQUIRE);
     mOut.writeInt32(handle);
     if (!flushIfNeeded()) {
@@ -767,7 +767,7 @@ void IPCThreadState::incStrongHandle(int32_t handle, BpBinder *proxy)
 
 void IPCThreadState::decStrongHandle(int32_t handle)
 {
-    LOG_REMOTEREFS("IPCThreadState::decStrongHandle(%d)\n", handle);
+    LOG_REMOTEREFS("IPCThreadState::decStrongHandle(%" PRId32 ")\n", handle);
     mOut.writeInt32(BC_RELEASE);
     mOut.writeInt32(handle);
     flushIfNeeded();
@@ -775,7 +775,7 @@ void IPCThreadState::decStrongHandle(int32_t handle)
 
 void IPCThreadState::incWeakHandle(int32_t handle, BpBinder *proxy)
 {
-    LOG_REMOTEREFS("IPCThreadState::incWeakHandle(%d)\n", handle);
+    LOG_REMOTEREFS("IPCThreadState::incWeakHandle(%" PRId32 ")\n", handle);
     mOut.writeInt32(BC_INCREFS);
     mOut.writeInt32(handle);
     if (!flushIfNeeded()) {
@@ -787,7 +787,7 @@ void IPCThreadState::incWeakHandle(int32_t handle, BpBinder *proxy)
 
 void IPCThreadState::decWeakHandle(int32_t handle)
 {
-    LOG_REMOTEREFS("IPCThreadState::decWeakHandle(%d)\n", handle);
+    LOG_REMOTEREFS("IPCThreadState::decWeakHandle(%" PRId32 ")\n", handle);
     mOut.writeInt32(BC_DECREFS);
     mOut.writeInt32(handle);
     flushIfNeeded();
@@ -812,7 +812,7 @@ status_t IPCThreadState::attemptIncStrongHandle(int32_t handle)
     return result;
 #else
     (void)handle;
-    ALOGE("%s(%d): Not supported\n", __func__, handle);
+    ALOGE("%s(%" PRId32 "): Not supported\n", __func__, handle);
     return INVALID_OPERATION;
 #endif
 }
@@ -1354,7 +1354,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
         break;
 
     default:
-        ALOGE("*** BAD COMMAND %d received from Binder driver\n", cmd);
+        ALOGE("*** BAD COMMAND %" PRId32 " received from Binder driver\n", cmd);
         result = UNKNOWN_ERROR;
         break;
     }

@@ -107,7 +107,7 @@ status_t Stability::setRepr(IBinder* binder, int32_t setting, uint32_t flags) {
 
     if (!isDeclaredLevel(setting)) {
         if (log) {
-            ALOGE("Can only set known stability, not %d.", setting);
+            ALOGE("Can only set known stability, not %" PRId32 ".", setting);
         }
         return BAD_TYPE;
     }

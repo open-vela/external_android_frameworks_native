@@ -421,7 +421,7 @@ status_t RpcState::getMaxThreads(const sp<RpcSession::RpcConnection>& connection
     status = reply.readInt32(&maxThreads);
     if (status != OK) return status;
     if (maxThreads <= 0) {
-        ALOGE("Error invalid max maxThreads: %d", maxThreads);
+        ALOGE("Error invalid max maxThreads: %" PRId32, maxThreads);
         return BAD_VALUE;
     }
 
@@ -706,13 +706,13 @@ status_t RpcState::processCommand(const sp<RpcSession::RpcConnection>& connectio
     // to understand where the current command ends and the next one begins. We
     // also can't consider it a fatal error because this would allow any client
     // to kill us, so ending the session for misbehaving client.
-    ALOGE("Unknown RPC command %d - terminating session", command.command);
+    ALOGE("Unknown RPC command %" PRIu32 " - terminating session", command.command);
     (void)session->shutdownAndWait(false);
     return DEAD_OBJECT;
 }
 status_t RpcState::processTransact(const sp<RpcSession::RpcConnection>& connection,
                                    const sp<RpcSession>& session, const RpcWireHeader& command) {
-    LOG_ALWAYS_FATAL_IF(command.command != RPC_COMMAND_TRANSACT, "command: %d", command.command);
+    LOG_ALWAYS_FATAL_IF(command.command != RPC_COMMAND_TRANSACT, "command: %" PRIu32, command.command);
 
     CommandData transactionData(command.bodySize);
     if (!transactionData.valid()) {
@@ -842,7 +842,7 @@ processTransactInternalTailCall:
 
             connection->allowNested = origAllowNested;
         } else {
-            LOG_RPC_DETAIL("Got special transaction %u", transaction->code);
+            LOG_RPC_DETAIL("Got special transaction %" PRIu32, transaction->code);
 
             switch (transaction->code) {
                 case RPC_SPECIAL_TRANSACT_GET_MAX_THREADS: {
@@ -880,7 +880,7 @@ processTransactInternalTailCall:
 
     if (oneway) {
         if (replyStatus != OK) {
-            ALOGW("Oneway call failed with error: %d", replyStatus);
+            ALOGW("Oneway call failed with error: %" PRId32, replyStatus);
         }
 
         LOG_RPC_DETAIL("Processed async transaction %" PRIu64 " on %" PRIu64,
@@ -966,7 +966,7 @@ processTransactInternalTailCall:
 
 status_t RpcState::processDecStrong(const sp<RpcSession::RpcConnection>& connection,
                                     const sp<RpcSession>& session, const RpcWireHeader& command) {
-    LOG_ALWAYS_FATAL_IF(command.command != RPC_COMMAND_DEC_STRONG, "command: %d", command.command);
+    LOG_ALWAYS_FATAL_IF(command.command != RPC_COMMAND_DEC_STRONG, "command: %" PRIu32, command.command);
 
     CommandData commandData(command.bodySize);
     if (!commandData.valid()) {
@@ -1003,7 +1003,7 @@ status_t RpcState::processDecStrong(const sp<RpcSession::RpcConnection>& connect
     }
 
     if (it->second.timesSent < body->amount) {
-        ALOGE("Record of sending binder %zu times, but requested decStrong for %" PRIu64 " of %u",
+        ALOGE("Record of sending binder %zu times, but requested decStrong for %" PRIu64 " of %" PRIu32,
               it->second.timesSent, addr, body->amount);
         return OK;
     }
@@ -1011,7 +1011,7 @@ status_t RpcState::processDecStrong(const sp<RpcSession::RpcConnection>& connect
     LOG_ALWAYS_FATAL_IF(it->second.sentRef == nullptr, "Inconsistent state, lost ref for %" PRIu64,
                         addr);
 
-    LOG_RPC_DETAIL("Processing dec strong of %" PRIu64 " by %u from %zu", addr, body->amount,
+    LOG_RPC_DETAIL("Processing dec strong of %" PRIu64 " by %" PRIu32 "from %zu", addr, body->amount,
                    it->second.timesSent);
 
     it->second.timesSent -= body->amount;

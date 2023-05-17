@@ -130,7 +130,7 @@ status_t PersistableBundle::readFromParcel(const Parcel* parcel) {
      */
     int32_t length = parcel->readInt32();
     if (length < 0) {
-        ALOGE("Bad length in parcel: %d", length);
+        ALOGE("Bad length in parcel: %" PRId32, length);
         return UNEXPECTED_NULL;
     }
 
@@ -399,7 +399,7 @@ status_t PersistableBundle::readFromParcelInner(const Parcel* parcel, size_t len
     int32_t magic;
     RETURN_IF_FAILED(parcel->readInt32(&magic));
     if (magic != BUNDLE_MAGIC && magic != BUNDLE_MAGIC_NATIVE) {
-        ALOGE("Bad magic number for PersistableBundle: 0x%08x", magic);
+        ALOGE("Bad magic number for PersistableBundle: 0x%08" PRIx32, magic);
         return BAD_VALUE;
     }
 
@@ -468,7 +468,7 @@ status_t PersistableBundle::readFromParcelInner(const Parcel* parcel, size_t len
                 break;
             }
             default: {
-                ALOGE("Unrecognized type: %d", value_type);
+                ALOGE("Unrecognized type: %" PRId32, value_type);
                 return BAD_TYPE;
                 break;
             }

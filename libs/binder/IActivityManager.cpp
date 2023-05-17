@@ -51,7 +51,7 @@ public:
                 }
             } else {
                 // An exception was thrown back; fall through to return failure
-                ALOGD("openContentUri(%s) caught exception %d\n",
+                ALOGD("openContentUri(%s) caught exception %" PRId32 "\n",
                         String8(stringUri).string(), exceptionCode);
             }
         }

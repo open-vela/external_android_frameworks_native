@@ -110,15 +110,15 @@ size_t RpcSession::getMaxOutgoingThreads() {
 bool RpcSession::setProtocolVersion(uint32_t version) {
     if (version >= RPC_WIRE_PROTOCOL_VERSION_NEXT &&
         version != RPC_WIRE_PROTOCOL_VERSION_EXPERIMENTAL) {
-        ALOGE("Cannot start RPC session with version %u which is unknown (current protocol version "
-              "is %u).",
+        ALOGE("Cannot start RPC session with version %" PRIu32 " which is unknown (current protocol version "
+              "is %" PRIu32 ").",
               version, RPC_WIRE_PROTOCOL_VERSION);
         return false;
     }
 
     std::lock_guard<std::mutex> _l(mMutex);
     if (mProtocolVersion && version > *mProtocolVersion) {
-        ALOGE("Cannot upgrade explicitly capped protocol version %u to newer version %u",
+        ALOGE("Cannot upgrade explicitly capped protocol version %" PRIu32 " to newer version %" PRIu32,
               *mProtocolVersion, version);
         return false;
     }

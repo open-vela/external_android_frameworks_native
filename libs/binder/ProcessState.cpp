@@ -404,8 +404,8 @@ String8 ProcessState::makeBinderThreadName() {
     android::base::ConsumePrefix(&driverName, "/dev/");
 
     String8 name;
-    name.appendFormat("%.*s:%d_%X", static_cast<int>(driverName.length()), driverName.data(), pid,
-                      s);
+    name.appendFormat("%.*s:%d_%" PRIX32, static_cast<int>(driverName.length()), driverName.data(),
+                      static_cast<int>(pid), s);
     return name;
 }
 

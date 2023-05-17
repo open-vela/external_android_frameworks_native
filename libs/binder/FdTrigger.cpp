@@ -62,7 +62,7 @@ status_t FdTrigger::triggerablePoll(base::borrowed_fd fd, int16_t event) {
     // See unknown flags in trigger FD's revents (POLLERR / POLLNVAL).
     // Treat this error condition as UNKNOWN_ERROR.
     if (pfd[1].revents != 0) {
-        ALOGE("Unknown revents on trigger FD %d: revents = %d", pfd[1].fd, pfd[1].revents);
+        ALOGE("Unknown revents on trigger FD %d: revents = %" PRIu32, pfd[1].fd, pfd[1].revents);
         return UNKNOWN_ERROR;
     }
 
@@ -78,7 +78,7 @@ status_t FdTrigger::triggerablePoll(base::borrowed_fd fd, int16_t event) {
     // Note: If this is the write end of a pipe then POLLHUP may also be set simultaneously. We
     //   still want DEAD_OBJECT in this case.
     if (pfd[0].revents & POLLERR) {
-        LOG_RPC_DETAIL("poll() incoming FD %d results in revents = %d", pfd[0].fd, pfd[0].revents);
+        LOG_RPC_DETAIL("poll() incoming FD %d results in revents = %" PRIu32, pfd[0].fd, pfd[0].revents);
         return DEAD_OBJECT;
     }
 

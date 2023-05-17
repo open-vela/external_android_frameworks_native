@@ -271,7 +271,7 @@ BpMemoryHeap::~BpMemoryHeap() {
                 sp<IBinder> binder = IInterface::asBinder(this);
 
                 if (VERBOSE) {
-                    ALOGD("UNMAPPING binder=%p, heap=%p, size=%zu, fd=%d",
+                    ALOGD("UNMAPPING binder=%p, heap=%p, size=%zu, fd=%" PRId32,
                             binder.get(), this, mSize, heapId);
                 }
 
@@ -299,7 +299,7 @@ void BpMemoryHeap::assertMapped() const
                 mSize   = heap->mSize;
                 mOffset = heap->mOffset;
                 int fd = fcntl(heap->mHeapId.load(memory_order_relaxed), F_DUPFD_CLOEXEC, 0);
-                ALOGE_IF(fd==-1, "cannot dup fd=%d",
+                ALOGE_IF(fd==-1, "cannot dup fd=%" PRId32,
                         heap->mHeapId.load(memory_order_relaxed));
                 mHeapId.store(fd, memory_order_release);
             }
@@ -330,7 +330,7 @@ void BpMemoryHeap::assertReallyMapped() const
         const off_t offset = (off_t)offset64;
         if (err != NO_ERROR || // failed transaction
                 size != size64 || offset != offset64) { // ILP32 size check
-            ALOGE("binder=%p transaction failed fd=%d, size=%zu, err=%d (%s)",
+            ALOGE("binder=%p transaction failed fd=%d, size=%zu, err=%" PRId32 " (%s)",
                     IInterface::asBinder(this).get(),
                     parcel_fd, size, err, strerror(-err));
             return;
@@ -339,7 +339,7 @@ void BpMemoryHeap::assertReallyMapped() const
         Mutex::Autolock _l(mLock);
         if (mHeapId.load(memory_order_relaxed) == -1) {
             int fd = fcntl(parcel_fd, F_DUPFD_CLOEXEC, 0);
-            ALOGE_IF(fd == -1, "cannot dup fd=%d, size=%zu, err=%d (%s)",
+            ALOGE_IF(fd == -1, "cannot dup fd=%d, size=%zu, err=%" PRId32 " (%s)",
                     parcel_fd, size, err, strerror(errno));
 
             int access = PROT_READ;
@@ -440,7 +440,7 @@ sp<IMemoryHeap> HeapCache::find_heap(const sp<IBinder>& binder)
     if (i != mHeapCache.end()) {
         heap_info_t& info = i->second;
         ALOGD_IF(VERBOSE,
-                "found binder=%p, heap=%p, size=%zu, fd=%d, count=%d",
+                "found binder=%p, heap=%p, size=%zu, fd=%" PRId32 ", count=%" PRId32,
                 binder.get(), info.heap.get(),
                 static_cast<BpMemoryHeap*>(info.heap.get())->mSize,
                 static_cast<BpMemoryHeap*>(info.heap.get())
@@ -473,7 +473,7 @@ void HeapCache::free_heap(const wp<IBinder>& binder)
             heap_info_t& info = i->second;
             if (--info.count == 0) {
                 ALOGD_IF(VERBOSE,
-                        "removing binder=%p, heap=%p, size=%zu, fd=%d, count=%d",
+                        "removing binder=%p, heap=%p, size=%zu, fd=%" PRId32 ", count=%" PRId32,
                         binder.unsafe_get(), info.heap.get(),
                         static_cast<BpMemoryHeap*>(info.heap.get())->mSize,
                         static_cast<BpMemoryHeap*>(info.heap.get())
@@ -506,7 +506,7 @@ void HeapCache::dump_heaps()
     for (const auto& i : mHeapCache) {
         const heap_info_t& info = i.second;
         BpMemoryHeap const* h(static_cast<BpMemoryHeap const *>(info.heap.get()));
-        ALOGD("hey=%p, heap=%p, count=%d, (fd=%d, base=%p, size=%zu)", i.first.unsafe_get(),
+        ALOGD("hey=%p, heap=%p, count=%" PRId32 ", (fd=%" PRId32 ", base=%p, size=%zu)", i.first.unsafe_get(),
               info.heap.get(), info.count, h->mHeapId.load(memory_order_relaxed), h->mBase,
               h->mSize);
     }

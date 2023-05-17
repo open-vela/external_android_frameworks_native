@@ -239,9 +239,9 @@ String8 Status::toString8() const {
     if (mException == EX_NONE) {
         ret.append("No error");
     } else {
-        ret.appendFormat("Status(%d, %s): '", mException, exceptionToString(mException).c_str());
+        ret.appendFormat("Status(%" PRId32 ", %s): '", mException, exceptionToString(mException).c_str());
         if (mException == EX_SERVICE_SPECIFIC) {
-            ret.appendFormat("%d: ", mErrorCode);
+            ret.appendFormat("%" PRId32 ": ", mErrorCode);
         } else if (mException == EX_TRANSACTION_FAILED) {
             ret.appendFormat("%s: ", statusToString(mErrorCode).c_str());
         }

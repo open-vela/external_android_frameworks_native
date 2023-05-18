@@ -683,7 +683,7 @@ status_t RpcState::processCommand(const sp<RpcSession::RpcConnection>& connectio
             .address = __builtin_frame_address(0),
             .context = "processing binder RPC command",
     };
-    const IPCThreadState::SpGuard* origGuard;
+    const IPCThreadState::SpGuard* origGuard = nullptr;
     if (kernelBinderState != nullptr) {
         origGuard = kernelBinderState->pushGetCallingSpGuard(&spGuard);
     }

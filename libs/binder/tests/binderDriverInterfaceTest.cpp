@@ -276,22 +276,22 @@ TEST_F(BinderDriverInterfaceTest, Transaction) {
         binderTestIoctlSuccessOrError(BINDER_WRITE_READ, &bwr, EAGAIN);
     }
     EXPECT_EQ(sizeof(bc1), bwr.write_consumed);
-    if (bwr.read_consumed < offsetof(typeof(br), pad)) {
+    if (bwr.read_consumed < offsetof(decltype(br), pad)) {
         SCOPED_TRACE("2nd WriteRead");
         binderWaitForReadData(10000);
         binderTestIoctl(BINDER_WRITE_READ, &bwr);
     }
-    EXPECT_EQ(offsetof(typeof(br), pad), bwr.read_consumed);
-    if (bwr.read_consumed > offsetof(typeof(br), cmd0)) {
+    EXPECT_EQ(offsetof(decltype(br), pad), bwr.read_consumed);
+    if (bwr.read_consumed > offsetof(decltype(br), cmd0)) {
         EXPECT_EQ(BR_NOOP, br.cmd0);
     }
-    if (bwr.read_consumed > offsetof(typeof(br), cmd1)) {
+    if (bwr.read_consumed > offsetof(decltype(br), cmd1)) {
         EXPECT_EQ(BR_TRANSACTION_COMPLETE, br.cmd1);
     }
-    if (bwr.read_consumed > offsetof(typeof(br), cmd2)) {
+    if (bwr.read_consumed > offsetof(decltype(br), cmd2)) {
         EXPECT_EQ(BR_REPLY, br.cmd2);
     }
-    if (bwr.read_consumed >= offsetof(typeof(br), pad)) {
+    if (bwr.read_consumed >= offsetof(decltype(br), pad)) {
         EXPECT_EQ(0u, br.arg2.target.ptr);
         EXPECT_EQ(0u, br.arg2.cookie);
         EXPECT_EQ(0u, br.arg2.code);

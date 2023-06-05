@@ -336,6 +336,10 @@ binder_status_t AParcel_writeString(AParcel* parcel, const char* string, int32_t
     return STATUS_OK;
 }
 
+binder_status_t AParcel_writeStringNull(AParcel* parcel, const char* string) {
+    return AParcel_writeString(parcel, string, string ? strlen(string) : -1);
+}
+
 binder_status_t AParcel_readString(const AParcel* parcel, void* stringData,
                                    AParcel_stringAllocator allocator) {
     size_t len16;

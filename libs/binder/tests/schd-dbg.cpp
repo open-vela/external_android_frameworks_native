@@ -13,6 +13,8 @@
 #include <vector>
 
 #include <pthread.h>
+#include <sched.h>
+#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fstream>
@@ -151,13 +153,13 @@ class BinderWorkerService : public BBinder {
 class Pipe {
   int m_readFd;
   int m_writeFd;
+ public:
   Pipe(int readFd, int writeFd) : m_readFd{readFd}, m_writeFd{writeFd} {
   }
   Pipe(const Pipe&) = delete;
   Pipe& operator=(const Pipe&) = delete;
   Pipe& operator=(const Pipe&&) = delete;
 
- public:
   Pipe(Pipe&& rval) noexcept {
     m_readFd = rval.m_readFd;
     m_writeFd = rval.m_writeFd;
@@ -167,6 +169,12 @@ class Pipe {
   ~Pipe() {
     if (m_readFd) close(m_readFd);
     if (m_writeFd) close(m_writeFd);
+  }
+  int readFD() {
+    return m_readFd;
+  }
+  int writeFD() {
+    return m_writeFd;
   }
   void signal() {
     bool val = true;
@@ -393,20 +401,21 @@ void worker_fx(int num, int no_process, int iterations, int payload_size,
   exit(no_inherent);
 }
 
-Pipe make_process(int num, int iterations, int no_process, int payload_size) {
+Pipe make_process(char *name, int num, int iterations, int no_process, int payload_size) {
   auto pipe_pair = Pipe::createPipePair();
-  pid_t pid = fork();
-  if (pid) {
-    // parent
-    return move(get<0>(pipe_pair));
-  } else {
-    // child
-    thread_dump(is_client(num) ? "client" : "server");
-    worker_fx(num, no_process, iterations, payload_size,
-              move(get<1>(pipe_pair)));
-    // never get here
-    return move(get<0>(pipe_pair));
-  }
+  char readfd[2];
+  char writefd[2];
+  char numb[2];
+  pid_t pid;
+
+  snprintf(numb, sizeof(numb), "%d", num);
+  snprintf(readfd, sizeof(readfd), "%d", get<1>(pipe_pair).readFD());
+  snprintf(writefd, sizeof(writefd), "%d", get<1>(pipe_pair).writeFD());
+
+  char *child_argv[] = {name, numb, readfd, writefd, NULL};
+  posix_spawn(&pid, child_argv[0], NULL, NULL, child_argv, NULL);
+
+  return move(get<0>(pipe_pair));
 }
 
 void wait_all(vector<Pipe>& v) {
@@ -422,7 +431,7 @@ void signal_all(vector<Pipe>& v) {
 }
 
 // This test is modified from binderThroughputTest.cpp
-int main(int argc, char** argv) {
+extern "C" int main(int argc, char** argv) {
   for (int i = 1; i < argc; i++) {
     if (string(argv[i]) == "-i") {
       iterations = atoi(argv[i + 1]);
@@ -457,6 +466,10 @@ int main(int argc, char** argv) {
     if (string(argv[i]) == "-trace") {
       trace = 1;
     }
+    if (i + 3 == argc) {
+      worker_fx(atoi(argv[1]), no_process, iterations, payload_size, Pipe(atoi(argv[2]),
+                atoi(argv[3])));
+    }
   }
   if (trace && !traceIsOn()) {
     cout << "trace is not running" << endl;
@@ -476,7 +489,7 @@ int main(int argc, char** argv) {
   // 1 server + 1 client
   // each has a pipe to communicate with
   for (int i = 0; i < no_process; i++) {
-    pipes.push_back(make_process(i, iterations, no_process, payload_size));
+    pipes.push_back(make_process(argv[0], i, iterations, no_process, payload_size));
   }
   // wait for init done
   wait_all(pipes);

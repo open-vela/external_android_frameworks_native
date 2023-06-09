@@ -613,7 +613,7 @@ void IPCThreadState::processPostWriteDerefs()
 
 void IPCThreadState::joinThreadPool(bool isMain)
 {
-    LOG_THREADPOOL("**** THREAD %p (PID %d) IS JOINING THE THREAD POOL\n", (void*)pthread_self(), getpid());
+    LOG_THREADPOOL("**** THREAD %p (PID %d) IS JOINING THE THREAD POOL\n", (void*)(intptr_t)pthread_self(), getpid());
 
     mOut.writeInt32(isMain ? BC_ENTER_LOOPER : BC_REGISTER_LOOPER);
 
@@ -637,7 +637,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
     } while (result != -ECONNREFUSED && result != -EBADF);
 
     LOG_THREADPOOL("**** THREAD %p (PID %d) IS LEAVING THE THREAD POOL err=%" PRId32 "\n",
-        (void*)pthread_self(), getpid(), result);
+        (void*)(intptr_t)pthread_self(), getpid(), result);
 
     mOut.writeInt32(BC_EXIT_LOOPER);
     mIsLooper = false;

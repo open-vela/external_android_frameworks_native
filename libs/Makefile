@@ -88,4 +88,9 @@ MAINSRC  += binder/tests/binderDriverInterfaceTest.cpp
 PROGNAME += binderDrvTest
 endif
 
+ifneq ($(CONFIG_ANDROID_BINDER_PERFORMANCE_TEST),)
+MAINSRC  += binder/tests/schd-dbg.cpp
+PROGNAME += schdDbg
+endif
+
 include $(APPDIR)/Application.mk

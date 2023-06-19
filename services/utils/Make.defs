@@ -16,5 +16,5 @@
 
 ifneq ($(CONFIG_ANDROID_LIBSERVICETUILS),)
 CONFIGURED_APPS += $(APPDIR)/external/android/frameworks/native/services/utils
-CXXFLAGS += ${shell $(INCDIR) $(INCDIROPT) "$(CC)" $(APPDIR)/external/android/frameworks/native/services/utils/include}
+CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/services/utils/include
 endif

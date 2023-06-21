@@ -93,4 +93,9 @@ MAINSRC  += binder/tests/schd-dbg.cpp
 PROGNAME += schdDbg
 endif
 
+ifneq ($(CONFIG_ANDROID_BINDER_XPC_PERFORMANCE_TEST),)
+MAINSRC  += binder/tests/binderRpcBenchmark.cpp
+PROGNAME += xpcBenchmark
+endif
+
 include $(APPDIR)/Application.mk

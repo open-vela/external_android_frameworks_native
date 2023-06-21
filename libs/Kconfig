@@ -52,3 +52,8 @@ config ANDROID_BINDER_PERFORMANCE_TEST
 	bool "Android Binder Performance Test"
 	depends on ANDROID_BINDER_TEST
 	default n
+
+config ANDROID_BINDER_XPC_PERFORMANCE_TEST
+	bool "Android Binder RPC and CPC Performance Test"
+	depends on ANDROID_BINDER_TEST
+	default n

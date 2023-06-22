@@ -403,17 +403,17 @@ void worker_fx(int num, int no_process, int iterations, int payload_size,
 
 Pipe make_process(char *name, int num, int iterations, int no_process, int payload_size) {
   auto pipe_pair = Pipe::createPipePair();
-  char readfd[2];
-  char writefd[2];
-  char numb[2];
+  char readfd[32];
+  char writefd[32];
+  char numb[32];
   pid_t pid;
 
   snprintf(numb, sizeof(numb), "%d", num);
   snprintf(readfd, sizeof(readfd), "%d", get<1>(pipe_pair).readFD());
   snprintf(writefd, sizeof(writefd), "%d", get<1>(pipe_pair).writeFD());
 
-  char *child_argv[] = {name, numb, readfd, writefd, NULL};
-  posix_spawn(&pid, child_argv[0], NULL, NULL, child_argv, NULL);
+  char *argv[] = {name, numb, readfd, writefd, NULL};
+  posix_spawn(&pid, argv[0], NULL, NULL, argv, NULL);
 
   return move(get<0>(pipe_pair));
 }
@@ -450,6 +450,7 @@ extern "C" int main(int argc, char** argv) {
     }
     if (string(argv[i]) == "-v") {
       verbose = 1;
+      continue;
     }
     // The -trace argument is used like that:
     //
@@ -465,10 +466,11 @@ extern "C" int main(int argc, char** argv) {
     // then available on /sys/kernel/debug/trace
     if (string(argv[i]) == "-trace") {
       trace = 1;
+      continue;
     }
     if (i + 3 == argc) {
-      worker_fx(atoi(argv[1]), no_process, iterations, payload_size, Pipe(atoi(argv[2]),
-                atoi(argv[3])));
+      worker_fx(atoi(argv[i + 1]), no_process, iterations, payload_size,
+                Pipe(atoi(argv[i + 2]), atoi(argv[i + 3])));
     }
   }
   if (trace && !traceIsOn()) {

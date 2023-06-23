@@ -36,8 +36,6 @@ enum BinderWorkerServiceCode {
     }                                                               \
   } while (0)
 
-vector<sp<IBinder> > workers;
-
 // the ratio that the service is synced on the same cpu beyond
 // GOOD_SYNC_MIN is considered as good
 #define GOOD_SYNC_MIN (0.6)
@@ -47,11 +45,7 @@ vector<sp<IBinder> > workers;
 string trace_path = "/sys/kernel/debug/tracing";
 
 // the default value
-int no_process = 2;
-int iterations = 100;
 int payload_size = 16;
-int no_inherent = 0;
-int no_sync = 0;
 int verbose = 0;
 int trace;
 
@@ -284,12 +278,18 @@ static void parcel_fill(Parcel& data, int sz, int priority, int cpu) {
 typedef struct {
   void* result;
   int target;
+  const vector<sp<IBinder> >& workers;
+  int& no_inherent;
+  int& no_sync;
 } thread_priv_t;
 
 static void* thread_start(void* p) {
   thread_priv_t* priv = (thread_priv_t*)p;
   int target = priv->target;
   Results* results_fifo = (Results*)priv->result;
+  const vector<sp<IBinder> >& workers = priv->workers;
+  int& no_inherent = priv->no_inherent;
+  int& no_sync = priv->no_sync;
   Parcel data, reply;
   Tick sta, end;
 
@@ -308,14 +308,16 @@ static void* thread_start(void* p) {
 }
 
 // create a fifo thread to transact and wait it to finished
-static void thread_transaction(int target, Results* results_fifo) {
-  thread_priv_t thread_priv;
+static void thread_transaction(int target, Results* results_fifo,
+                               const vector<sp<IBinder> >& workers,
+                               int& no_inherent, int& no_sync) {
+  thread_priv_t thread_priv = {
+    results_fifo, target, workers, no_inherent, no_sync
+  };
   void* dummy;
   pthread_t thread;
   pthread_attr_t attr;
   struct sched_param param;
-  thread_priv.target = target;
-  thread_priv.result = results_fifo;
   ASSERT(!pthread_attr_init(&attr));
   ASSERT(!pthread_attr_setschedpolicy(&attr, SCHED_FIFO));
   param.sched_priority = sched_get_priority_max(SCHED_FIFO);
@@ -326,9 +328,12 @@ static void thread_transaction(int target, Results* results_fifo) {
 
 #define is_client(_num) ((_num) >= (no_process / 2))
 
-void worker_fx(int num, int no_process, int iterations, int payload_size,
-               Pipe p) {
+int worker_fx(int num, int no_process, int iterations, int payload_size,
+              Pipe p) {
   int dummy;
+  int no_inherent = 0;
+  int no_sync = 0;
+  vector<sp<IBinder> > workers;
   Results results_other(false), results_fifo(trace);
 
   // Create BinderWorkerService and for go.
@@ -360,7 +365,7 @@ void worker_fx(int num, int no_process, int iterations, int payload_size,
     int target = num % server_count;
 
     // 1. transaction by fifo thread
-    thread_transaction(target, &results_fifo);
+    thread_transaction(target, &results_fifo, workers, no_inherent, no_sync);
     parcel_fill(data, payload_size, thread_pri(), sched_getcpu());
     thread_dump("other-caller");
 
@@ -398,21 +403,25 @@ void worker_fx(int num, int no_process, int iterations, int payload_size,
     cout << endl;
     cout << "}," << endl;
   }
-  exit(no_inherent);
+  return no_inherent;
 }
 
 Pipe make_process(char *name, int num, int iterations, int no_process, int payload_size) {
   auto pipe_pair = Pipe::createPipePair();
+  char iter[32];
+  char pair[32];
+  char numb[32];
   char readfd[32];
   char writefd[32];
-  char numb[32];
   pid_t pid;
 
+  snprintf(iter, sizeof(numb), "%d", iterations);
+  snprintf(pair, sizeof(numb), "%d", no_process / 2);
   snprintf(numb, sizeof(numb), "%d", num);
   snprintf(readfd, sizeof(readfd), "%d", get<1>(pipe_pair).readFD());
   snprintf(writefd, sizeof(writefd), "%d", get<1>(pipe_pair).writeFD());
 
-  char *argv[] = {name, numb, readfd, writefd, NULL};
+  char *argv[] = {name, "-i", iter, "--pair", pair, numb, readfd, writefd, NULL};
   posix_spawn(&pid, argv[0], NULL, NULL, argv, NULL);
 
   return move(get<0>(pipe_pair));
@@ -432,6 +441,10 @@ void signal_all(vector<Pipe>& v) {
 
 // This test is modified from binderThroughputTest.cpp
 extern "C" int main(int argc, char** argv) {
+  int no_process = 2;
+  int iterations = 100;
+  int no_inherent = 0;
+
   for (int i = 1; i < argc; i++) {
     if (string(argv[i]) == "-i") {
       iterations = atoi(argv[i + 1]);
@@ -469,8 +482,8 @@ extern "C" int main(int argc, char** argv) {
       continue;
     }
     if (i + 3 == argc) {
-      worker_fx(atoi(argv[i + 1]), no_process, iterations, payload_size,
-                Pipe(atoi(argv[i + 2]), atoi(argv[i + 3])));
+      return worker_fx(atoi(argv[i]), no_process, iterations, payload_size,
+                       Pipe(atoi(argv[i + 1]), atoi(argv[i + 2])));
     }
   }
   if (trace && !traceIsOn()) {

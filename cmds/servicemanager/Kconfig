@@ -16,7 +16,8 @@
 
 config ANDROID_SERVICEMANAGER
 	tristate "Android service manager"
-	depends on ANDROID_BINDER && TIMER_FD
+	depends on ANDROID_BINDER && DRIVERS_BINDER
+	depends on TIMER_FD && EVENT_FD
 
 config ANDROID_SERVICEMANAGER_STACKSIZE
 	int "Android service manager stack size"

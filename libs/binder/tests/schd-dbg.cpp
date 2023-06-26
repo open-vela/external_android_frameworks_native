@@ -26,6 +26,7 @@ enum BinderWorkerServiceCode {
   BINDER_NOP = IBinder::FIRST_CALL_TRANSACTION,
 };
 
+#undef ASSERT
 #define ASSERT(cond)                                                \
   do {                                                              \
     if (!(cond)) {                                                  \
@@ -421,7 +422,7 @@ Pipe make_process(char *name, int num, int iterations, int no_process, int paylo
   snprintf(readfd, sizeof(readfd), "%d", get<1>(pipe_pair).readFD());
   snprintf(writefd, sizeof(writefd), "%d", get<1>(pipe_pair).writeFD());
 
-  char *argv[] = {name, "-i", iter, "--pair", pair, numb, readfd, writefd, NULL};
+  char *argv[] = {name, (char*)"-i", iter, (char*)"-pair", pair, numb, readfd, writefd, NULL};
   posix_spawn(&pid, argv[0], NULL, NULL, argv, NULL);
 
   return move(get<0>(pipe_pair));

@@ -385,9 +385,9 @@ static inline binder_status_t AParcel_readRequiredParcelFileDescriptor(const APa
 
 /**
  * Allocates a char* to length and returns the underlying buffer. For use with
- * AParcel_readStringMalloc. See use below in AParcel_readStringMalloc(const AParcel*, char**).
+ * AParcel_readString. See use below in AParcel_readString(const AParcel*, char**).
  */
-static inline bool AParcel_charPointerAllocator(void* stringData, int32_t length, char** buffer) {
+static inline bool AParcel_charStringAllocator(void* stringData, int32_t length, char** buffer) {
     if (length == 0) return false;
 
     char** str = static_cast<char**>(stringData);
@@ -642,10 +642,17 @@ static inline binder_status_t AParcel_readString(const AParcel* parcel,
 }
 
 /**
+ * Convenience API for writing a char*.
+ */
+static inline binder_status_t AParcel_writeString(AParcel* parcel, const char* str) {
+    return AParcel_writeString(parcel, str, str ? strlen(str) : -1);
+}
+
+/**
  * Convenience API for reading a char*.
  */
-static inline binder_status_t AParcel_readStringMalloc(const AParcel* parcel, char** str) {
-    return AParcel_readString(parcel, str, AParcel_charPointerAllocator);
+static inline binder_status_t AParcel_readString(const AParcel* parcel, char** str) {
+    return AParcel_readString(parcel, str, AParcel_charStringAllocator);
 }
 
 /**
@@ -1639,7 +1646,7 @@ static inline binder_status_t AParcel_writeData(AParcel* parcel, const T& value)
     } else if constexpr (std::is_same_v<std::string, T>) {
         return AParcel_writeString(parcel, value);
     } else if constexpr (std::is_same_v<char*, T> || std::is_same_v<const char*, T>) {
-        return AParcel_writeStringNull(parcel, value);
+        return AParcel_writeString(parcel, value);
     } else if constexpr (std::is_same_v<bool, T>) {
         return AParcel_writeBool(parcel, value);
     } else if constexpr (std::is_same_v<int8_t, T> || std::is_same_v<uint8_t, T>) {
@@ -1687,7 +1694,7 @@ static inline binder_status_t AParcel_writeNullableData(AParcel* parcel, const T
                          std::is_same_v<first_template_type_t<T>, std::string>) {
         return AParcel_writeString(parcel, value);
     } else if constexpr (std::is_same_v<char*, T> || std::is_same_v<const char*, T>) {
-        return AParcel_writeStringNull(parcel, value);
+        return AParcel_writeString(parcel, value);
     } else if constexpr (is_nullable_parcelable_v<T> || is_interface_v<T>) {
         return AParcel_writeNullableParcelable(parcel, value);
     } else if constexpr (std::is_same_v<ScopedFileDescriptor, T>) {
@@ -1711,7 +1718,7 @@ static inline binder_status_t AParcel_readData(const AParcel* parcel, T* value) 
     } else if constexpr (std::is_same_v<std::string, T>) {
         return AParcel_readString(parcel, value);
     } else if constexpr (std::is_same_v<char*, T>) {
-        return AParcel_readStringMalloc(parcel, value);
+        return AParcel_readString(parcel, value);
     } else if constexpr (std::is_same_v<bool, T>) {
         return AParcel_readBool(parcel, value);
     } else if constexpr (std::is_same_v<int8_t, T> || std::is_same_v<uint8_t, T>) {
@@ -1759,7 +1766,7 @@ static inline binder_status_t AParcel_readNullableData(const AParcel* parcel, T*
                          std::is_same_v<first_template_type_t<T>, std::string>) {
         return AParcel_readString(parcel, value);
     } else if constexpr (std::is_same_v<T, char*>) {
-        return AParcel_readStringMalloc(parcel, value);
+        return AParcel_readString(parcel, value);
     } else if constexpr (is_nullable_parcelable_v<T> || is_interface_v<T>) {
         return AParcel_readNullableParcelable(parcel, value);
     } else if constexpr (std::is_same_v<ScopedFileDescriptor, T>) {

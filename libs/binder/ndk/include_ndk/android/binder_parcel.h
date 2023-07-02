@@ -500,8 +500,6 @@ binder_status_t AParcel_readStatusHeader(const AParcel* parcel, AStatus** status
 binder_status_t AParcel_writeString(AParcel* parcel, const char* string, int32_t length)
         __INTRODUCED_IN(29);
 
-binder_status_t AParcel_writeStringNull(AParcel* parcel, const char* string) __INTRODUCED_IN(29);
-
 /**
  * Reads and allocates utf-8 string value from the next location in a non-null parcel.
  *

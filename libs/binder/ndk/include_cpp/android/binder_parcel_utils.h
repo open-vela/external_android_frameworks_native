@@ -397,7 +397,7 @@ static inline bool AParcel_charStringAllocator(void* stringData, int32_t length,
         return true;
     }
 
-    *buffer = *str = (char*)malloc(length * sizeof(char));
+    *buffer = *str = (char*)calloc(length, sizeof(char));
     return true;
 }
 

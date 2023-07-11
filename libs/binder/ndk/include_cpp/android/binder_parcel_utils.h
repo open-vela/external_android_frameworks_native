@@ -111,6 +111,12 @@ struct pointer_vector_const {
     const T* data;
     const int32_t len;
 };
+
+template <typename T>
+struct pointer_array {
+    T* data;
+    const int32_t len;
+};
 }  // namespace
 
 /**
@@ -126,6 +132,20 @@ static inline bool AParcel_stdArrayAllocator(void* arrayData, int32_t length, T*
 
     std::array<T, N>* arr = static_cast<std::array<T, N>*>(arrayData);
     *outBuffer = arr->data();
+    return true;
+}
+
+template <typename T>
+static inline bool AParcel_pointerArrayAllocator(void* arrayData, int32_t length, T** outBuffer) {
+    if (length < 0) return false;
+
+    pointer_array<T>* arr = static_cast<pointer_array<T>*>(arrayData);
+
+    if (length != arr->len) {
+        return false;
+    }
+
+    *outBuffer = arr->data;
     return true;
 }
 
@@ -150,6 +170,23 @@ static inline bool AParcel_nullableStdArrayAllocator(void* arrayData, int32_t le
     return true;
 }
 
+template <typename T>
+static inline bool AParcel_nullablePointerArrayAllocator(void* arrayData, int32_t length,
+                                                         T** outBuffer) {
+    pointer_array<T*>* arr = static_cast<pointer_array<T*>*>(arrayData);
+    if (length < 0) {
+        *arr->data = nullptr;
+        return true;
+    }
+
+    if (length != arr->len) {
+        return false;
+    }
+
+    *outBuffer = *arr->data;
+    return true;
+}
+
 /**
  * This checks the length against the array size. No allocation required.
  */
@@ -157,6 +194,12 @@ template <size_t N>
 static inline bool AParcel_stdArrayExternalAllocator(void* arrayData, int32_t length) {
     (void)arrayData;
     return length == static_cast<int32_t>(N);
+}
+
+template <typename T>
+static inline bool AParcel_pointerArrayExternalAllocator(void* arrayData, int32_t length) {
+    pointer_array<T>* arr = static_cast<pointer_array<T>*>(arrayData);
+    return length == arr->len;
 }
 
 /**
@@ -179,6 +222,18 @@ static inline bool AParcel_nullableStdArrayExternalAllocator(void* arrayData, in
     return true;
 }
 
+template <typename T>
+static inline bool AParcel_nullablePointerArrayExternalAllocator(void* arrayData, int32_t length) {
+    pointer_array<T*>* arr = static_cast<pointer_array<T*>*>(arrayData);
+
+    if (length < 0) {
+        *arr->data = nullptr;
+        return true;
+    }
+
+    return length == arr->len;
+}
+
 /**
  * This retrieves and allocates a vector to size 'length' and returns the underlying buffer.
  */
@@ -198,12 +253,13 @@ template <typename T>
 static inline bool AParcel_pointerVectorAllocator(void* vectorData, int32_t length, T** outBuffer) {
     pointer_vector<T>* vec = static_cast<pointer_vector<T>*>(vectorData);
 
+    if (vec->len) {
+        *vec->len = length;
+    }
+
     if (length <= 0) {
         *vec->data = nullptr;
         return true;
-    }
-    if (vec->len) {
-        *vec->len = length;
     }
 
     *outBuffer = *vec->data = (T*)malloc(static_cast<size_t>(length) * sizeof(T));
@@ -259,12 +315,13 @@ template <typename T>
 static inline bool AParcel_pointerVectorExternalAllocator(void* vectorData, int32_t length) {
     pointer_vector<T>* vec = static_cast<pointer_vector<T>*>(vectorData);
 
+    if (vec->len) {
+        *vec->len = length;
+    }
+
     if (length <= 0) {
         *vec->data = nullptr;
         return true;
-    }
-    if (vec->len) {
-        *vec->len = length;
     }
 
     *vec->data = (T*)malloc(length * sizeof(T));
@@ -588,6 +645,12 @@ static inline void AParcel_stdArraySetter(void* arrData, size_t index, T value) 
     (*arr)[index] = value;
 }
 
+template <typename T>
+static inline void AParcel_pointerArraySetter(void* arrData, size_t index, T value) {
+    pointer_array<T>* arr = static_cast<pointer_array<T>*>(arrData);
+    (arr->data)[index] = value;
+}
+
 /**
  * This retrieves the underlying value in a std::array which may not be contiguous at index from a
  * corresponding arrData.
@@ -597,6 +660,12 @@ static inline T AParcel_nullableStdArrayGetter(const void* arrData, size_t index
     const std::optional<std::array<T, N>>* arr =
             static_cast<const std::optional<std::array<T, N>>*>(arrData);
     return (*arr)[index];
+}
+
+template <typename T>
+static inline T* AParcel_nullablePointerArrayGetter(const void* arrData, size_t index) {
+    pointer_array<T*>* arr = static_cast<pointer_array<T*>*>(arrData);
+    return (*arr->data)[index];
 }
 
 /**
@@ -609,6 +678,12 @@ static inline void AParcel_nullableStdArraySetter(void* arrData, size_t index, T
     (*arr)->at(index) = value;
 }
 
+template <typename T>
+static inline void AParcel_nullablePointerArraySetter(void* arrData, size_t index, T value) {
+    pointer_array<T*>* arr = static_cast<pointer_array<T*>*>(arrData);
+    (*arr->data)[index] = value;
+}
+
 /**
  * Allocates a std::string inside of std::array<std::string, N> at index 'index' to size 'length'.
  */
@@ -618,6 +693,13 @@ static inline bool AParcel_stdArrayStringElementAllocator(void* arrData, size_t 
     std::array<std::string, N>* arr = static_cast<std::array<std::string, N>*>(arrData);
     std::string& element = arr->at(index);
     return AParcel_stdStringAllocator(static_cast<void*>(&element), length, buffer);
+}
+
+static inline bool AParcel_pointerArrayStringElementAllocator(void* arrData, size_t index,
+                                                              int32_t length, char** buffer) {
+    pointer_array<char*>* arr = static_cast<pointer_array<char*>*>(arrData);
+    char** element = &(arr->data)[index];
+    return AParcel_charStringAllocator(element, length, buffer);
 }
 
 /**
@@ -678,6 +760,14 @@ static inline bool AParcel_nullableStdArrayStringElementAllocator(void* arrData,
             static_cast<std::optional<std::array<std::optional<std::string>, N>>*>(arrData);
     std::optional<std::string>& element = (*arr)->at(index);
     return AParcel_nullableStdStringAllocator(static_cast<void*>(&element), length, buffer);
+}
+
+static inline bool AParcel_nullablePointerArrayStringElementAllocator(void* arrData, size_t index,
+                                                                      int32_t length,
+                                                                      char** buffer) {
+    pointer_array<char**>* arr = static_cast<pointer_array<char**>*>(arrData);
+    char** element = &(*arr->data)[index];
+    return AParcel_charStringAllocator(element, length, buffer);
 }
 
 /**
@@ -749,14 +839,6 @@ static inline binder_status_t AParcel_readVector(const AParcel* parcel,
     return AParcel_readStringArray(parcel, vectorData,
                                    AParcel_stdVectorExternalAllocator<std::string>,
                                    AParcel_stdVectorStringElementAllocator);
-}
-
-static inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, char*** vec) {
-    pointer_vector<char*> ptr_vec = {vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readStringArray(parcel, vectorData,
-                                   AParcel_pointerVectorExternalAllocator<char*>,
-                                   AParcel_pointerVectorStringElementAllocator);
 }
 
 static inline binder_status_t AParcel_readVector(const AParcel* parcel, char*** vec,
@@ -1220,12 +1302,6 @@ inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<int
     return AParcel_readInt32Array(parcel, vectorData, AParcel_stdVectorAllocator<int32_t>);
 }
 
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, int32_t** vec) {
-    pointer_vector<int32_t> ptr_vec = {vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readInt32Array(parcel, vectorData, AParcel_pointerVectorAllocator<int32_t>);
-}
-
 inline binder_status_t AParcel_readVector(const AParcel* parcel, int32_t** vec, int32_t* length) {
     pointer_vector<int32_t> ptr_vec = {vec, length};
     void* vectorData = static_cast<void*>(&ptr_vec);
@@ -1263,12 +1339,6 @@ inline binder_status_t AParcel_writeVector(AParcel* parcel,
 inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<uint32_t>* vec) {
     void* vectorData = static_cast<void*>(vec);
     return AParcel_readUint32Array(parcel, vectorData, AParcel_stdVectorAllocator<uint32_t>);
-}
-
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, uint32_t** vec) {
-    pointer_vector<uint32_t> ptr_vec{vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readUint32Array(parcel, vectorData, AParcel_pointerVectorAllocator<uint32_t>);
 }
 
 inline binder_status_t AParcel_readVector(const AParcel* parcel, uint32_t** vec, int32_t* length) {
@@ -1311,12 +1381,6 @@ inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<int
     return AParcel_readInt64Array(parcel, vectorData, AParcel_stdVectorAllocator<int64_t>);
 }
 
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, int64_t** vec) {
-    pointer_vector<int64_t> ptr_vec{vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readInt64Array(parcel, vectorData, AParcel_pointerVectorAllocator<int64_t>);
-}
-
 inline binder_status_t AParcel_readVector(const AParcel* parcel, int64_t** vec, int32_t* length) {
     pointer_vector<int64_t> ptr_vec{vec, length};
     void* vectorData = static_cast<void*>(&ptr_vec);
@@ -1354,12 +1418,6 @@ inline binder_status_t AParcel_writeVector(AParcel* parcel,
 inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<uint64_t>* vec) {
     void* vectorData = static_cast<void*>(vec);
     return AParcel_readUint64Array(parcel, vectorData, AParcel_stdVectorAllocator<uint64_t>);
-}
-
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, uint64_t** vec) {
-    pointer_vector<uint64_t> ptr_vec{vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readUint64Array(parcel, vectorData, AParcel_pointerVectorAllocator<uint64_t>);
 }
 
 inline binder_status_t AParcel_readVector(const AParcel* parcel, uint64_t** vec, int32_t* length) {
@@ -1402,12 +1460,6 @@ inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<flo
     return AParcel_readFloatArray(parcel, vectorData, AParcel_stdVectorAllocator<float>);
 }
 
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, float** vec) {
-    pointer_vector<float> ptr_vec{vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readFloatArray(parcel, vectorData, AParcel_pointerVectorAllocator<float>);
-}
-
 inline binder_status_t AParcel_readVector(const AParcel* parcel, float** vec, int32_t* length) {
     pointer_vector<float> ptr_vec{vec, length};
     void* vectorData = static_cast<void*>(&ptr_vec);
@@ -1445,12 +1497,6 @@ inline binder_status_t AParcel_writeVector(AParcel* parcel,
 inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<double>* vec) {
     void* vectorData = static_cast<void*>(vec);
     return AParcel_readDoubleArray(parcel, vectorData, AParcel_stdVectorAllocator<double>);
-}
-
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, double** vec) {
-    pointer_vector<double> ptr_vec{vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readDoubleArray(parcel, vectorData, AParcel_pointerVectorAllocator<double>);
 }
 
 inline binder_status_t AParcel_readVector(const AParcel* parcel, double** vec, int32_t* length) {
@@ -1492,13 +1538,6 @@ inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<boo
     void* vectorData = static_cast<void*>(vec);
     return AParcel_readBoolArray(parcel, vectorData, AParcel_stdVectorExternalAllocator<bool>,
                                  AParcel_stdVectorSetter<bool>);
-}
-
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, bool** vec) {
-    pointer_vector<bool> ptr_vec{vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readBoolArray(parcel, vectorData, AParcel_pointerVectorExternalAllocator<bool>,
-                                 AParcel_pointerVectorSetter<bool>);
 }
 
 inline binder_status_t AParcel_readVector(const AParcel* parcel, bool** vec, int32_t* length) {
@@ -1543,12 +1582,6 @@ inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<cha
     return AParcel_readCharArray(parcel, vectorData, AParcel_stdVectorAllocator<char16_t>);
 }
 
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, char16_t** vec) {
-    pointer_vector<char16_t> ptr_vec{vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readCharArray(parcel, vectorData, AParcel_pointerVectorAllocator<char16_t>);
-}
-
 inline binder_status_t AParcel_readVector(const AParcel* parcel, char16_t** vec, int32_t* length) {
     pointer_vector<char16_t> ptr_vec{vec, length};
     void* vectorData = static_cast<void*>(&ptr_vec);
@@ -1589,12 +1622,6 @@ inline binder_status_t AParcel_readVector(const AParcel* parcel, std::vector<uin
     return AParcel_readByteArray(parcel, vectorData, AParcel_stdVectorAllocator<int8_t>);
 }
 
-inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, uint8_t** vec) {
-    pointer_vector<uint8_t> ptr_vec{vec, nullptr};
-    void* vectorData = static_cast<void*>(&ptr_vec);
-    return AParcel_readByteArray(parcel, vectorData, AParcel_pointerVectorAllocator<int8_t>);
-}
-
 inline binder_status_t AParcel_readVector(const AParcel* parcel, uint8_t** vec, int32_t* length) {
     pointer_vector<uint8_t> ptr_vec{vec, length};
     void* vectorData = static_cast<void*>(&ptr_vec);
@@ -1622,19 +1649,6 @@ static inline binder_status_t AParcel_writeVectorSize(AParcel* parcel, const std
     }
 
     return AParcel_writeInt32(parcel, static_cast<int32_t>(vec.size()));
-}
-
-/**
- * Convenience API for writing the size of a vector.
- */
-template <typename T>
-static inline binder_status_t AParcel_writeVectorSize(AParcel* parcel, const T& /*vec*/,
-                                                      const int32_t length) {
-    if (length > INT32_MAX) {
-        return STATUS_BAD_VALUE;
-    }
-
-    return AParcel_writeInt32(parcel, length);
 }
 
 /**
@@ -1669,28 +1683,6 @@ static inline binder_status_t AParcel_resizeVector(const AParcel* parcel, std::v
     if (size > 1000000) return STATUS_NO_MEMORY;
 
     vec->resize(static_cast<size_t>(size));
-    return STATUS_OK;
-}
-
-/**
- * Convenience API for resizing a vector.
- */
-template <typename T>
-static inline binder_status_t AParcel_resizeVector(const AParcel* parcel, T** vec,
-                                                   int32_t* length) {
-    int32_t size;
-    binder_status_t err = AParcel_readInt32(parcel, &size);
-
-    if (err != STATUS_OK) return err;
-    if (size < 0) return STATUS_UNEXPECTED_NULL;
-
-    // TODO(b/188215728): delegate to libbinder_ndk
-    if (size > 1000000) return STATUS_NO_MEMORY;
-
-    *length = size;
-    if (size) {
-        *vec = (T*)malloc(static_cast<size_t>(size) * sizeof(T));
-    }
     return STATUS_OK;
 }
 
@@ -1816,6 +1808,35 @@ static inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, std:
 }
 
 /**
+ * Reads a ctype fixed-size array of T.
+ */
+template <typename T>
+static inline binder_status_t AParcel_readFixedArray(const AParcel* parcel, T* arr,
+                                                     const int32_t length) {
+    pointer_array<T> ptr_arr = {arr, length};
+    void* arrayData = static_cast<void*>(&ptr_arr);
+    if constexpr (std::is_same_v<T, bool>) {
+        return AParcel_readBoolArray(parcel, arrayData, &AParcel_pointerArrayExternalAllocator<T>,
+                                     &AParcel_pointerArraySetter<T>);
+    } else if constexpr (std::is_same_v<T, uint8_t>) {
+        return AParcel_readByteArray(parcel, arrayData, &AParcel_pointerArrayAllocator<int8_t>);
+    } else if constexpr (std::is_same_v<T, char16_t>) {
+        return AParcel_readCharArray(parcel, arrayData, &AParcel_pointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, int32_t>) {
+        return AParcel_readInt32Array(parcel, arrayData, &AParcel_pointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, int64_t>) {
+        return AParcel_readInt64Array(parcel, arrayData, &AParcel_pointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, float>) {
+        return AParcel_readFloatArray(parcel, arrayData, &AParcel_pointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, double>) {
+        return AParcel_readDoubleArray(parcel, arrayData, &AParcel_pointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, char*>) {
+        return AParcel_readStringArray(parcel, arrayData, &AParcel_pointerArrayExternalAllocator<T>,
+                                       &AParcel_pointerArrayStringElementAllocator);
+    }
+}
+
+/**
  * Reads a fixed-size array of T.
  */
 template <typename T, size_t N>
@@ -1868,6 +1889,40 @@ static inline binder_status_t AParcel_readNullableFixedArrayWithNullableData(
         return AParcel_readParcelableArray(parcel, arrayData,
                                            &AParcel_nullableStdArrayExternalAllocator<T, N>,
                                            &AParcel_readStdArrayNullableData<T, N>);
+    }
+}
+
+/**
+ * Reads a ctype fixed-size array of T.
+ */
+template <typename T>
+static inline binder_status_t AParcel_readNullableFixedArrayWithNullableData(const AParcel* parcel,
+                                                                             T** arr,
+                                                                             const int32_t length) {
+    pointer_array<T*> ptr_arr = {arr, length};
+    void* arrayData = static_cast<void*>(&ptr_arr);
+    if constexpr (std::is_same_v<T, bool>) {
+        return AParcel_readBoolArray(parcel, arrayData,
+                                     &AParcel_nullablePointerArrayExternalAllocator<T>,
+                                     &AParcel_nullablePointerArraySetter<T>);
+    } else if constexpr (std::is_same_v<T, uint8_t>) {
+        return AParcel_readByteArray(parcel, arrayData,
+                                     &AParcel_nullablePointerArrayAllocator<int8_t>);
+    } else if constexpr (std::is_same_v<T, char16_t>) {
+        return AParcel_readCharArray(parcel, arrayData, &AParcel_nullablePointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, int32_t>) {
+        return AParcel_readInt32Array(parcel, arrayData, &AParcel_nullablePointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, int64_t>) {
+        return AParcel_readInt64Array(parcel, arrayData, &AParcel_nullablePointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, float>) {
+        return AParcel_readFloatArray(parcel, arrayData, &AParcel_nullablePointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, double>) {
+        return AParcel_readDoubleArray(parcel, arrayData,
+                                       &AParcel_nullablePointerArrayAllocator<T>);
+    } else if constexpr (std::is_same_v<T, char*>) {
+        return AParcel_readStringArray(parcel, arrayData,
+                                       &AParcel_nullablePointerArrayExternalAllocator<T>,
+                                       &AParcel_nullablePointerArrayStringElementAllocator);
     }
 }
 
@@ -1983,33 +2038,8 @@ static inline binder_status_t AParcel_writeNullableData(AParcel* parcel, const T
 template <typename T>
 static inline binder_status_t AParcel_writeNullableData(AParcel* parcel, const T& value,
                                                         const int32_t length) {
-    if constexpr (std::is_same_v<bool*, T> || std::is_same_v<const bool*, T>) {
-        const pointer_vector_const<bool> ptr_vec = {value, length};
-        const void* vectorData = static_cast<const void*>(&ptr_vec);
-        return AParcel_writeBoolArray(parcel, vectorData, length,
-                                      AParcel_pointerVectorGetter<bool>);
-    } else if constexpr (std::is_same_v<uint8_t*, T> || std::is_same_v<const uint8_t*, T>) {
-        const int8_t* v = reinterpret_cast<const int8_t*>(value);
-        return AParcel_writeByteArray(parcel, v, length);
-    } else if constexpr (std::is_same_v<char16_t*, T> || std::is_same_v<const char16_t*, T>) {
-        return AParcel_writeCharArray(parcel, value, length);
-    } else if constexpr (std::is_same_v<int32_t*, T> || std::is_same_v<const int32_t*, T>) {
-        return AParcel_writeInt32Array(parcel, value, length);
-    } else if constexpr (std::is_same_v<int64_t*, T> || std::is_same_v<const int64_t*, T>) {
-        return AParcel_writeInt64Array(parcel, value, length);
-    } else if constexpr (std::is_same_v<float*, T> || std::is_same_v<const float*, T>) {
-        return AParcel_writeFloatArray(parcel, value, length);
-    } else if constexpr (std::is_same_v<double*, T> || std::is_same_v<const double*, T>) {
-        return AParcel_writeDoubleArray(parcel, value, length);
-    } else if constexpr (std::is_same_v<char**, T> || std::is_same_v<const char**, T>) {
-        const pointer_vector_const<char*> ptr_vec = {const_cast<char**>(value), length};
-        const void* vectorData = static_cast<const void*>(&ptr_vec);
-        return AParcel_writeStringArray(parcel, vectorData, length,
-                                        AParcel_pointerVectorStringElementGetter);
-    } else {
-        static_assert(dependent_false_v<T>, "unrecognized type");
-        return STATUS_OK;
-    }
+    const int32_t arr_length = value ? length : -1;
+    return AParcel_writeData(parcel, value, arr_length);
 }
 
 /**
@@ -2049,12 +2079,6 @@ static inline binder_status_t AParcel_readData(const AParcel* parcel, T* value) 
         return AParcel_readParcelable(parcel, value);
     } else if constexpr (is_parcelable_v<T>) {
         return AParcel_readParcelable(parcel, value);
-    } else if constexpr (std::is_same_v<bool*, T> || std::is_same_v<int8_t*, T> ||
-                         std::is_same_v<uint8_t*, T> || std::is_same_v<char16_t*, T> ||
-                         std::is_same_v<int32_t*, T> || std::is_same_v<int64_t*, T> ||
-                         std::is_same_v<float*, T> || std::is_same_v<double*, T> ||
-                         std::is_same_v<char**, T>) {
-        return AParcel_readFixedArray(parcel, value);
     } else {
         static_assert(dependent_false_v<T>, "unrecognized type");
         return STATUS_OK;
@@ -2072,6 +2096,24 @@ static inline binder_status_t AParcel_readData(const AParcel* parcel, T* value, 
                   std::is_same_v<float*, T> || std::is_same_v<double*, T> ||
                   std::is_same_v<char**, T>) {
         return AParcel_readVector(parcel, value, length);
+    } else {
+        static_assert(dependent_false_v<T>, "unrecognized type");
+        return STATUS_OK;
+    }
+}
+
+/**
+ * Convenience API for reading a value of any type.
+ */
+template <typename T>
+static inline binder_status_t AParcel_readData(const AParcel* parcel, T* value,
+                                               const int32_t length) {
+    if constexpr (std::is_same_v<bool, T> || std::is_same_v<int8_t, T> ||
+                  std::is_same_v<uint8_t, T> || std::is_same_v<char16_t, T> ||
+                  std::is_same_v<int32_t, T> || std::is_same_v<int64_t, T> ||
+                  std::is_same_v<float, T> || std::is_same_v<double, T> ||
+                  std::is_same_v<char*, T>) {
+        return AParcel_readFixedArray(parcel, value, length);
     } else {
         static_assert(dependent_false_v<T>, "unrecognized type");
         return STATUS_OK;
@@ -2119,6 +2161,24 @@ static inline binder_status_t AParcel_readNullableData(const AParcel* parcel, T*
                   std::is_same_v<float*, T> || std::is_same_v<double*, T> ||
                   std::is_same_v<char**, T>) {
         return AParcel_readVector(parcel, value, length);
+    } else {
+        static_assert(dependent_false_v<T>, "unrecognized type");
+        return STATUS_OK;
+    }
+}
+
+/**
+ * Convenience API for reading a nullable value of any type.
+ */
+template <typename T>
+static inline binder_status_t AParcel_readNullableData(const AParcel* parcel, T* value,
+                                                       const int32_t length) {
+    if constexpr (std::is_same_v<bool*, T> || std::is_same_v<int8_t*, T> ||
+                  std::is_same_v<uint8_t*, T> || std::is_same_v<char16_t*, T> ||
+                  std::is_same_v<int32_t*, T> || std::is_same_v<int64_t*, T> ||
+                  std::is_same_v<float*, T> || std::is_same_v<double*, T> ||
+                  std::is_same_v<char**, T>) {
+        return AParcel_readNullableFixedArrayWithNullableData(parcel, value, length);
     } else {
         static_assert(dependent_false_v<T>, "unrecognized type");
         return STATUS_OK;

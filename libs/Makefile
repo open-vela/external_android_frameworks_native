@@ -94,8 +94,21 @@ PROGNAME += schdDbg
 endif
 
 ifneq ($(CONFIG_ANDROID_BINDER_XPC_PERFORMANCE_TEST),)
+AIDLSRCS += binder/tests/IBinderRpcBenchmark.aidl
+binder/tests/IBinderRpcBenchmark.aidl_AIDLFLAGS = -obinder/tests
+CXXSRCS  += binder/tests/IBinderRpcBenchmark.cpp
+endif
+
+ifneq ($(CONFIG_ANDROID_BINDER_CPC_PERFORMANCE_TEST),)
+MAINSRC  += binder/tests/binderCpcServerBenchmark.cpp
+PROGNAME += cpcServerBenchmark
+MAINSRC  += binder/tests/binderCpcClientBenchmark.cpp
+PROGNAME += cpcClientBenchmark
+endif
+
+ifneq ($(CONFIG_ANDROID_BINDER_RPC_PERFORMANCE_TEST),)
 MAINSRC  += binder/tests/binderRpcBenchmark.cpp
-PROGNAME += xpcBenchmark
+PROGNAME += rpcBenchmark
 endif
 
 include $(APPDIR)/Application.mk

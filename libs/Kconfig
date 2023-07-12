@@ -67,3 +67,8 @@ config ANDROID_BINDER_CPC_PERFORMANCE_TEST
 	bool "Android Binder CPC Binder Performance Test"
 	depends on ANDROID_BINDER_XPC_PERFORMANCE_TEST
 	default n
+
+config RPMSGSOCK_PERFORMANCE_TEST
+	bool "rpmsg socket Performance Test"
+	depends on ANDROID_BINDER_XPC_PERFORMANCE_TEST
+	default n

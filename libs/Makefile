@@ -111,4 +111,11 @@ MAINSRC  += binder/tests/binderRpcBenchmark.cpp
 PROGNAME += rpcBenchmark
 endif
 
+ifneq ($(CONFIG_RPMSGSOCK_PERFORMANCE_TEST),)
+MAINSRC  += binder/tests/rpmsgClientBench.cpp
+PROGNAME += rpSockClient
+MAINSRC  += binder/tests/rpmsgServerBench.cpp
+PROGNAME += rpSockServer
+endif
+
 include $(APPDIR)/Application.mk

@@ -53,7 +53,7 @@ int trace;
 bool traceIsOn() {
   fstream file;
   file.open(trace_path + "/tracing_on", ios::in);
-  char on;
+  char on = '0';
   file >> on;
   file.close();
   return on == '1';

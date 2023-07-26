@@ -147,6 +147,7 @@ private:
     Vector<handle_entry> mHandleToObject;
 
     bool mForked;
+    bool mExitRequested;
     bool mThreadPoolStarted;
     volatile int32_t mThreadPoolSeq;
     std::unordered_set<pid_t> mThreadPoolSet;

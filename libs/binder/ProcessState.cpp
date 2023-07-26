@@ -108,6 +108,7 @@ void ProcessState::unregisterThread(pid_t thread)
 void ProcessState::requestExit()
 {
     mThreadPoolStarted = false;
+    mExitRequested = true;
 
     if (mDriverFD >= 0) {
         size_t remain = mThreadPoolSet.count(gettid());
@@ -561,6 +562,7 @@ ProcessState::ProcessState(const char* driver)
         mMaxThreads(DEFAULT_MAX_BINDER_THREADS),
         mStarvationStartTimeMs(0),
         mForked(false),
+        mExitRequested(false),
         mThreadPoolStarted(false),
         mThreadPoolSeq(1),
         mCallRestriction(CallRestriction::NONE),

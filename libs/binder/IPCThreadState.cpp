@@ -622,6 +622,12 @@ void IPCThreadState::joinThreadPool(bool isMain)
     status_t result;
     do {
         processPendingDerefs();
+
+        // Simulate exit same as received BR_FINISHED
+        if (ProcessState::self()->mExitRequested) {
+            result = TIMED_OUT;
+            break;
+        }
         // now get the next command to be processed, waiting if necessary
         result = getAndExecuteCommand();
 

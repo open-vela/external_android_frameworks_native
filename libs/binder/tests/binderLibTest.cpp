@@ -155,7 +155,9 @@ pid_t start_server_process(const char *binderservername, const char *binderserve
 
     posix_spawn(&pid, binderservername, NULL, NULL, childargv, NULL);
     close(pipefd[1]);
-    ret = read(pipefd[0], &status, sizeof(status));
+    do {
+        ret = read(pipefd[0], &status, sizeof(status));
+    } while (ret == -1 && errno == EINTR);
     //printf("pipe read returned %d, status %d\n", ret, status);
     close(pipefd[0]);
     if (ret == sizeof(status)) {

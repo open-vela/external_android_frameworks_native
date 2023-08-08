@@ -108,7 +108,6 @@ void ProcessState::unregisterThread(pid_t thread)
 void ProcessState::requestExit()
 {
     mThreadPoolStarted = false;
-    mExitRequested = true;
 
     if (mDriverFD >= 0) {
         size_t remain = mThreadPoolSet.count(gettid());
@@ -118,6 +117,8 @@ void ProcessState::requestExit()
             sched_yield();
         } while (mThreadPoolSet.size() > remain);
     }
+
+    mExitRequested = true;
 }
 
 #ifdef __NuttX__

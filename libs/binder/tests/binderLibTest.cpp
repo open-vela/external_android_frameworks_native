@@ -1348,7 +1348,7 @@ public:
         pthread_cond_init(&m_serverWaitCond, nullptr);
     }
     ~BinderLibTestService() {
-        if (m_exitOnDestroy) exit(EXIT_SUCCESS);
+        if (m_exitOnDestroy) ProcessState::self()->requestExit();
     }
 
     void processPendingCall() {
@@ -1765,7 +1765,7 @@ int run_server(const char *binderservername, const char *binderserversuffix, int
                  return 1;
              }
              if (numEvents > 0) {
-                 IPCThreadState::self()->handlePolledCommands();
+                 if ((IPCThreadState::self()->handlePolledCommands()) == TIMED_OUT) break;
                  IPCThreadState::self()->flushCommands(); // flush BC_FREE_BUFFER
                  testServicePtr->processPendingCall();
              }

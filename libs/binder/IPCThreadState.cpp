@@ -674,7 +674,7 @@ status_t IPCThreadState::handlePolledCommands()
 
     processPendingDerefs();
     flushCommands();
-    return result;
+    return ProcessState::self()->mExitRequested ? TIMED_OUT : result;
 }
 
 void IPCThreadState::stopProcess(bool /*immediate*/)

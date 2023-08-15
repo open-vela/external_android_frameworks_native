@@ -1619,7 +1619,7 @@ public:
             case BINDER_LIB_TEST_EXIT_TRANSACTION:
                 while (wait(nullptr) != -1 || errno != ECHILD)
                     ;
-                exit(EXIT_SUCCESS);
+                ProcessState::self()->requestExit();
             case BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION: {
                 sp<IBinder> binder = new BBinder();
                 reply->writeStrongBinder(binder);

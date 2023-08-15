@@ -127,15 +127,8 @@ static void FreeProcessState(void* global)
     if (global) {
         // each IPCThreadState holds a sp<ProcessState>. If these threads do not
         // quit, ProcessState will leak.
-        ProcessState::self()->requestExit();
         sp<ProcessState>* proc = static_cast<sp<ProcessState>*>(global);
-        int32_t strong = (*proc)->getStrongCount();
-        if (strong != 1) {
-            ALOGW("%s: strong count %" PRId32 ", possible leak", __func__, strong);
-            do {
-                (*proc)->decStrong((*proc).get());
-            } while ((strong = (*proc)->getStrongCount()) != 1);
-        }
+        (*proc)->requestExit();
         delete proc;
     }
 }

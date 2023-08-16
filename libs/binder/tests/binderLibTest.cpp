@@ -1775,7 +1775,7 @@ int run_server(const char *binderservername, const char *binderserversuffix, int
         IPCThreadState::self()->joinThreadPool();
     }
     //printf("%s: joinThreadPool returned\n", __func__);
-    return 1; /* joinThreadPool should not return */
+    return 0; /* Nuttx joinThreadPool should return 0 */
 }
 
 extern "C" int main(int argc, char **argv) {

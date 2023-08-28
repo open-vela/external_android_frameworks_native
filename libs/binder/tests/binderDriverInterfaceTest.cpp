@@ -119,9 +119,9 @@ class BinderDriverInterfaceTest : public ::testing::Test {
 
             ret = ioctl(m_binderFd, cmd, arg);
             if (ret < 0) {
-                /* Not currently implmented. Allow ret == -1, errno == EINVAL */
+                /* Not currently implmented. Allow ret == -1, errno == ENOTTY */
                 EXPECT_EQ(-1, ret);
-                EXPECT_EQ(EINVAL, errno);
+                EXPECT_EQ(ENOTTY, errno);
             }
         }
         void binderTestReadEmpty(void) {
@@ -168,7 +168,7 @@ TEST_F(BinderDriverInterfaceTest, WriteReadNull) {
 }
 
 TEST_F(BinderDriverInterfaceTest, SetIdleTimeoutNull) {
-    binderTestIoctlErr2(BINDER_SET_IDLE_TIMEOUT, nullptr, EFAULT, EINVAL);
+    binderTestIoctlErr2(BINDER_SET_IDLE_TIMEOUT, nullptr, EFAULT, ENOTTY);
 }
 
 TEST_F(BinderDriverInterfaceTest, SetMaxThreadsNull) {
@@ -176,7 +176,7 @@ TEST_F(BinderDriverInterfaceTest, SetMaxThreadsNull) {
 }
 
 TEST_F(BinderDriverInterfaceTest, SetIdlePriorityNull) {
-    binderTestIoctlErr2(BINDER_SET_IDLE_PRIORITY, nullptr, EFAULT, EINVAL);
+    binderTestIoctlErr2(BINDER_SET_IDLE_PRIORITY, nullptr, EFAULT, ENOTTY);
 }
 
 TEST_F(BinderDriverInterfaceTest, VersionNull) {

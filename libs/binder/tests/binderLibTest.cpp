@@ -1137,7 +1137,11 @@ TEST_F(BinderLibTest, InheritRt) {
     const struct sched_param param {
         .sched_priority = kSchedPriorityMore,
     };
+#if !defined(__NuttX__) || CONFIG_RR_INTERVAL > 0
     EXPECT_EQ(0, sched_setscheduler(getpid(), SCHED_RR, &param));
+#else
+    EXPECT_EQ(0, sched_setscheduler(getpid(), SCHED_FIFO, &param));
+#endif
 
     Parcel data, reply;
     EXPECT_THAT(server->transact(BINDER_LIB_TEST_GET_SCHEDULING_POLICY, data, &reply),

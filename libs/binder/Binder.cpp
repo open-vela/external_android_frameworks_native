@@ -415,7 +415,7 @@ void BBinder::setMinSchedulerPolicy(int policy, int priority) {
       break;
     case SCHED_RR:
     case SCHED_FIFO:
-      LOG_ALWAYS_FATAL_IF(priority < 1 || priority > 99, "Invalid priority for sched %d: %d", policy, priority);
+      LOG_ALWAYS_FATAL_IF(priority < 1 || priority > 255, "Invalid priority for sched %d: %d", policy, priority);
       break;
     default:
       LOG_ALWAYS_FATAL("Unrecognized scheduling policy: %d", policy);

@@ -88,9 +88,19 @@ static testing::Environment* binder_env;
 static char binderserverarg[] = "--binderserver";
 static char binderserverprefix[] = "test.binderLib";
 
+#ifndef __NuttX__
 static constexpr int kSchedPolicy = SCHED_RR;
 static constexpr int kSchedPriority = 7;
 static constexpr int kSchedPriorityMore = 8;
+#elif CONFIG_RR_INTERVAL > 0
+static constexpr int kSchedPolicy = SCHED_RR;
+static constexpr int kSchedPriority = 100;
+static constexpr int kSchedPriorityMore = 101;
+#else
+static constexpr int kSchedPolicy = SCHED_FIFO;
+static constexpr int kSchedPriority = 100;
+static constexpr int kSchedPriorityMore = 100;
+#endif
 
 static String16 binderLibTestServiceName;
 

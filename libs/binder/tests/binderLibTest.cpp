@@ -99,7 +99,7 @@ static constexpr int kSchedPriorityMore = 101;
 #else
 static constexpr int kSchedPolicy = SCHED_FIFO;
 static constexpr int kSchedPriority = 100;
-static constexpr int kSchedPriorityMore = 100;
+static constexpr int kSchedPriorityMore = 101;
 #endif
 
 static String16 binderLibTestServiceName;
@@ -1152,6 +1152,17 @@ TEST_F(BinderLibTest, InheritRt) {
 
     EXPECT_EQ(kSchedPolicy, policy & (~SCHED_RESET_ON_FORK));
     EXPECT_EQ(kSchedPriorityMore, priority);
+
+#if defined(__NuttX__)
+    const struct sched_param param_orign {
+        .sched_priority = kSchedPriority,
+    };
+#  if CONFIG_RR_INTERVAL > 0
+    EXPECT_EQ(0, sched_setscheduler(getpid(), SCHED_RR, &param_orign));
+#  else
+    EXPECT_EQ(0, sched_setscheduler(getpid(), SCHED_FIFO, &param_orign));
+#  endif
+#endif
 }
 
 TEST_F(BinderLibTest, VectorSent) {

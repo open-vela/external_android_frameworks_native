@@ -614,7 +614,8 @@ void IPCThreadState::processPostWriteDerefs()
 void IPCThreadState::joinThreadPool(bool isMain)
 {
     LOG_THREADPOOL("**** THREAD %p (PID %d) IS JOINING THE THREAD POOL\n", (void*)(intptr_t)pthread_self(), getpid());
-    ProcessState::self()->registerThread(gettid());
+    sp<ProcessState> proc(ProcessState::self());
+    proc->registerThread(gettid());
 
     mOut.writeInt32(isMain ? BC_ENTER_LOOPER : BC_REGISTER_LOOPER);
 
@@ -624,7 +625,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
         processPendingDerefs();
 
         // Simulate exit same as received BR_FINISHED
-        if (ProcessState::self()->mExitRequested) {
+        if (proc->mExitRequested) {
             result = TIMED_OUT;
             break;
         }
@@ -649,7 +650,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
     mOut.writeInt32(BC_EXIT_LOOPER);
     mIsLooper = false;
     talkWithDriver(false);
-    ProcessState::self()->unregisterThread(gettid());
+    proc->unregisterThread(gettid());
 }
 
 status_t IPCThreadState::setupPolling(int* fd)

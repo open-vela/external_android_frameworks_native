@@ -1300,21 +1300,29 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                 sendReply(reply, (tr.flags & kForwardReplyFlags));
             } else {
                 if (error != OK) {
-                    alog << "oneway function results for code " << tr.code
-                         << " on binder at "
-                         << reinterpret_cast<void*>(tr.target.ptr)
-                         << " will be dropped but finished with status "
-                         << statusToString(error);
+                    IF_LOG_TRANSACTIONS() {
+                        TextOutput::Bundle _b(alog);
+                        alog << "oneway function results for code " << tr.code
+                            << " on binder at "
+                            << reinterpret_cast<void*>(tr.target.ptr)
+                            << " will be dropped but finished with status "
+                            << statusToString(error);
+                    }
 
                     // ideally we could log this even when error == OK, but it
                     // causes too much logspam because some manually-written
                     // interfaces have clients that call methods which always
                     // write results, sometimes as oneway methods.
                     if (reply.dataSize() != 0) {
-                         alog << " and reply parcel size " << reply.dataSize();
+                        IF_LOG_TRANSACTIONS() {
+                            TextOutput::Bundle _b(alog);
+                            alog << " and reply parcel size " << reply.dataSize();
+                        }
                     }
-
-                    alog << endl;
+                    IF_LOG_TRANSACTIONS() {
+                        TextOutput::Bundle _b(alog);
+                        alog << endl;
+                    }
                 }
                 LOG_ONEWAY("NOT sending reply to %d!", mCallingPid);
             }

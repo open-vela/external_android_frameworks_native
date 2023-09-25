@@ -30,7 +30,8 @@ config ANDROID_BINDER_THREADPOOL_STACKSIZE
 
 config ANDROID_BINDER_TEST
 	tristate "Android Binder Test Case"
-	depends on ANDROID_BINDER && LIB_GOOGLETEST
+	depends on LIB_GOOGLETEST
+	depends on ANDROID_SERVICEMANAGER
 	default n
 
 config ANDROID_BINDER_TEST_STACKSIZE

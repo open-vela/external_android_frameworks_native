@@ -33,6 +33,7 @@
 #include <atomic>
 #include <errno.h>
 #include <inttypes.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
@@ -886,6 +887,11 @@ status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
     uint32_t cmd;
     int32_t err;
 
+    // for oneway transaction and sendReply, do write mOut first
+    if (!reply && !acquireResult)
+        talkWithDriver(false);
+
+again:
     while (1) {
         if ((err=talkWithDriver()) < NO_ERROR) break;
         err = mIn.errorCheck();
@@ -970,6 +976,19 @@ status_t IPCThreadState::waitForResponse(Parcel *reply, status_t *acquireResult)
             err = executeCommand(cmd);
             if (err != NO_ERROR) goto finish;
             break;
+        }
+    }
+
+    if (err == -EAGAIN) {
+        struct pollfd pfd;
+        pfd.fd = ProcessState::self()->mDriverFD;
+        pfd.events = POLLIN;
+
+        if (poll(&pfd, 1, -1) >= 0) {
+            goto again;
+        } else {
+            err = -errno;
+            goto finish;
         }
     }
 

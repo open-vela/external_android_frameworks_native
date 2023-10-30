@@ -1,0 +1,15 @@
+.kconfig
+Kconfig
+*.o
+cmds/servicemanager/.built
+cmds/servicemanager/.depend
+cmds/servicemanager/Make.dep
+libs/.built
+libs/.depend
+libs/Make.dep
+libs/binder/aidl/android/app/*.h
+libs/binder/aidl/android/app/*.cpp
+libs/binder/aidl/android/content/pm/*.h
+libs/binder/aidl/android/content/pm/*.cpp
+libs/binder/aidl/android/os/*.cpp
+libs/binder/aidl/android/os/*.h

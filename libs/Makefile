@@ -122,4 +122,26 @@ MAINSRC  += binder/tests/rpmsgServerBench.cpp
 PROGNAME += rpSockServer
 endif
 
+ASRCS := $(wildcard $(ASRCS))
+CSRCS := $(wildcard $(CSRCS))
+CXXSRCS := $(wildcard $(CXXSRCS))
+MAINSRC := $(wildcard $(MAINSRC))
+NOEXPORTSRCS = $(ASRCS)$(CSRCS)$(CXXSRCS)$(MAINSRC)
+
+ifneq ($(NOEXPORTSRCS),)
+BIN := $(APPDIR)/staging/libandroid.a
+endif
+
+EXPORT_FILES := \
+    binder/aidl \
+    binderdebug/include \
+    binder/include \
+    binder/include_activitymanager \
+    binder/include_batterystats \
+    binder/include_processinfo \
+    binder/include_rpc_unstable \
+    binder/ndk/include_cpp \
+    binder/ndk/include_ndk \
+    binder/ndk/include_platform
+
 include $(APPDIR)/Application.mk

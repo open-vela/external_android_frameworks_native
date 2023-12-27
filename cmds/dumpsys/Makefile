@@ -27,4 +27,14 @@ CXXSRCS  += dumpsys.cpp
 MAINSRC  += main.cpp
 PROGNAME += dumpsys
 
+ASRCS := $(wildcard $(ASRCS))
+CSRCS := $(wildcard $(CSRCS))
+CXXSRCS := $(wildcard $(CXXSRCS))
+MAINSRC := $(wildcard $(MAINSRC))
+NOEXPORTSRCS = $(ASRCS)$(CSRCS)$(CXXSRCS)$(MAINSRC)
+
+ifneq ($(NOEXPORTSRCS),)
+BIN := $(APPDIR)/staging/libandroid.a
+endif
+
 include $(APPDIR)/Application.mk

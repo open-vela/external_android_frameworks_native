@@ -133,7 +133,6 @@ BIN := $(APPDIR)/staging/libandroid.a
 endif
 
 EXPORT_FILES := \
-    binder/aidl \
     binderdebug/include \
     binder/include \
     binder/include_activitymanager \

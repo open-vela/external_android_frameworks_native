@@ -675,7 +675,9 @@ binder_status_t AIBinder_transact(AIBinder* binder, transaction_code_t code, APa
         return STATUS_UNKNOWN_TRANSACTION;
     }
 
-    constexpr binder_flags_t kAllFlags = FLAG_PRIVATE_VENDOR | FLAG_ONEWAY | FLAG_CLEAR_BUF;
+    constexpr binder_flags_t kAllFlags = static_cast<uint32_t>(FLAG_PRIVATE_VENDOR) |
+                                         static_cast<uint32_t>(FLAG_ONEWAY) |
+                                         static_cast<uint32_t>(FLAG_CLEAR_BUF);
     if ((flags & ~kAllFlags) != 0) {
         LOG(ERROR) << __func__ << ": Unrecognized flags sent: " << flags;
         return STATUS_BAD_VALUE;

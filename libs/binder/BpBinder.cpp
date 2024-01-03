@@ -326,7 +326,12 @@ status_t BpBinder::transact(
 status_t BpBinder::linkToDeath(
     const sp<DeathRecipient>& recipient, void* cookie, uint32_t flags)
 {
-    if (isRpcBinder()) return UNKNOWN_TRANSACTION;
+    if (isRpcBinder()) {
+        if (rpcSession()->getMaxIncomingThreads() < 1) {
+            LOG_ALWAYS_FATAL("Cannot register a DeathRecipient without any incoming connections.");
+            return INVALID_OPERATION;
+        }
+    }
 
     Obituary ob;
     ob.recipient = recipient;
@@ -346,10 +351,12 @@ status_t BpBinder::linkToDeath(
                     return NO_MEMORY;
                 }
                 ALOGV("Requesting death notification: %p handle %" PRId32 "\n", this, binderHandle());
-                getWeakRefs()->incWeak(this);
-                IPCThreadState* self = IPCThreadState::self();
-                self->requestDeathNotification(binderHandle(), this);
-                self->flushCommands();
+                if (!isRpcBinder()) {
+                    getWeakRefs()->incWeak(this);
+                    IPCThreadState* self = IPCThreadState::self();
+                    self->requestDeathNotification(binderHandle(), this);
+                    self->flushCommands();
+                }
             }
             ssize_t res = mObituaries->add(ob);
             return res >= (ssize_t)NO_ERROR ? (status_t)NO_ERROR : res;
@@ -364,8 +371,6 @@ status_t BpBinder::unlinkToDeath(
     const wp<DeathRecipient>& recipient, void* cookie, uint32_t flags,
     wp<DeathRecipient>* outRecipient)
 {
-    if (isRpcBinder()) return UNKNOWN_TRANSACTION;
-
     AutoMutex _l(mLock);
 
     if (mObitsSent) {
@@ -384,9 +389,11 @@ status_t BpBinder::unlinkToDeath(
             mObituaries->removeAt(i);
             if (mObituaries->size() == 0) {
                 ALOGV("Clearing death notification: %p handle %" PRId32 "\n", this, binderHandle());
-                IPCThreadState* self = IPCThreadState::self();
-                self->clearDeathNotification(binderHandle(), this);
-                self->flushCommands();
+                if (!isRpcBinder()) {
+                    IPCThreadState* self = IPCThreadState::self();
+                    self->clearDeathNotification(binderHandle(), this);
+                    self->flushCommands();
+                }
                 delete mObituaries;
                 mObituaries = nullptr;
             }
@@ -399,8 +406,6 @@ status_t BpBinder::unlinkToDeath(
 
 void BpBinder::sendObituary()
 {
-    LOG_ALWAYS_FATAL_IF(isRpcBinder(), "Cannot send obituary for remote binder.");
-
     ALOGV("Sending obituary for proxy %p handle %" PRId32 ", mObitsSent=%s\n", this, binderHandle(),
           mObitsSent ? "true" : "false");
 
@@ -411,9 +416,11 @@ void BpBinder::sendObituary()
     Vector<Obituary>* obits = mObituaries;
     if(obits != nullptr) {
         ALOGV("Clearing sent death notification: %p handle %" PRId32 "\n", this, binderHandle());
-        IPCThreadState* self = IPCThreadState::self();
-        self->clearDeathNotification(binderHandle(), this);
-        self->flushCommands();
+        if (!isRpcBinder()) {
+            IPCThreadState* self = IPCThreadState::self();
+            self->clearDeathNotification(binderHandle(), this);
+            self->flushCommands();
+        }
         mObituaries = nullptr;
     }
     mObitsSent = 1;

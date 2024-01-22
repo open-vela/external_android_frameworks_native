@@ -31,6 +31,7 @@
 #include <android-base/scopeguard.h>
 #include <binder/BpBinder.h>
 #include <binder/Parcel.h>
+#include <binder/ProcessState.h>
 #include <binder/RpcServer.h>
 #include <binder/RpcTransportRaw.h>
 #include <binder/Stability.h>
@@ -667,6 +668,9 @@ status_t RpcSession::addIncomingConnection(std::unique_ptr<RpcTransport> rpcTran
     std::unique_lock<std::mutex> lock(mutex);
     std::thread thread;
     sp<RpcSession> thiz = sp<RpcSession>::fromExisting(this);
+
+    ProcessState::self()->registerIncomingSession(thiz);
+
     bool ownershipTransferred = false;
     thread = std::thread([&]() {
         std::unique_lock<std::mutex> threadLock(mutex);

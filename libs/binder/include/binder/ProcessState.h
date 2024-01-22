@@ -17,6 +17,7 @@
 #pragma once
 
 #include <binder/IBinder.h>
+#include <binder/RpcServer.h>
 #include <utils/KeyedVector.h>
 #include <utils/Mutex.h>
 #include <utils/String16.h>
@@ -28,6 +29,13 @@
 
 // ---------------------------------------------------------------------------
 namespace android {
+
+struct RpcSessionHash {
+    std::size_t operator()(const sp<RpcSession>& session) const
+    {
+        return std::hash<RpcSession*>()(session.get());
+    }
+};
 
 class IPCThreadState;
 
@@ -52,6 +60,9 @@ public:
     void registerThread(pid_t thread);
     void unregisterThread(pid_t thread);
     void requestExit();
+
+    status_t registerRemoteService(const char* name, const sp<IBinder>& service);
+    void registerIncomingSession(const sp<RpcSession>& session);
 
     bool becomeContextManager();
 
@@ -151,6 +162,9 @@ private:
     bool mThreadPoolStarted;
     volatile int32_t mThreadPoolSeq;
     std::unordered_set<pid_t> mThreadPoolSet;
+
+    std::vector<sp<RpcServer>> mServers;
+    std::unordered_set<sp<RpcSession>, RpcSessionHash> mSessions;
 
     CallRestriction mCallRestriction;
 

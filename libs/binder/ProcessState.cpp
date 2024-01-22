@@ -119,6 +119,41 @@ void ProcessState::requestExit()
     }
 
     mExitRequested = true;
+
+    if (getpid() != gettid())
+        return;
+
+    auto it = mServers.begin();
+    while (it != mServers.end()) {
+        (void)(*it)->shutdown();
+        it = mServers.erase(it);
+    }
+
+    auto it2 = mSessions.begin();
+    while (it2 != mSessions.end()) {
+        (void)(*it2)->shutdownAndWait(true);
+        it2 = mSessions.erase(it2);
+    }
+}
+
+status_t ProcessState::registerRemoteService(const char* name, const sp<IBinder>& service)
+{
+    sp<RpcServer> server = RpcServer::make();
+    server->setRootObject(service);
+    if (status_t ret = server->setupRpmsgSockServer(name); ret != OK)
+        return ret;
+
+    server->start();
+
+    AutoMutex _l(mLock);
+    mServers.push_back(server);
+    return OK;
+}
+
+void ProcessState::registerIncomingSession(const sp<RpcSession>& session)
+{
+    AutoMutex _l(mLock);
+    mSessions.insert(session);
 }
 
 #ifdef __NuttX__

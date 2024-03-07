@@ -48,7 +48,7 @@ protected:
 class FdTextOutput : public BufferedTextOutput
 {
 public:
-    explicit FdTextOutput(int fd) : BufferedTextOutput(MULTITHREADED), mFD(fd) { }
+    explicit FdTextOutput(int fd) : BufferedTextOutput(0), mFD(fd) { }
     virtual ~FdTextOutput() { }
 
 protected:

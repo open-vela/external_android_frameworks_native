@@ -277,26 +277,8 @@ status_t BpBinder::transact(
 {
     // Once a binder has died, it will never come back to life.
     if (mAlive) {
-        bool privateVendor = flags & FLAG_PRIVATE_VENDOR;
         // don't send userspace flags to the kernel
         flags = flags & ~FLAG_PRIVATE_VENDOR;
-
-        // user transactions require a given stability level
-        if (code >= FIRST_CALL_TRANSACTION && code <= LAST_CALL_TRANSACTION) {
-            using android::internal::Stability;
-
-            int16_t stability = Stability::getRepr(this);
-            Stability::Level required = privateVendor ? Stability::VENDOR
-                : Stability::getLocalLevel();
-
-            if (CC_UNLIKELY(!Stability::check(stability, required))) {
-                ALOGE("Cannot do a user transaction on a %s binder (%s) in a %s context.",
-                      Stability::levelString(stability).c_str(),
-                      String8(getInterfaceDescriptor()).c_str(),
-                      Stability::levelString(required).c_str());
-                return BAD_TYPE;
-            }
-        }
 
         status_t status;
         if (CC_UNLIKELY(isRpcBinder())) {

@@ -156,7 +156,7 @@ void ProcessState::registerIncomingSession(const sp<RpcSession>& session)
     mSessions.insert(session);
 }
 
-#if defined(__NuttX__) && !defined(BUILD_KERNEL)
+#ifdef __NuttX__
 static void FreeProcessState(void* global)
 {
     if (global) {

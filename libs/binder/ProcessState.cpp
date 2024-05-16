@@ -105,6 +105,32 @@ void ProcessState::unregisterThread(pid_t thread)
     mThreadPoolSet.erase(thread);
 }
 
+void ProcessState::insertBBinder(const sp<IBinder>& binder)
+{
+    AutoMutex _l(mLock);
+    ALOGD("BBinder %p insert into set\n", binder.get());
+    mIBinderSet.insert(binder);
+}
+
+void ProcessState::releaseAllBBinder()
+{
+    AutoMutex _l(mLock);
+
+    auto iter = mIBinderSet.begin();
+    while (iter != mIBinderSet.end()) {
+        ALOGD("Release BBinder %p strong = 0x%" PRId32 ", weak = 0x%" PRId32 "\n",
+               iter->get(), iter->get()->getStrongCount(),
+               iter->get()->getWeakRefs()->getWeakCount());
+        while (iter->get()->getStrongCount() != 1) {
+            iter->get()->decStrong(this);
+        }
+        while (iter->get()->getWeakRefs()->getWeakCount() != 1) {
+            iter->get()->getWeakRefs()->decWeak(this);
+        }
+        iter = mIBinderSet.erase(iter);
+    }
+}
+
 void ProcessState::requestExit()
 {
     mThreadPoolStarted = false;
@@ -134,6 +160,8 @@ void ProcessState::requestExit()
         (void)(*it2)->shutdownAndWait(true);
         it2 = mSessions.erase(it2);
     }
+
+    releaseAllBBinder();
 }
 
 status_t ProcessState::registerRemoteService(const char* name, const sp<IBinder>& service)

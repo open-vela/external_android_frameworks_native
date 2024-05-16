@@ -26,6 +26,7 @@
 #include <atomic>
 #include <pthread.h>
 #include <unordered_set>
+#include <set>
 
 // ---------------------------------------------------------------------------
 namespace android {
@@ -59,6 +60,8 @@ public:
     void startThreadPool();
     void registerThread(pid_t thread);
     void unregisterThread(pid_t thread);
+    void insertBBinder(const sp<IBinder>& binder);
+    void releaseAllBBinder();
     void requestExit();
 
     status_t registerRemoteService(const char* name, const sp<IBinder>& service);
@@ -162,6 +165,7 @@ private:
     bool mThreadPoolStarted;
     volatile int32_t mThreadPoolSeq;
     std::unordered_set<pid_t> mThreadPoolSet;
+    std::set<sp<IBinder>> mIBinderSet;
 
     std::vector<sp<RpcServer>> mServers;
     std::unordered_set<sp<RpcSession>, RpcSessionHash> mSessions;

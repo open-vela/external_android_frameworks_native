@@ -241,6 +241,7 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
             obj.hdr.type = BINDER_TYPE_BINDER;
             obj.binder = reinterpret_cast<uintptr_t>(local->getWeakRefs());
             obj.cookie = reinterpret_cast<uintptr_t>(local);
+            ProcessState::self()->insertBBinder(binder);
         }
     } else {
         obj.hdr.type = BINDER_TYPE_BINDER;

@@ -114,8 +114,6 @@ void ProcessState::insertBBinder(const sp<IBinder>& binder)
 
 void ProcessState::releaseAllBBinder()
 {
-    AutoMutex _l(mLock);
-
     auto iter = mIBinderSet.begin();
     while (iter != mIBinderSet.end()) {
         ALOGD("Release BBinder %p strong = 0x%" PRId32 ", weak = 0x%" PRId32 "\n",

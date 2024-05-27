@@ -196,24 +196,26 @@ static void FreeProcessState(void* global)
     }
 }
 
+static int gProcessIndex;
+
+static void AllocProcessIndex(void)
+{
+    gProcessIndex = task_tls_alloc(FreeProcessState);
+}
+
 sp<ProcessState>* GetProcessState(void)
 {
-    sp<ProcessState>* proc = NULL;
-    static int index = -1;
+    sp<ProcessState>* proc = nullptr;
+    static pthread_once_t once = PTHREAD_ONCE_INIT;
 
-    if (index < 0) {
-        index = task_tls_alloc(FreeProcessState);
-    }
-
-    if (index >= 0) {
-        proc = reinterpret_cast<sp<ProcessState>*>(task_tls_get_value(index));
+    pthread_once(&once, AllocProcessIndex);
+    proc = reinterpret_cast<sp<ProcessState>*>(task_tls_get_value(gProcessIndex));
         if (proc == NULL) {
             proc = new sp<ProcessState>;
             if (proc) {
-                task_tls_set_value(index, reinterpret_cast<uintptr_t>(proc));
+                task_tls_set_value(gProcessIndex, reinterpret_cast<uintptr_t>(proc));
             }
         }
-    }
 
     return proc;
 }

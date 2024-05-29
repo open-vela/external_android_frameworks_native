@@ -23,6 +23,7 @@ if(CONFIG_ANDROID_BINDER)
 
   set(BINDER_GLOBAL_CXX_INCDIR
       ${CMAKE_CURRENT_LIST_DIR}/binder/aidl
+      ${CMAKE_CURRENT_BINARY_DIR}/binder/aidl
       ${CMAKE_CURRENT_LIST_DIR}/binder/include
       ${CMAKE_CURRENT_LIST_DIR}/binder/include_activitymanager
       ${CMAKE_CURRENT_LIST_DIR}/binder/include_batterystats

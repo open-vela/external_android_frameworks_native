@@ -165,7 +165,7 @@ private:
     bool mThreadPoolStarted;
     volatile int32_t mThreadPoolSeq;
     std::unordered_set<pid_t> mThreadPoolSet;
-    std::set<sp<IBinder>> mIBinderSet;
+    std::set<wp<IBinder>> mIBinderSet;
 
     std::vector<sp<RpcServer>> mServers;
     std::unordered_set<sp<RpcSession>, RpcSessionHash> mSessions;

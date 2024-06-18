@@ -116,16 +116,19 @@ void ProcessState::releaseAllBBinder()
 {
     auto iter = mIBinderSet.begin();
     while (iter != mIBinderSet.end()) {
-        ALOGD("Release BBinder %p strong = 0x%" PRId32 ", weak = 0x%" PRId32 "\n",
-               iter->get(), iter->get()->getStrongCount(),
-               iter->get()->getWeakRefs()->getWeakCount());
-        while (iter->get()->getStrongCount() != 1) {
-            iter->get()->decStrong(this);
-        }
-        while (iter->get()->getWeakRefs()->getWeakCount() != 1) {
-            iter->get()->getWeakRefs()->decWeak(this);
-        }
+        auto binder = iter->promote();
         iter = mIBinderSet.erase(iter);
+        if (binder != nullptr) {
+            ALOGD("Release BBinder %p strong = 0x%" PRId32 ", weak = 0x%" PRId32 "\n",
+                   binder.get(), binder->getStrongCount(),
+                   binder->getWeakRefs()->getWeakCount());
+            while (binder->getStrongCount() != 1) {
+                binder->decStrong(this);
+            }
+            while (binder->getWeakRefs()->getWeakCount() != 1) {
+                binder->getWeakRefs()->decWeak(this);
+            }
+        }
     }
 }
 

@@ -1644,7 +1644,7 @@ public:
             case BINDER_LIB_TEST_EXIT_TRANSACTION:
                 while (wait(nullptr) != -1 || errno != ECHILD)
                     ;
-                ProcessState::self()->requestExit();
+                exit(EXIT_SUCCESS);
             case BINDER_LIB_TEST_CREATE_BINDER_TRANSACTION: {
                 sp<IBinder> binder = new BBinder();
                 reply->writeStrongBinder(binder);

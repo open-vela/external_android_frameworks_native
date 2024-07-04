@@ -1373,7 +1373,7 @@ public:
         pthread_cond_init(&m_serverWaitCond, nullptr);
     }
     ~BinderLibTestService() {
-        if (m_exitOnDestroy) ProcessState::self()->requestExit();
+        if (m_exitOnDestroy) exit(EXIT_SUCCESS);
     }
 
     void processPendingCall() {

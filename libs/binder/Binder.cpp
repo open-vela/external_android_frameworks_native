@@ -588,6 +588,8 @@ BBinder::~BBinder()
 
     Extras* e = mExtras.load(std::memory_order_relaxed);
     if (e) delete e;
+
+    ProcessState::self()->eraseBBinder(this);
 }
 
 

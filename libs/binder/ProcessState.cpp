@@ -105,30 +105,27 @@ void ProcessState::unregisterThread(pid_t thread)
     mThreadPoolSet.erase(thread);
 }
 
-void ProcessState::insertBBinder(const sp<IBinder>& binder)
+void ProcessState::insertBBinder(IBinder *binder)
 {
     AutoMutex _l(mLock);
-    ALOGD("BBinder %p insert into set\n", binder.get());
+    ALOGD("BBinder %p insert into set\n", binder);
     mIBinderSet.insert(binder);
+}
+
+int ProcessState::eraseBBinder(IBinder *binder)
+{
+    AutoMutex _l(mLock);
+    ALOGD("BBinder %p erase from set\n", binder);
+    return mIBinderSet.erase(binder);
 }
 
 void ProcessState::releaseAllBBinder()
 {
     auto iter = mIBinderSet.begin();
     while (iter != mIBinderSet.end()) {
-        auto binder = iter->promote();
+        auto binder = *iter;
         iter = mIBinderSet.erase(iter);
-        if (binder != nullptr) {
-            ALOGD("Release BBinder %p strong = 0x%" PRId32 ", weak = 0x%" PRId32 "\n",
-                   binder.get(), binder->getStrongCount(),
-                   binder->getWeakRefs()->getWeakCount());
-            while (binder->getStrongCount() != 1) {
-                binder->decStrong(this);
-            }
-            while (binder->getWeakRefs()->getWeakCount() != 1) {
-                binder->getWeakRefs()->decWeak(this);
-            }
-        }
+        binder->clearStrongAndWeakRefCount();
     }
 }
 

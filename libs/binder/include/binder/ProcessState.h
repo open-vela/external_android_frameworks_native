@@ -60,7 +60,8 @@ public:
     void startThreadPool();
     void registerThread(pid_t thread);
     void unregisterThread(pid_t thread);
-    void insertBBinder(const sp<IBinder>& binder);
+    void insertBBinder(IBinder *binder);
+    int  eraseBBinder(IBinder *binder);
     void releaseAllBBinder();
     void requestExit();
 
@@ -165,7 +166,7 @@ private:
     bool mThreadPoolStarted;
     volatile int32_t mThreadPoolSeq;
     std::unordered_set<pid_t> mThreadPoolSet;
-    std::set<wp<IBinder>> mIBinderSet;
+    std::set<IBinder *> mIBinderSet;
 
     std::vector<sp<RpcServer>> mServers;
     std::unordered_set<sp<RpcSession>, RpcSessionHash> mSessions;

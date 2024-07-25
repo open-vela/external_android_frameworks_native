@@ -16,6 +16,7 @@
 
 config ANDROID_BINDER
 	bool "Android Binder"
+	depends on CXX_LOCALIZATION
 	depends on TLS_TASK_NELEM > 0
 	depends on TLS_NELEM > 0
 	select ANDROID_LIBUTILS

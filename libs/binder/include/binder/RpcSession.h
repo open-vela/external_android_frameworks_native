@@ -26,6 +26,14 @@
 #include <thread>
 #include <vector>
 
+#ifdef CONFIG_LIBUV
+#include <uv.h>
+#else
+struct uv_loop_t;
+struct uv_poll_t;
+struct uv_handle_t;
+#endif
+
 namespace android {
 
 class Parcel;
@@ -220,6 +228,8 @@ private:
         std::optional<pid_t> exclusiveTid;
 
         bool allowNested = false;
+
+        sp<RpcSession> session;
     };
 
     [[nodiscard]] status_t readId();
@@ -243,6 +253,12 @@ private:
     // join on thread passed to preJoinThreadOwnership
     static void join(sp<RpcSession>&& session, PreJoinSetupResult&& result);
 
+#ifdef CONFIG_LIBUV
+    // setup uv polling for session
+    static void setupPolling(sp<RpcSession>&& session,
+                             PreJoinSetupResult&& result, uv_loop_t* loop);
+#endif
+
     [[nodiscard]] status_t setupClient(
             const std::function<status_t(const std::vector<uint8_t>& sessionId, bool incoming)>&
                     connectAndInit);
@@ -265,6 +281,11 @@ private:
     [[nodiscard]] bool removeIncomingConnection(const sp<RpcConnection>& connection);
 
     [[nodiscard]] status_t initShutdownTrigger();
+
+#ifdef CONFIG_LIBUV
+    static void readCb(uv_poll_t* handle, int status, int events);
+    static void closeCb(uv_handle_t* handle);
+#endif
 
     enum class ConnectionUse {
         CLIENT,
@@ -343,6 +364,10 @@ private:
         std::vector<sp<RpcConnection>> mIncoming;
         std::map<std::thread::id, std::thread> mThreads;
     } mConnections;
+
+#ifdef CONFIG_LIBUV
+    uv_poll_t mUVHandle;
+#endif
 };
 
 } // namespace android

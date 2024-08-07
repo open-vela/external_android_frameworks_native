@@ -282,7 +282,7 @@ public:
                                      const std::function<status_t()>& altPoll) override;
     status_t interruptableReadFully(FdTrigger* fdTrigger, iovec* iovs, int niovs,
                                     const std::function<status_t()>& altPoll) override;
-
+    int getRpcTransportFd() override { mSocket.get(); }
 private:
     android::base::unique_fd mSocket;
     Ssl mSsl;

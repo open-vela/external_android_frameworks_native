@@ -63,6 +63,7 @@ public:
             FdTrigger *fdTrigger, iovec *iovs, int niovs,
             const std::function<status_t()> &altPoll) = 0;
 
+    virtual int getRpcTransportFd() = 0;
 protected:
     RpcTransport() = default;
 };

@@ -150,7 +150,7 @@ public:
     /**
      * Runs join() in a background thread. Immediately returns.
      */
-    void start();
+    void start(uv_loop_t* loop = nullptr);
 
     /**
      * You must have at least one client session before calling this.
@@ -183,6 +183,9 @@ public:
     ~RpcServer();
 
 private:
+    static void acceptCb(uv_poll_t* handle, int status, int events);
+    static void closeCb(uv_handle_t* handle);
+
     friend sp<RpcServer>;
     explicit RpcServer(std::unique_ptr<RpcTransportCtx> ctx);
 
@@ -208,6 +211,10 @@ private:
     std::map<std::vector<uint8_t>, sp<RpcSession>> mSessions;
     std::unique_ptr<FdTrigger> mShutdownTrigger;
     std::condition_variable mShutdownCv;
+#ifdef CONFIG_LIBUV
+    uv_poll_t mUVHandle;
+#endif
+    uv_loop_t* mLoop;
 };
 
 } // namespace android

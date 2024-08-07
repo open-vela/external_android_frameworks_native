@@ -166,10 +166,62 @@ static void joinRpcServer(sp<RpcServer>&& thiz) {
     thiz->join();
 }
 
-void RpcServer::start() {
+#ifdef CONFIG_LIBUV
+void RpcServer::closeCb(uv_handle_t* handle) {
+    RpcServer *server = reinterpret_cast<RpcServer*>(handle->data);
+    server->mShutdownCv.notify_all();
+}
+
+void RpcServer::acceptCb(uv_poll_t* handle, int status, int events)
+{
+    RpcServer *server = reinterpret_cast<RpcServer*>(handle->data);
+    sockaddr_storage addr;
+    socklen_t addrLen = sizeof(addr);
+
+    status_t ret = server->mShutdownTrigger->triggerablePoll(server->mServer, POLLIN);
+    if (ret != OK) {
+        ALOGE("Could not setup shutdown trigger: %s", strerror(errno));
+        uv_poll_stop(&server->mUVHandle);
+        uv_close((uv_handle_t *)(&server->mUVHandle), closeCb);
+        return;
+    }
+
+    unique_fd clientFd(
+            TEMP_FAILURE_RETRY(accept4(server->mServer.get(), reinterpret_cast<sockaddr*>(&addr),
+                    &addrLen, SOCK_CLOEXEC | SOCK_NONBLOCK)));
+
+    LOG_ALWAYS_FATAL_IF(addrLen > static_cast<socklen_t>(sizeof(addr)), "Truncated address");
+
+    if (clientFd < 0) {
+        ALOGE("Could not accept4 socket: %s", strerror(errno));
+        return;
+    }
+    LOG_RPC_DETAIL("accept4 on fd %d yields fd %d", server->mServer.get(), clientFd.get());
+
+    establishConnection(sp<RpcServer>::fromExisting(server),
+            std::move(clientFd), addr, addrLen);
+}
+#endif
+
+void RpcServer::start(uv_loop_t* loop) {
     std::lock_guard<std::mutex> _l(mLock);
-    LOG_ALWAYS_FATAL_IF(!!mJoinThread.get(), "Already started!");
-    mJoinThread = std::make_unique<std::thread>(&joinRpcServer, sp<RpcServer>::fromExisting(this));
+    mLoop = loop;
+
+    if (loop == nullptr) {
+        LOG_ALWAYS_FATAL_IF(!!mJoinThread.get(), "Already started!");
+        mJoinThread = std::make_unique<std::thread>(&joinRpcServer,
+                                       sp<RpcServer>::fromExisting(this));
+    } else {
+        LOG_ALWAYS_FATAL_IF(!mServer.ok(), "RpcServer must be setup to join.");
+        LOG_ALWAYS_FATAL_IF(mShutdownTrigger != nullptr, "Already joined");
+        mShutdownTrigger = FdTrigger::make();
+        LOG_ALWAYS_FATAL_IF(mShutdownTrigger == nullptr, "Cannot create join signaler");
+#ifdef CONFIG_LIBUV
+        uv_poll_init(mLoop, &mUVHandle, mServer.get());
+        mUVHandle.data = this;
+        uv_poll_start(&mUVHandle, POLLIN, acceptCb);
+#endif
+    }
 }
 
 void RpcServer::join() {
@@ -354,16 +406,21 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
     {
         std::unique_lock<std::mutex> _l(server->mLock);
 
-        auto threadId = server->mConnectingThreads.find(std::this_thread::get_id());
-        LOG_ALWAYS_FATAL_IF(threadId == server->mConnectingThreads.end(),
-                            "Must establish connection on owned thread");
-        thisThread = std::move(threadId->second);
+        if (server->mLoop == nullptr) {
+            auto threadId = server->mConnectingThreads.find(std::this_thread::get_id());
+            LOG_ALWAYS_FATAL_IF(threadId == server->mConnectingThreads.end(),
+                                "Must establish connection on owned thread");
+            thisThread = std::move(threadId->second);
+            server->mConnectingThreads.erase(threadId);
+        }
+
         ScopeGuard detachGuard = [&]() {
-            thisThread.detach();
-            _l.unlock();
+            if (server->mLoop == nullptr) {
+                thisThread.detach();
+                _l.unlock();
+            }
             server->mShutdownCv.notify_all();
         };
-        server->mConnectingThreads.erase(threadId);
 
         if (status != OK || server->mShutdownTrigger->isTriggered()) {
             return;
@@ -438,15 +495,27 @@ void RpcServer::establishConnection(sp<RpcServer>&& server, base::unique_fd clie
         }
 
         detachGuard.Disable();
-        session->preJoinThreadOwnership(std::move(thisThread));
+
+        if (server->mLoop == nullptr) {
+            session->preJoinThreadOwnership(std::move(thisThread));
+        }
     }
 
     auto setupResult = session->preJoinSetup(std::move(client));
 
+    uv_loop_t* loop = server->mLoop;
+
     // avoid strong cycle
     server = nullptr;
 
-    RpcSession::join(std::move(session), std::move(setupResult));
+    if (loop == nullptr) {
+        RpcSession::join(std::move(session), std::move(setupResult));
+    } else {
+#ifdef CONFIG_LIBUV
+        RpcSession::setupPolling(std::move(session),
+                std::move(setupResult), loop);
+#endif
+    }
 }
 
 status_t RpcServer::setupSocketServer(const RpcSocketAddress& addr) {

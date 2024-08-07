@@ -152,6 +152,8 @@ public:
                                         altPoll);
     }
 
+    int getRpcTransportFd() override { return mSocket.get(); }
+
 private:
     base::unique_fd mSocket;
 };

@@ -161,28 +161,30 @@ void ProcessState::requestExit()
     releaseAllBBinder();
 }
 
-status_t ProcessState::registerRemoteService(const char* name, const sp<IBinder>& service)
+status_t ProcessState::registerRemoteService(const char* name,
+                       const sp<IBinder>& service, uv_loop_t* loop)
 {
     sp<RpcServer> server = RpcServer::make();
     server->setRootObject(service);
     if (status_t ret = server->setupRpmsgSockServer(name); ret != OK)
         return ret;
 
-    server->start();
+    server->start(loop);
 
     AutoMutex _l(mLock);
     mServers.push_back(server);
     return OK;
 }
 
-status_t ProcessState::registerRemoteService(unsigned int port, const sp<IBinder>& service)
+status_t ProcessState::registerRemoteService(unsigned int port,
+                       const sp<IBinder>& service, uv_loop_t* loop)
 {
     sp<RpcServer> server = RpcServer::make();
     server->setRootObject(service);
     if (status_t ret = server->setupVsockServer(port); ret != OK)
         return ret;
 
-    server->start();
+    server->start(loop);
 
     AutoMutex _l(mLock);
     mServers.push_back(server);

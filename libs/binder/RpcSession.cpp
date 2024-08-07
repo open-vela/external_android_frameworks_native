@@ -436,6 +436,55 @@ void RpcSession::join(sp<RpcSession>&& session, PreJoinSetupResult&& setupResult
     }
 }
 
+#ifdef CONFIG_LIBUV
+void RpcSession::closeCb(uv_handle_t* handle) {
+    auto conn = sp<RpcSession::RpcConnection>::fromExisting(
+            static_cast<RpcSession::RpcConnection*>(handle->data));
+    conn->decStrong(conn.get());
+}
+
+void RpcSession::readCb(uv_poll_t* handle, int status, int events) {
+    auto conn = sp<RpcSession::RpcConnection>::fromExisting(
+            static_cast<RpcSession::RpcConnection*>(handle->data));
+    auto session = conn->session;
+
+    [[maybe_unused]] JavaThreadAttacher javaThreadAttacher;
+
+    status_t sc_status = session->state()->getAndExecuteCommand(conn, session,
+            RpcState::CommandType::ANY);
+    if (sc_status != OK) {
+        sp<RpcSession::EventListener> listener;
+        {
+            std::lock_guard<std::mutex> _l(session->mMutex);
+            listener = session->mEventListener.promote();
+        }
+
+        LOG_RPC_DETAIL("Binder connection thread closing w/ status %s",
+                statusToString(sc_status).c_str());
+
+        uv_close((uv_handle_t *)(&session->mUVHandle), closeCb);
+
+        if (listener != nullptr) {
+            listener->onSessionIncomingThreadEnded();
+        }
+    }
+}
+
+void RpcSession::setupPolling(sp<RpcSession>&& session,
+                              PreJoinSetupResult&& setupResult, uv_loop_t* loop) {
+    sp<RpcConnection>& connection = setupResult.connection;
+
+    if (setupResult.status == OK) {
+        uv_poll_init(loop, &session->mUVHandle,
+                     connection->rpcTransport->getRpcTransportFd());
+        connection->session = session;
+        session->mUVHandle.data = connection.get();
+        connection->incStrong(connection.get());
+        uv_poll_start(&session->mUVHandle, UV_READABLE, readCb);
+    }
+}
+#endif
+
 sp<RpcServer> RpcSession::server() {
     RpcServer* unsafeServer = mForServer.unsafe_get();
     sp<RpcServer> server = mForServer.promote();

@@ -112,19 +112,8 @@ if(CONFIG_ANDROID_BINDER)
     ${AIDLS})
 
   # flags
-  set(FLAGS -Wno-undef -Wno-shadow -Wno-unknown-pragmas)
-
-  if(NOT DEFINED GCCVER)
-    execute_process(COMMAND ${CMAKE_CXX_COMPILER} --version
-                    OUTPUT_VARIABLE GCC_VERSION_OUTPUT)
-    string(REGEX MATCH "\\+\\+.* ([0-9]+)\\.[0-9]+" GCC_VERSION_REGEX
-                 "${GCC_VERSION_OUTPUT}")
-    set(GCCVER ${CMAKE_MATCH_1})
-  endif()
-
-  if(GCCVER EQUAL 12)
-    list(APPEND FLAGS -Wno-maybe-uninitialized)
-  endif()
+  set(FLAGS -Wno-undef -Wno-shadow -Wno-unknown-pragmas
+            -Wno-maybe-uninitialized)
 
   macro(add_binder_test_app PROG MAIN)
     nuttx_add_application(

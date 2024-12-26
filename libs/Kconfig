@@ -20,6 +20,7 @@ config ANDROID_BINDER
 	depends on TLS_TASK_NELEM > 0
 	depends on TLS_NELEM > 0
 	select ANDROID_LIBUTILS
+	select ALOG
 	default n
 	---help---
 		Android binder, the codebase come from AOSP

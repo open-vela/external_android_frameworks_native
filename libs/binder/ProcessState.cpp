@@ -137,7 +137,7 @@ void ProcessState::requestExit()
         size_t remain = mThreadPoolSet.count(gettid());
         do {
             ALOGD("flush thread");
-            ioctl(mDriverFD, BIOC_FLUSH, NULL);
+            ioctl(mDriverFD, BINDER_FLUSH, NULL);
             sched_yield();
         } while (mThreadPoolSet.size() > remain);
     }

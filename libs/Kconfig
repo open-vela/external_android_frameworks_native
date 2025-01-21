@@ -85,3 +85,8 @@ config RPMSGSOCK_PERFORMANCE_TEST
 	bool "rpmsg socket Performance Test"
 	depends on ANDROID_BINDER_XPC_PERFORMANCE_TEST
 	default n
+
+config ANDROID_RPC_BINDER_THREAD_STACKSIZE
+	int "Android RPC Binder Thread stacksize"
+	depends on ANDROID_BINDER
+	default PTHREAD_STACK_DEFAULT

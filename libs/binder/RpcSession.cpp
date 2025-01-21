@@ -721,7 +721,11 @@ status_t RpcSession::addIncomingConnection(std::unique_ptr<RpcTransport> rpcTran
     ProcessState::self()->registerIncomingSession(thiz);
 
     bool ownershipTransferred = false;
-    thread = std::thread([&]() {
+    thread = std::thread(
+#ifdef CONFIG_ANDROID_RPC_BINDER_THREAD_STACKSIZE
+        std::thread::attributes().stack_size(CONFIG_ANDROID_RPC_BINDER_THREAD_STACKSIZE),
+#endif
+        [&]() {
         std::unique_lock<std::mutex> threadLock(mutex);
         std::unique_ptr<RpcTransport> movedRpcTransport = std::move(rpcTransport);
         // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)

@@ -980,14 +980,20 @@ again:
     }
 
     if (err == -EAGAIN) {
+        int ret;
         struct pollfd pfd;
         pfd.fd = ProcessState::self()->mDriverFD;
         pfd.events = POLLIN;
 
-        if (poll(&pfd, 1, -1) >= 0) {
+        do {
+            ret = poll(&pfd, 1, -1);
+        } while (ret == -1 && errno == EINTR);
+
+        if (ret >= 0) {
             goto again;
         } else {
             err = -errno;
+            alog << "poll() failed: " << strerror(errno) << endl;
             goto finish;
         }
     }

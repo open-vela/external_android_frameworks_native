@@ -24,6 +24,11 @@ config ANDROID_BINDER
 	---help---
 		Android binder, the codebase come from AOSP
 
+config BINDER_VM_SIZE
+	int "Binder vmsize"
+	default 16384
+	depends on ANDROID_BINDER
+
 config ANDROID_BINDER_THREADPOOL_STACKSIZE
 	int "Android Binder Thread pool stacksize"
 	depends on ANDROID_BINDER

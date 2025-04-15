@@ -22,8 +22,8 @@ use crate::sys;
 
 use std::convert::{TryFrom, TryInto};
 use std::ffi::c_void;
+use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::os::raw::{c_char, c_ulong};
-use std::mem::{self, MaybeUninit, ManuallyDrop};
 use std::ptr;
 use std::slice;
 
@@ -103,23 +103,19 @@ pub trait SerializeArray: Serialize + Sized {
 unsafe extern "C" fn serialize_element<T: Serialize>(
     parcel: *mut sys::AParcel,
     array: *const c_void,
-    index: c_ulong,
+    index: usize,
 ) -> status_t {
-    // c_ulong and usize are the same, but we need the explicitly sized version
-    // so the function signature matches what bindgen generates.
-    let index = index as usize;
-
-    let slice: &[T] = slice::from_raw_parts(array.cast(), index+1);
+    let slice: &[T] = slice::from_raw_parts(array.cast(), index + 1);
 
     let mut parcel = match BorrowedParcel::from_raw(parcel) {
         None => return StatusCode::UNEXPECTED_NULL as status_t,
         Some(p) => p,
     };
 
-    slice[index].serialize(&mut parcel)
-                .err()
-                .unwrap_or(StatusCode::OK)
-        as status_t
+    slice[index]
+        .serialize(&mut parcel)
+        .err()
+        .unwrap_or(StatusCode::OK) as status_t
 }
 
 /// Helper trait for types that can be deserialized as arrays.
@@ -161,12 +157,8 @@ pub trait DeserializeArray: Deserialize {
 unsafe extern "C" fn deserialize_element<T: Deserialize>(
     parcel: *const sys::AParcel,
     array: *mut c_void,
-    index: c_ulong,
+    index: usize,
 ) -> status_t {
-    // c_ulong and usize are the same, but we need the explicitly sized version
-    // so the function signature matches what bindgen generates.
-    let index = index as usize;
-
     let vec = &mut *(array as *mut Option<Vec<MaybeUninit<T>>>);
     let vec = match vec {
         Some(v) => v,
@@ -265,10 +257,7 @@ unsafe extern "C" fn allocate_vec_with_buffer<T>(
 ///
 /// The opaque data pointer passed to the array read function must be a mutable
 /// pointer to an `Option<Vec<MaybeUninit<T>>>`.
-unsafe extern "C" fn allocate_vec<T>(
-    data: *mut c_void,
-    len: i32,
-) -> bool {
+unsafe extern "C" fn allocate_vec<T>(data: *mut c_void, len: i32) -> bool {
     let vec = &mut *(data as *mut Option<Vec<MaybeUninit<T>>>);
     if len < 0 {
         *vec = None;
@@ -286,7 +275,6 @@ unsafe extern "C" fn allocate_vec<T>(
     true
 }
 
-
 macro_rules! parcelable_primitives {
     {
         $(
@@ -303,11 +291,7 @@ unsafe fn vec_assume_init<T>(vec: Vec<MaybeUninit<T>>) -> Vec<T> {
     // has the same alignment and size as T, so the pointer to the vector
     // allocation will be compatible.
     let mut vec = ManuallyDrop::new(vec);
-    Vec::from_raw_parts(
-        vec.as_mut_ptr().cast(),
-        vec.len(),
-        vec.capacity(),
-    )
+    Vec::from_raw_parts(vec.as_mut_ptr().cast(), vec.len(), vec.capacity())
 }
 
 macro_rules! impl_parcelable {
@@ -679,7 +663,8 @@ impl<T: DeserializeArray, const N: usize> Deserialize for [T; N] {
 impl<T: DeserializeArray, const N: usize> DeserializeOption for [T; N] {
     fn deserialize_option(parcel: &BorrowedParcel<'_>) -> Result<Option<Self>> {
         let vec = DeserializeArray::deserialize_array(parcel)?;
-        vec.map(|v| v.try_into().or(Err(StatusCode::BAD_VALUE))).transpose()
+        vec.map(|v| v.try_into().or(Err(StatusCode::BAD_VALUE)))
+            .transpose()
     }
 }
 
@@ -915,8 +900,8 @@ impl<T: DeserializeOption> DeserializeOption for Box<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::parcel::Parcel;
     use super::*;
+    use crate::parcel::Parcel;
 
     #[test]
     fn test_custom_parcelable() {
@@ -934,11 +919,11 @@ mod tests {
         impl Deserialize for Custom {
             fn deserialize(parcel: &BorrowedParcel<'_>) -> Result<Self> {
                 Ok(Custom(
-                        parcel.read()?,
-                        parcel.read()?,
-                        parcel.read()?,
-                        parcel.read::<Option<Vec<String>>>()?.unwrap(),
-                        ))
+                    parcel.read()?,
+                    parcel.read()?,
+                    parcel.read()?,
+                    parcel.read::<Option<Vec<String>>>()?.unwrap(),
+                ))
             }
         }
 

@@ -66,6 +66,7 @@ public:
     void requestExit();
 
     status_t registerRemoteService(const char* name, const sp<IBinder>& service);
+    status_t registerRemoteService(unsigned int port, const sp<IBinder>& service);
     void registerIncomingSession(const sp<RpcSession>& session);
 
     bool becomeContextManager();

@@ -175,6 +175,20 @@ status_t ProcessState::registerRemoteService(const char* name, const sp<IBinder>
     return OK;
 }
 
+status_t ProcessState::registerRemoteService(unsigned int port, const sp<IBinder>& service)
+{
+    sp<RpcServer> server = RpcServer::make();
+    server->setRootObject(service);
+    if (status_t ret = server->setupVsockServer(port); ret != OK)
+        return ret;
+
+    server->start();
+
+    AutoMutex _l(mLock);
+    mServers.push_back(server);
+    return OK;
+}
+
 void ProcessState::registerIncomingSession(const sp<RpcSession>& session)
 {
     AutoMutex _l(mLock);

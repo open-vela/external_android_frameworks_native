@@ -80,6 +80,9 @@ public:
     bool isDeclared(const String16& name) override;
     Vector<String16> getDeclaredInstances(const String16& interface) override;
     std::optional<String16> updatableViaApex(const String16& name) override;
+#if CONFIG_ANDROID_BINDER_VERSION == 14 || CONFIG_ANDROID_BINDER_VERSION == 15
+    Vector<String16> getUpdatableNames(const String16& apexName) override;
+#endif
     std::optional<IServiceManager::ConnectionInfo> getConnectionInfo(const String16& name) override;
     class RegistrationWaiter : public android::os::BnServiceCallback {
     public:
@@ -108,7 +111,10 @@ public:
     IBinder* onAsBinder() override {
         return IInterface::asBinder(mTheRealServiceManager).get();
     }
-
+#if CONFIG_ANDROID_BINDER_VERSION == 15
+    void enableAddServiceCache(bool value) {
+    }
+#endif
 protected:
     sp<AidlServiceManager> mTheRealServiceManager;
     // AidlRegistrationCallback -> services that its been registered for
@@ -305,11 +311,21 @@ sp<IBinder> ServiceManagerShim::getService(const String16& name) const
 
 sp<IBinder> ServiceManagerShim::checkService(const String16& name) const
 {
+#if CONFIG_ANDROID_BINDER_VERSION == 13 || CONFIG_ANDROID_BINDER_VERSION == 14
     sp<IBinder> ret;
     if (!mTheRealServiceManager->checkService(String8(name).c_str(), &ret).isOk()) {
         return nullptr;
     }
     return ret;
+#endif
+
+#if CONFIG_ANDROID_BINDER_VERSION == 15
+    os::Service ret;
+    if (!mTheRealServiceManager->checkService(String8(name).c_str(), &ret).isOk()) {
+        return nullptr;
+    }
+    return ret.get<os::Service::Tag::serviceWithMetadata>().service;
+#endif
 }
 
 status_t ServiceManagerShim::addService(const String16& name, const sp<IBinder>& service,
@@ -473,6 +489,25 @@ std::optional<IServiceManager::ConnectionInfo> ServiceManagerShim::getConnection
                       {connectionInfo->ipAddress, static_cast<unsigned int>(connectionInfo->port)})
             : std::nullopt;
 }
+
+#if CONFIG_ANDROID_BINDER_VERSION == 14 || CONFIG_ANDROID_BINDER_VERSION == 15
+Vector<String16> ServiceManagerShim::getUpdatableNames(const String16& apexName) {
+    std::vector<std::string> out;
+    if (Status status = mTheRealServiceManager->getUpdatableNames(String8(apexName).c_str(), &out);
+        !status.isOk()) {
+        ALOGW("Failed to getUpdatableNames for %s: %s", String8(apexName).c_str(),
+              status.toString8().c_str());
+        return {};
+    }
+
+    Vector<String16> res;
+    res.setCapacity(out.size());
+    for (const std::string& instance : out) {
+        res.push(String16(instance.c_str()));
+    }
+    return res;
+}
+#endif
 
 status_t ServiceManagerShim::registerForNotifications(const String16& name,
                                                       const sp<AidlRegistrationCallback>& cb) {

@@ -235,11 +235,30 @@ Status ServiceManager::getService(const std::string& name, sp<IBinder>* outBinde
     return Status::ok();
 }
 
+#if CONFIG_ANDROID_BINDER_VERSION == 15
+Status ServiceManager::getService2(const std::string& name, os::Service* out) {
+    sp<IBinder> outBinder;
+
+    outBinder = tryGetService(name, true);
+    os::ServiceWithMetadata serviceWithMetadata = os::ServiceWithMetadata();
+    serviceWithMetadata.service = outBinder;
+    *out = os::Service::make<os::Service::Tag::serviceWithMetadata>(serviceWithMetadata);
+    // returns ok regardless of result for legacy reasons
+    return Status::ok();
+}
+
+Status ServiceManager::checkService(const std::string& name, os::Service* out) {
+    return getService2(name, out);
+}
+#endif
+
+#if CONFIG_ANDROID_BINDER_VERSION == 13 || CONFIG_ANDROID_BINDER_VERSION == 14
 Status ServiceManager::checkService(const std::string& name, sp<IBinder>* outBinder) {
     *outBinder = tryGetService(name, false);
     // returns ok regardless of result for legacy reasons
     return Status::ok();
 }
+#endif
 
 sp<IBinder> ServiceManager::tryGetService(const std::string& name, bool startIfNotFound) {
     auto ctx = mAccess->getCallingContext();
@@ -484,6 +503,32 @@ Status ServiceManager::updatableViaApex(const std::string& name,
 #endif
     return Status::ok();
 }
+
+#if CONFIG_ANDROID_BINDER_VERSION == 14 || CONFIG_ANDROID_BINDER_VERSION == 15
+Status ServiceManager::getUpdatableNames([[maybe_unused]] const std::string& apexName,
+                                         std::vector<std::string>* outReturn) {
+    auto ctx = mAccess->getCallingContext();
+
+    std::vector<std::string> apexUpdatableNames;
+#ifndef VENDORSERVICEMANAGER
+    apexUpdatableNames = getVintfUpdatableNames(apexName);
+#endif
+
+    outReturn->clear();
+
+    for (const std::string& name : apexUpdatableNames) {
+        if (mAccess->canFind(ctx, name)) {
+            outReturn->push_back(name);
+        }
+    }
+
+    if (outReturn->size() == 0 && apexUpdatableNames.size() != 0) {
+        return Status::fromExceptionCode(Status::EX_SECURITY, "SELinux denied.");
+    }
+
+    return Status::ok();
+}
+#endif
 
 Status ServiceManager::getConnectionInfo(const std::string& name,
                                          std::optional<ConnectionInfo>* outReturn) {

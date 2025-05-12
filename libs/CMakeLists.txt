@@ -94,6 +94,27 @@ if(CONFIG_ANDROID_BINDER)
       binderdebug/BinderDebug.cpp)
 
   # aidl sources
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/binder/aidl/android/os)
+  # make sure IServiceManager out-of-tree
+  file(COPY_FILE
+       binder/aidl/android/os/IServiceManager.${CONFIG_ANDROID_BINDER_VERSION}
+       ${CMAKE_CURRENT_BINARY_DIR}/binder/aidl/android/os/IServiceManager.aidl)
+  nuttx_add_aidl(
+    TARGET
+    android_binder
+    AIDL_BASE_DIR
+    ${CMAKE_CURRENT_BINARY_DIR}/binder/aidl
+    AIDL_INCLUDE_DIR
+    ${CMAKE_CURRENT_LIST_DIR}/binder/aidl
+    AIDL_HEADER_DIR
+    ${CMAKE_CURRENT_BINARY_DIR}/binder/aidl
+    AIDL_OUT_DIR
+    ${CMAKE_CURRENT_BINARY_DIR}/binder/aidl
+    AIDL_FLAGS
+    --lang=cpp
+    AIDLS
+    ${CMAKE_CURRENT_BINARY_DIR}/binder/aidl/android/os/IServiceManager.aidl)
+
   file(GLOB_RECURSE AIDLS binder/aidl/*.aidl)
   nuttx_add_aidl(
     TARGET
@@ -113,7 +134,7 @@ if(CONFIG_ANDROID_BINDER)
 
   # flags
   set(FLAGS -Wno-undef -Wno-shadow -Wno-unknown-pragmas
-            -Wno-maybe-uninitialized)
+            -Wno-maybe-uninitialized -Wno-return-type)
 
   macro(add_binder_test_app PROG MAIN)
     nuttx_add_application(

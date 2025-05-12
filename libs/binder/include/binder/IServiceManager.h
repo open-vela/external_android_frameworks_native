@@ -114,6 +114,14 @@ public:
      */
     virtual std::optional<String16> updatableViaApex(const String16& name) = 0;
 
+#if CONFIG_ANDROID_BINDER_VERSION == 14 || CONFIG_ANDROID_BINDER_VERSION == 15
+    /**
+     * Returns all instances which are updatable via the APEX. Instance names are fully qualified
+     * like `pack.age.IFoo/default`.
+     */
+    virtual Vector<String16> getUpdatableNames(const String16& apexName) = 0;
+#endif
+
     /**
      * If this instance has declared remote connection information, returns
      * the ConnectionInfo.
@@ -140,6 +148,14 @@ public:
         int pid;
     };
     virtual std::vector<ServiceDebugInfo> getServiceDebugInfo() = 0;
+
+#if CONFIG_ANDROID_BINDER_VERSION == 15
+    /**
+     * Directly enable or disable caching binder during addService calls.
+     * Only used for testing. This is enabled by default.
+     */
+    virtual void enableAddServiceCache(bool value) = 0;
+#endif
 };
 
 sp<IServiceManager> defaultServiceManager();

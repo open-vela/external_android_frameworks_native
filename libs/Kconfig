@@ -29,6 +29,11 @@ config BINDER_VM_SIZE
 	default 16384
 	depends on ANDROID_BINDER
 
+config ANDROID_BINDER_VERSION
+	int "Android Binder version"
+	depends on ANDROID_BINDER
+	default 15
+
 config ANDROID_BINDER_THREADPOOL_STACKSIZE
 	int "Android Binder Thread pool stacksize"
 	depends on ANDROID_BINDER

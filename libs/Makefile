@@ -141,4 +141,7 @@ EXPORT_FILES := \
     binder/ndk/include_ndk \
     binder/ndk/include_platform
 
+distclean::
+	$(call DELFILE, binder/aidl/android/os/IServiceManager.aidl)
+
 include $(APPDIR)/Application.mk

@@ -32,10 +32,10 @@ struct RpcWireAddress {
     uint32_t address;
 
     static inline RpcWireAddress fromRaw(uint64_t raw) {
-        return *reinterpret_cast<RpcWireAddress*>(&raw);
+        return std::bit_cast<RpcWireAddress>(raw);
     }
     static inline uint64_t toRaw(RpcWireAddress addr) {
-        return *reinterpret_cast<uint64_t*>(&addr);
+        return std::bit_cast<uint64_t>(addr);
     }
 };
 static_assert(sizeof(RpcWireAddress) == sizeof(uint64_t));

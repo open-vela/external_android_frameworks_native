@@ -190,6 +190,17 @@ static void FreeProcessState(void* global)
         // quit, ProcessState will leak.
         sp<ProcessState>* proc = static_cast<sp<ProcessState>*>(global);
         (*proc)->requestExit();
+
+        if ((*proc)->getStrongCount() != 1) {
+            ALOGW("ProcessState %" PRId32 " strong references, waiting...",
+                    (*proc)->getStrongCount());
+            do {
+                usleep(100);
+            } while((*proc)->getStrongCount() != 1);
+            ALOGW("ProcessState strong references already dec to %" PRId32,
+                    (*proc)->getStrongCount());
+        }
+
         delete proc;
     }
 }

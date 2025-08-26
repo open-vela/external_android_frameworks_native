@@ -26,7 +26,7 @@
 #include <thread>
 #include <vector>
 
-#ifdef CONFIG_LIBUV
+#if __has_include (<uv.h>)
 #include <uv.h>
 #else
 struct uv_loop_t;

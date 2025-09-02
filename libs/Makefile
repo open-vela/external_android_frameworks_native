@@ -67,6 +67,7 @@ CXXSRCS += binderdebug/BinderDebug.cpp
 
 binderdebug/BinderDebug.cpp_CXXFLAGS += -Wno-maybe-uninitialized
 CXXFLAGS += -Wno-undef -Wno-shadow -Wno-unknown-pragmas -Wno-return-type
+CXXFLAGS += $(INCDIR_PREFIX)$(APPDIR)/external/android/frameworks/native/cmds/servicemanager
 
 $(shell cp binder/aidl/android/os/IServiceManager.$(CONFIG_ANDROID_BINDER_VERSION) binder/aidl/android/os/IServiceManager.aidl)
 AIDLSRCS += $(shell find binder/aidl -name *.aidl)

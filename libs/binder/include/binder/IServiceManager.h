@@ -15,6 +15,7 @@
  */
 
 #pragma once
+#include <android/os/IServiceManager.h>
 #include <binder/IInterface.h>
 #include <utils/Vector.h>
 #include <utils/String16.h>
@@ -159,6 +160,9 @@ public:
 };
 
 sp<IServiceManager> defaultServiceManager();
+#ifdef CONFIG_ANDROID_SERVICEMANAGER_INPROC
+sp<IServiceManager> makeServiceManagerShim(const sp<android::os::IServiceManager>& sm);
+#else
 
 /**
  * Directly set the default service manager. Only used for testing.
@@ -167,6 +171,7 @@ sp<IServiceManager> defaultServiceManager();
  * called first, setDefaultServiceManager() will abort.
  */
 void setDefaultServiceManager(const sp<IServiceManager>& sm);
+#endif
 
 template<typename INTERFACE>
 sp<INTERFACE> waitForService(const String16& name) {

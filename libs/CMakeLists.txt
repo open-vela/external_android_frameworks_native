@@ -88,12 +88,8 @@ if(CONFIG_ANDROID_BINDER)
   endif()
 
   if(CONFIG_ALOG)
-    list(
-     APPEND
-     SRCS
-     binder/BufferedTextOutput.cpp
-     binder/Static.cpp
-     binder/TextOutput.cpp)
+    list(APPEND SRCS binder/BufferedTextOutput.cpp binder/Static.cpp
+         binder/TextOutput.cpp)
   endif()
 
   # aidl sources
@@ -204,5 +200,9 @@ if(CONFIG_ANDROID_BINDER)
 
   target_sources(android_binder PRIVATE ${SRCS})
   target_compile_options(android_binder PRIVATE ${FLAGS})
+  target_include_directories(
+    android_binder
+    PRIVATE
+      ${NUTTX_APPS_DIR}/external/android/frameworks/native/cmds/servicemanager)
 
 endif()

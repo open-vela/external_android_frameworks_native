@@ -32,6 +32,7 @@
 
 #include "Static.h"
 #include "binder_module.h"
+#include "ServiceManager.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -611,6 +612,12 @@ String8 ProcessState::getDriverName() {
     return mDriverName;
 }
 
+#ifdef CONFIG_ANDROID_SERVICEMANAGER_INPROC
+sp<IServiceManager> defaultServiceManager()
+{
+    return gProcess->mServiceManager;
+}
+#else
 static base::Result<int> open_driver(const char* driver) {
     int fd = open(driver, O_RDWR | O_CLOEXEC);
     if (fd < 0) {
@@ -643,6 +650,7 @@ static base::Result<int> open_driver(const char* driver) {
     }
     return fd;
 }
+#endif
 
 ProcessState::ProcessState(const char* driver)
       : mDriverName(String8(driver)),
@@ -663,7 +671,9 @@ ProcessState::ProcessState(const char* driver)
         mShutdown(false),
         mDisableBackgroundScheduling(false) {
     pthread_key_create(&mTLS, IPCThreadState::threadDestructor);
-
+#ifdef CONFIG_ANDROID_SERVICEMANAGER_INPROC
+    mServiceManager = makeServiceManagerShim(sp<ServiceManager>::make(std::make_unique<Access>()));
+#else
     base::Result<int> opened = open_driver(driver);
 
     if (opened.ok()) {
@@ -687,6 +697,7 @@ ProcessState::ProcessState(const char* driver)
     if (opened.ok()) {
         mDriverFD = opened.value();
     }
+#endif
 }
 
 ProcessState::~ProcessState()

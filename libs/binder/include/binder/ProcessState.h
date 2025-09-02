@@ -17,6 +17,7 @@
 #pragma once
 
 #include <binder/IBinder.h>
+#include <binder/IServiceManager.h>
 #include <binder/RpcServer.h>
 #include <utils/KeyedVector.h>
 #include <utils/Mutex.h>
@@ -131,6 +132,10 @@ private:
 
     friend class IPCThreadState;
     friend class sp<ProcessState>;
+#ifdef CONFIG_ANDROID_SERVICEMANAGER_INPROC
+    friend sp<IServiceManager> defaultServiceManager();
+    sp<IServiceManager> mServiceManager;
+#endif
 
     explicit ProcessState(const char* driver);
     ~ProcessState();

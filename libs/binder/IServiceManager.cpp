@@ -140,6 +140,7 @@ protected:
     }
 };
 
+#ifndef CONFIG_ANDROID_SERVICEMANAGER_INPROC
 [[clang::no_destroy]] static std::once_flag gSmOnce;
 [[clang::no_destroy]] static sp<IServiceManager> gDefaultServiceManager;
 
@@ -172,6 +173,12 @@ void setDefaultServiceManager(const sp<IServiceManager>& sm) {
         LOG_ALWAYS_FATAL("setDefaultServiceManager() called after defaultServiceManager().");
     }
 }
+#else
+sp<IServiceManager> makeServiceManagerShim(const sp<android::os::IServiceManager>& sm)
+{
+    return sp<ServiceManagerShim>::make(sm);
+}
+#endif
 
 #if !defined(__ANDROID_VNDK__) && (defined(__ANDROID__) || defined(__NuttX__))
 // IPermissionController is not accessible to vendors

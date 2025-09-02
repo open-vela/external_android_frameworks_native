@@ -16,10 +16,16 @@
 
 config ANDROID_SERVICEMANAGER
 	tristate "Android service manager"
-	depends on ANDROID_BINDER && DRIVERS_BINDER
+	depends on ANDROID_BINDER
 	depends on TIMER_FD && EVENT_FD
 
 config ANDROID_SERVICEMANAGER_STACKSIZE
 	int "Android service manager stack size"
 	depends on ANDROID_SERVICEMANAGER
 	default DEFAULT_TASK_STACKSIZE
+
+config ANDROID_SERVICEMANAGER_INPROC
+	bool "Enable in-process ServiceManager"
+	default y if !DRIVERS_BINDER
+	---help---
+		Integrating ServiceManager into ProcessState enables centralized singleton management.

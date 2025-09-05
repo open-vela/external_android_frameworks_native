@@ -65,12 +65,14 @@ public:
     void releaseAllBBinder();
     void requestExit();
 
+#ifdef CONFIG_ANDROID_BINDER_RPC
     status_t registerRemoteService(const char* name,
                                    const sp<IBinder>& service, uv_loop_t* loop = nullptr);
     status_t registerRemoteService(unsigned int port,
                                    const sp<IBinder>& service,  uv_loop_t* loop = nullptr);
 
     void registerIncomingSession(const sp<RpcSession>& session);
+#endif
 
     bool becomeContextManager();
 

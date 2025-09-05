@@ -24,74 +24,78 @@ config ANDROID_BINDER
 	---help---
 		Android binder, the codebase come from AOSP
 
+if ANDROID_BINDER
 config BINDER_VM_SIZE
 	int "Binder vmsize"
 	default 16384
-	depends on ANDROID_BINDER
 
 config ANDROID_BINDER_VERSION
 	int "Android Binder version"
-	depends on ANDROID_BINDER
 	default 15
+
+config ANDROID_BINDER_PROXY_CHECK
+	bool "Android Binder Proxy Check"
+	default n
+
+config ANDROID_BINDER_NDK
+	bool "Android Binder NDK"
+	default n
+
+config ANDROID_BINDER_RPC
+	bool "Android CPC Binder"
+	depends on NET
+	default n
 
 config ANDROID_BINDER_THREADPOOL_STACKSIZE
 	int "Android Binder Thread pool stacksize"
-	depends on ANDROID_BINDER
 	default 8192
+
+config ANDROID_BINDER_RPC_THREAD_STACKSIZE
+	int "Android RPC Binder Thread stacksize"
+	depends on ANDROID_BINDER_RPC
+	default PTHREAD_STACK_DEFAULT
 
 config ANDROID_BINDER_TEST
 	tristate "Android Binder Test Case"
 	depends on LIB_GOOGLETEST
-	depends on ANDROID_SERVICEMANAGER
 	default n
 
+if ANDROID_BINDER_TEST
 config ANDROID_BINDER_TEST_STACKSIZE
 	int "Android Binder Test stack size"
-	depends on ANDROID_BINDER_TEST
 	default DEFAULT_TASK_STACKSIZE
 
 config ANDROID_BINDER_LIB_TEST
 	bool "Android Binder Lib Test Case"
-	depends on ANDROID_BINDER_TEST
 	depends on LIBC_EXECFUNCS
 	default n
 
 config ANDROID_BINDER_DRIVER_TEST
 	bool "Android Binder Driver Test Case"
-	depends on ANDROID_BINDER_TEST
 	default n
 
 config ANDROID_BINDER_PERFORMANCE_TEST
 	bool "Android Binder Performance Test"
-	depends on ANDROID_BINDER_TEST
 	default n
 
 config ANDROID_BINDER_XPC_PERFORMANCE_TEST
 	bool "Android Binder RPC and CPC Performance Test"
-	depends on ANDROID_BINDER && LIB_GOOGLEBENCHMARK
+	depends on LIB_GOOGLEBENCHMARK
 	default n
 
+if ANDROID_BINDER_XPC_PERFORMANCE_TEST
 config ANDROID_BINDER_RPC_PERFORMANCE_TEST
 	bool "Android Binder RPC Binder Performance Test"
-	depends on ANDROID_BINDER_XPC_PERFORMANCE_TEST
+	depends on ANDROID_BINDER_RPC
 	default n
 
 config ANDROID_BINDER_CPC_PERFORMANCE_TEST
 	bool "Android Binder CPC Binder Performance Test"
-	depends on ANDROID_BINDER_XPC_PERFORMANCE_TEST
 	default n
 
 config RPMSGSOCK_PERFORMANCE_TEST
 	bool "rpmsg socket Performance Test"
-	depends on ANDROID_BINDER_XPC_PERFORMANCE_TEST
 	default n
-
-config ANDROID_RPC_BINDER_THREAD_STACKSIZE
-	int "Android RPC Binder Thread stacksize"
-	depends on ANDROID_BINDER
-	default PTHREAD_STACK_DEFAULT
-
-config ANDROID_BINDER_PROXY_CHECK
-	bool "Android Binder Proxy Check"
-	depends on ANDROID_BINDER
-	default n
+endif #ANDROID_BINDER_XPC_PERFORMANCE_TEST
+endif #ANDROID_BINDER_TEST
+endif #ANDROID_BINDER

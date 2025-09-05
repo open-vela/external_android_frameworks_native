@@ -193,7 +193,11 @@ BpBinder::BpBinder(RpcHandle&& handle) : BpBinder(Handle(handle)) {
 }
 
 bool BpBinder::isRpcBinder() const {
+#ifdef CONFIG_ANDROID_BINDER_RPC
     return std::holds_alternative<RpcHandle>(mHandle);
+#else
+    return false;
+#endif
 }
 
 uint64_t BpBinder::rpcAddress() const {
@@ -285,10 +289,13 @@ status_t BpBinder::transact(
         flags = flags & ~FLAG_PRIVATE_VENDOR;
 
         status_t status;
+#ifdef CONFIG_ANDROID_BINDER_RPC
         if (CC_UNLIKELY(isRpcBinder())) {
             status = rpcSession()->transact(sp<IBinder>::fromExisting(this), code, data, reply,
                                             flags);
-        } else {
+        } else
+#endif
+        {
             status = IPCThreadState::self()->transact(binderHandle(), code, data, reply, flags);
         }
         if (data.dataSize() > LOG_TRANSACTIONS_OVER_SIZE) {
@@ -312,12 +319,14 @@ status_t BpBinder::transact(
 status_t BpBinder::linkToDeath(
     const sp<DeathRecipient>& recipient, void* cookie, uint32_t flags)
 {
+#ifdef CONFIG_ANDROID_BINDER_RPC
     if (isRpcBinder()) {
         if (rpcSession()->getMaxIncomingThreads() < 1) {
             LOG_ALWAYS_FATAL("Cannot register a DeathRecipient without any incoming connections.");
             return INVALID_OPERATION;
         }
     }
+#endif
 
     Obituary ob;
     ob.recipient = recipient;
@@ -511,10 +520,12 @@ void BpBinder::onFirstRef()
 void BpBinder::onLastStrongRef(const void* /*id*/)
 {
     ALOGV("onLastStrongRef BpBinder %p\n", this);
+#ifdef CONFIG_ANDROID_BINDER_RPC
     if (CC_UNLIKELY(isRpcBinder())) {
         (void)rpcSession()->sendDecStrong(this);
         return;
     }
+#endif
     IF_ALOGV() {
         printRefs();
     }

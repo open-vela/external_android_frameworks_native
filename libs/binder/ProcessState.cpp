@@ -146,6 +146,7 @@ void ProcessState::requestExit()
     if (getpid() != gettid())
         return;
 
+#ifdef CONFIG_ANDROID_BINDER_RPC
     auto it = mServers.begin();
     while (it != mServers.end()) {
         (void)(*it)->shutdown();
@@ -157,10 +158,12 @@ void ProcessState::requestExit()
         (void)(*it2)->shutdownAndWait(true);
         it2 = mSessions.erase(it2);
     }
+#endif
 
     releaseAllBBinder();
 }
 
+#ifdef CONFIG_ANDROID_BINDER_RPC
 status_t ProcessState::registerRemoteService(const char* name,
                        const sp<IBinder>& service, uv_loop_t* loop)
 {
@@ -196,6 +199,7 @@ void ProcessState::registerIncomingSession(const sp<RpcSession>& session)
     AutoMutex _l(mLock);
     mSessions.insert(session);
 }
+#endif
 
 #if defined(__NuttX__) && !defined(CONFIG_BUILD_KERNEL)
 static void FreeProcessState(void* global)

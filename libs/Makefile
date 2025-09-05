@@ -18,12 +18,22 @@ include $(APPDIR)/Make.defs
 
 CXXEXT = .cpp
 
+ifneq ($(CONFIG_ANDROID_BINDER_NDK),)
 CXXSRCS += binder/ndk/ibinder.cpp
 CXXSRCS += binder/ndk/parcel.cpp
 CXXSRCS += binder/ndk/process.cpp
 CXXSRCS += binder/ndk/service_manager.cpp
 CXXSRCS += binder/ndk/stability.cpp
 CXXSRCS += binder/ndk/status.cpp
+endif
+
+ifneq ($(CONFIG_ANDROID_BINDER_RPC),)
+CXXSRCS += binder/libbinder_rpc_unstable.cpp
+CXXSRCS += binder/RpcServer.cpp
+CXXSRCS += binder/RpcSession.cpp
+CXXSRCS += binder/RpcState.cpp
+CXXSRCS += binder/RpcTransportRaw.cpp
+endif
 
 CXXSRCS += binder/ActivityManager.cpp
 CXXSRCS += binder/Binder.cpp
@@ -43,7 +53,6 @@ CXXSRCS += binder/IServiceManager.cpp
 CXXSRCS += binder/IShellCallback.cpp
 CXXSRCS += binder/IUidObserver.cpp
 CXXSRCS += binder/LazyServiceRegistrar.cpp
-CXXSRCS += binder/libbinder_rpc_unstable.cpp
 CXXSRCS += binder/MemoryBase.cpp
 CXXSRCS += binder/MemoryDealer.cpp
 CXXSRCS += binder/MemoryHeapBase.cpp
@@ -55,10 +64,6 @@ CXXSRCS += binder/PermissionController.cpp
 CXXSRCS += binder/PersistableBundle.cpp
 CXXSRCS += binder/ProcessInfoService.cpp
 CXXSRCS += binder/ProcessState.cpp
-CXXSRCS += binder/RpcServer.cpp
-CXXSRCS += binder/RpcSession.cpp
-CXXSRCS += binder/RpcState.cpp
-CXXSRCS += binder/RpcTransportRaw.cpp
 CXXSRCS += binder/Stability.cpp
 CXXSRCS += binder/Static.cpp
 CXXSRCS += binder/Status.cpp

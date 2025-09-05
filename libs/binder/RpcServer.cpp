@@ -210,9 +210,9 @@ void RpcServer::start(uv_loop_t* loop) {
     if (loop == nullptr) {
         LOG_ALWAYS_FATAL_IF(!!mJoinThread.get(), "Already started!");
         mJoinThread = std::make_unique<std::thread>(
-#ifdef CONFIG_ANDROID_RPC_BINDER_THREAD_STACKSIZE
+#ifdef CONFIG_ANDROID_BINDER_RPC_THREAD_STACKSIZE
             std::thread::attributes().stack_size(
-                CONFIG_ANDROID_RPC_BINDER_THREAD_STACKSIZE),
+                CONFIG_ANDROID_BINDER_RPC_THREAD_STACKSIZE),
 #endif
             &joinRpcServer, sp<RpcServer>::fromExisting(this));
     } else {
@@ -259,9 +259,9 @@ void RpcServer::join() {
         {
             std::lock_guard<std::mutex> _l(mLock);
             std::thread thread = std::thread(
-#ifdef CONFIG_ANDROID_RPC_BINDER_THREAD_STACKSIZE
+#ifdef CONFIG_ANDROID_BINDER_RPC_THREAD_STACKSIZE
                 std::thread::attributes().stack_size(
-                    CONFIG_ANDROID_RPC_BINDER_THREAD_STACKSIZE),
+                    CONFIG_ANDROID_BINDER_RPC_THREAD_STACKSIZE),
 #endif
                 &RpcServer::establishConnection, sp<RpcServer>::fromExisting(this),
                 std::move(clientFd), addr, addrLen);

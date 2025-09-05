@@ -182,6 +182,7 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
     if (binder) local = binder->localBinder();
     if (local) local->setParceled();
 
+#ifdef CONFIG_ANDROID_BINDER_RPC
     if (isForRpc()) {
         if (binder) {
             status_t status = writeInt32(1); // non-null
@@ -198,6 +199,7 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
         }
         return finishFlattenBinder(binder);
     }
+#endif
 
     flat_binder_object obj;
 
@@ -260,6 +262,7 @@ status_t Parcel::flattenBinder(const sp<IBinder>& binder) {
 
 status_t Parcel::unflattenBinder(sp<IBinder>* out) const
 {
+#ifdef CONFIG_ANDROID_BINDER_RPC
     if (isForRpc()) {
         LOG_ALWAYS_FATAL_IF(mSession == nullptr, "RpcSession required to read from remote parcel");
 
@@ -282,6 +285,7 @@ status_t Parcel::unflattenBinder(sp<IBinder>* out) const
 
         return finishUnflattenBinder(binder, out);
     }
+#endif
 
     const flat_binder_object* flat = readObject(false);
 
@@ -660,7 +664,11 @@ void Parcel::markForRpc(const sp<RpcSession>& session) {
 }
 
 bool Parcel::isForRpc() const {
+#ifdef CONFIG_ANDROID_BINDER_RPC
     return mSession != nullptr;
+#else
+    return false;
+#endif
 }
 
 void Parcel::updateWorkSourceRequestHeaderPosition() const {

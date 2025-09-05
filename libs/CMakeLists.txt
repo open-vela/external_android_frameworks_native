@@ -46,12 +46,6 @@ if(CONFIG_ANDROID_BINDER)
   # sources
 
   set(SRCS
-      binder/ndk/ibinder.cpp
-      binder/ndk/parcel.cpp
-      binder/ndk/process.cpp
-      binder/ndk/service_manager.cpp
-      binder/ndk/stability.cpp
-      binder/ndk/status.cpp
       binder/ActivityManager.cpp
       binder/Binder.cpp
       binder/BpBinder.cpp
@@ -70,7 +64,6 @@ if(CONFIG_ANDROID_BINDER)
       binder/IShellCallback.cpp
       binder/IUidObserver.cpp
       binder/LazyServiceRegistrar.cpp
-      binder/libbinder_rpc_unstable.cpp
       binder/MemoryBase.cpp
       binder/MemoryDealer.cpp
       binder/MemoryHeapBase.cpp
@@ -82,16 +75,35 @@ if(CONFIG_ANDROID_BINDER)
       binder/PersistableBundle.cpp
       binder/ProcessInfoService.cpp
       binder/ProcessState.cpp
-      binder/RpcServer.cpp
-      binder/RpcSession.cpp
-      binder/RpcState.cpp
-      binder/RpcTransportRaw.cpp
       binder/Stability.cpp
       binder/Static.cpp
       binder/Status.cpp
       binder/TextOutput.cpp
       binder/Utils.cpp
       binderdebug/BinderDebug.cpp)
+
+  if(CONFIG_ANDROID_BINDER_NDK)
+    list(
+      APPEND
+      SRCS
+      binder/ndk/ibinder.cpp
+      binder/ndk/parcel.cpp
+      binder/ndk/process.cpp
+      binder/ndk/service_manager.cpp
+      binder/ndk/stability.cpp
+      binder/ndk/status.cpp)
+  endif()
+
+  if(CONFIG_ANDROID_BINDER_RPC)
+    list(
+      APPEND
+      SRCS
+      binder/libbinder_rpc_unstable.cpp
+      binder/RpcServer.cpp
+      binder/RpcSession.cpp
+      binder/RpcState.cpp
+      binder/RpcTransportRaw.cpp)
+  endif()
 
   # aidl sources
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/binder/aidl/android/os)

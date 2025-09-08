@@ -35,6 +35,7 @@ namespace android {
 
 // ---------------------------------------------------------------------------
 
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
 Mutex BpBinder::sTrackingLock;
 std::unordered_map<int32_t, uint32_t> BpBinder::sTrackingMap;
 std::unordered_map<int32_t, uint32_t> BpBinder::sLastLimitCallbackMap;
@@ -47,6 +48,7 @@ bool BpBinder::sBinderProxyThrottleCreate = false;
 uint32_t BpBinder::sBinderProxyCountHighWatermark = 2500;
 // Another arbitrary value a binder count needs to drop below before another callback will be called
 uint32_t BpBinder::sBinderProxyCountLowWatermark = 2000;
+#endif
 
 // Log any transactions for which the data exceeds this size
 #define LOG_TRANSACTIONS_OVER_SIZE (300 * 1024)
@@ -116,6 +118,7 @@ void BpBinder::ObjectManager::kill()
 
 sp<BpBinder> BpBinder::create(int32_t handle) {
     int32_t trackedUid = -1;
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
     if (sCountByUidEnabled) {
         trackedUid = IPCThreadState::self()->getCallingUid();
         AutoMutex _l(sTrackingLock);
@@ -152,6 +155,7 @@ sp<BpBinder> BpBinder::create(int32_t handle) {
         }
         sTrackingMap[trackedUid]++;
     }
+#endif
     return sp<BpBinder>::make(BinderHandle{handle}, trackedUid);
 }
 
@@ -466,6 +470,7 @@ BpBinder::~BpBinder()
 
     IPCThreadState* ipc = IPCThreadState::self();
 
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
     if (mTrackedUid >= 0) {
         AutoMutex _l(sTrackingLock);
         uint32_t trackedValue = sTrackingMap[mTrackedUid];
@@ -487,6 +492,7 @@ BpBinder::~BpBinder()
             }
         }
     }
+#endif
 
     if (ipc) {
         ipc->expungeHandle(binderHandle(), this);
@@ -548,16 +554,19 @@ bool BpBinder::onIncStrongAttempted(uint32_t /*flags*/, const void* /*id*/)
 
 uint32_t BpBinder::getBinderProxyCount(uint32_t uid)
 {
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
     AutoMutex _l(sTrackingLock);
     auto it = sTrackingMap.find(uid);
     if (it != sTrackingMap.end()) {
         return it->second & COUNTING_VALUE_MASK;
     }
+#endif
     return 0;
 }
 
 void BpBinder::getCountByUid(Vector<uint32_t>& uids, Vector<uint32_t>& counts)
 {
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
     AutoMutex _l(sTrackingLock);
     uids.setCapacity(sTrackingMap.size());
     counts.setCapacity(sTrackingMap.size());
@@ -565,21 +574,38 @@ void BpBinder::getCountByUid(Vector<uint32_t>& uids, Vector<uint32_t>& counts)
         uids.push_back(it.first);
         counts.push_back(it.second & COUNTING_VALUE_MASK);
     }
+#endif
 }
 
-void BpBinder::enableCountByUid() { sCountByUidEnabled.store(true); }
-void BpBinder::disableCountByUid() { sCountByUidEnabled.store(false); }
-void BpBinder::setCountByUidEnabled(bool enable) { sCountByUidEnabled.store(enable); }
+void BpBinder::enableCountByUid() {
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
+    sCountByUidEnabled.store(true);
+#endif
+}
+void BpBinder::disableCountByUid() {
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
+    sCountByUidEnabled.store(false);
+#endif
+}
+void BpBinder::setCountByUidEnabled(bool enable) {
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
+    sCountByUidEnabled.store(enable);
+#endif
+}
 
 void BpBinder::setLimitCallback(binder_proxy_limit_callback cb) {
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
     AutoMutex _l(sTrackingLock);
     sLimitCallback = cb;
+#endif
 }
 
 void BpBinder::setBinderProxyCountWatermarks(int high, int low) {
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
     AutoMutex _l(sTrackingLock);
     sBinderProxyCountHighWatermark = high;
     sBinderProxyCountLowWatermark = low;
+#endif
 }
 
 // ---------------------------------------------------------------------------

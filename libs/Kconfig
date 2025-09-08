@@ -90,3 +90,8 @@ config ANDROID_RPC_BINDER_THREAD_STACKSIZE
 	int "Android RPC Binder Thread stacksize"
 	depends on ANDROID_BINDER
 	default PTHREAD_STACK_DEFAULT
+
+config ANDROID_BINDER_PROXY_CHECK
+	bool "Android Binder Proxy Check"
+	depends on ANDROID_BINDER
+	default n

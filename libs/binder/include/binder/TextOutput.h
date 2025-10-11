@@ -26,6 +26,7 @@
 // ---------------------------------------------------------------------------
 namespace android {
 
+#ifdef CONFIG_ALOG
 class TextOutput
 {
 public:
@@ -202,6 +203,129 @@ inline size_t HexDump::bytesPerLine() const { return mBytesPerLine; }
 inline int32_t HexDump::singleLineCutoff() const { return mSingleLineCutoff; }
 inline size_t HexDump::alignment() const { return mAlignment; }
 inline bool HexDump::carrayStyle() const { return mCArrayStyle; }
+
+#else
+class TextOutput
+{
+public:
+                        TextOutput() {};
+    virtual             ~TextOutput() {};
+
+    virtual status_t    print(const char* txt, size_t len) { return NO_ERROR; };
+    virtual void        moveIndent(int delta) {};
+
+    class Bundle {
+    public:
+        inline explicit Bundle(TextOutput& to) {}
+        inline ~Bundle() {}
+    };
+};
+
+// ---------------------------------------------------------------------------
+inline TextOutput& alog(*new TextOutput());
+inline TextOutput& aout(*new TextOutput());
+inline TextOutput& aerr(*new TextOutput());
+
+typedef TextOutput& (*TextOutputManipFunc)(TextOutput&);
+
+TextOutput& endl(TextOutput& to);
+TextOutput& indent(TextOutput& to);
+TextOutput& dedent(TextOutput& to);
+
+template<typename T>
+TextOutput& operator<<(TextOutput& to, const T& val)
+{
+    return to;
+}
+
+TextOutput& operator<<(TextOutput& to, TextOutputManipFunc func);
+
+class TypeCode
+{
+public:
+    inline explicit TypeCode(uint32_t code);
+    inline ~TypeCode();
+
+    inline uint32_t typeCode() const;
+};
+
+inline TextOutput& operator<<(TextOutput& to, const TypeCode& val)
+{
+    return to;
+}
+
+inline TypeCode::TypeCode(uint32_t code) { }
+inline TypeCode::~TypeCode() { }
+inline uint32_t TypeCode::typeCode() const { return 0; }
+
+class HexDump
+{
+public:
+    HexDump(const void *buf, size_t size, size_t bytesPerLine=16) {};
+    inline ~HexDump() {};
+
+    inline HexDump& setBytesPerLine(size_t bytesPerLine) { return *this; };
+    inline HexDump& setSingleLineCutoff(int32_t bytes) { return *this; };
+    inline HexDump& setAlignment(size_t alignment) { return *this; };
+    inline HexDump& setCArrayStyle(bool enabled) { return *this; };
+
+    inline const void* buffer() const { return nullptr; };
+    inline size_t size() const { return 0; };
+    inline size_t bytesPerLine() const { return 0; };
+    inline int32_t singleLineCutoff() const { return 0; };
+    inline size_t alignment() const { return 0; };
+    inline bool carrayStyle() const { return false; };
+};
+
+inline TextOutput& operator<<(TextOutput& to, const HexDump& val)
+{
+    return to;
+}
+inline TextOutput& operator<<(TextOutput& to,
+                              decltype(std::endl<char,
+                                       std::char_traits<char>>)
+                              /*val*/) {
+    return to;
+}
+
+inline TextOutput& operator<<(TextOutput& to, const char &c)
+{
+    return to;
+}
+
+inline TextOutput& operator<<(TextOutput& to, const bool &val)
+{
+    return to;
+}
+
+inline TextOutput& operator<<(TextOutput& to, const String16& val)
+{
+    return to;
+}
+
+// ---------------------------------------------------------------------------
+// No user servicable parts below.
+
+inline TextOutput& endl(TextOutput& to)
+{
+    return to;
+}
+
+inline TextOutput& indent(TextOutput& to)
+{
+    return to;
+}
+
+inline TextOutput& dedent(TextOutput& to)
+{
+    return to;
+}
+
+inline TextOutput& operator<<(TextOutput& to, TextOutputManipFunc func)
+{
+    return (*func)(to);
+}
+#endif
 
 // ---------------------------------------------------------------------------
 } // namespace android

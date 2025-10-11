@@ -49,7 +49,6 @@ if(CONFIG_ANDROID_BINDER)
       binder/ActivityManager.cpp
       binder/Binder.cpp
       binder/BpBinder.cpp
-      binder/BufferedTextOutput.cpp
       binder/Debug.cpp
       binder/FdTrigger.cpp
       binder/IActivityManager.cpp
@@ -76,9 +75,7 @@ if(CONFIG_ANDROID_BINDER)
       binder/ProcessInfoService.cpp
       binder/ProcessState.cpp
       binder/Stability.cpp
-      binder/Static.cpp
       binder/Status.cpp
-      binder/TextOutput.cpp
       binder/Utils.cpp
       binderdebug/BinderDebug.cpp)
 
@@ -103,6 +100,15 @@ if(CONFIG_ANDROID_BINDER)
       binder/RpcSession.cpp
       binder/RpcState.cpp
       binder/RpcTransportRaw.cpp)
+  endif()
+
+  if(CONFIG_ALOG)
+    list(
+     APPEND
+     SRCS
+     binder/BufferedTextOutput.cpp
+     binder/Static.cpp
+     binder/TextOutput.cpp)
   endif()
 
   # aidl sources

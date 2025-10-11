@@ -35,10 +35,15 @@ CXXSRCS += binder/RpcState.cpp
 CXXSRCS += binder/RpcTransportRaw.cpp
 endif
 
+ifneq ($(CONFIG_ALOG),)
+CXXSRCS += binder/BufferedTextOutput.cpp
+CXXSRCS += binder/Static.cpp
+CXXSRCS += binder/TextOutput.cpp
+endif
+
 CXXSRCS += binder/ActivityManager.cpp
 CXXSRCS += binder/Binder.cpp
 CXXSRCS += binder/BpBinder.cpp
-CXXSRCS += binder/BufferedTextOutput.cpp
 CXXSRCS += binder/Debug.cpp
 CXXSRCS += binder/FdTrigger.cpp
 CXXSRCS += binder/IActivityManager.cpp
@@ -65,9 +70,7 @@ CXXSRCS += binder/PersistableBundle.cpp
 CXXSRCS += binder/ProcessInfoService.cpp
 CXXSRCS += binder/ProcessState.cpp
 CXXSRCS += binder/Stability.cpp
-CXXSRCS += binder/Static.cpp
 CXXSRCS += binder/Status.cpp
-CXXSRCS += binder/TextOutput.cpp
 CXXSRCS += binder/Utils.cpp
 
 CXXSRCS += binderdebug/BinderDebug.cpp

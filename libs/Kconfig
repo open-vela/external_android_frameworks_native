@@ -25,10 +25,6 @@ config ANDROID_BINDER
 		Android binder, the codebase come from AOSP
 
 if ANDROID_BINDER
-config BINDER_VM_SIZE
-	int "Binder vmsize"
-	default 16384
-
 config ANDROID_BINDER_VERSION
 	int "Android Binder version"
 	default 15

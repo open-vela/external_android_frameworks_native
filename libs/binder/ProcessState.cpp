@@ -44,6 +44,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#define BINDER_VM_SIZE ((1 * 1024 * 1024) - sysconf(_SC_PAGE_SIZE) * 2)
 #define DEFAULT_MAX_BINDER_THREADS 15
 #define DEFAULT_ENABLE_ONEWAY_SPAM_DETECTION 1
 
@@ -662,7 +663,7 @@ ProcessState::ProcessState(const char* driver)
 
     if (opened.ok()) {
         // mmap the binder, providing a chunk of virtual address space to receive transactions.
-        mVMStart = mmap(nullptr, CONFIG_BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE,
+        mVMStart = mmap(nullptr, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE,
                         opened.value(), 0);
         if (mVMStart == MAP_FAILED) {
             close(opened.value());
@@ -688,7 +689,7 @@ ProcessState::~ProcessState()
     pthread_key_delete(mTLS);
     if (mDriverFD >= 0) {
         if (mVMStart != MAP_FAILED) {
-            munmap(mVMStart, CONFIG_BINDER_VM_SIZE);
+            munmap(mVMStart, BINDER_VM_SIZE);
         }
         close(mDriverFD);
     }

@@ -18,17 +18,7 @@ include $(APPDIR)/Make.defs
 
 CXXEXT = .cpp
 
-ifneq ($(CONFIG_ANDROID_BINDER_NDK),)
-CXXSRCS += binder/ndk/ibinder.cpp
-CXXSRCS += binder/ndk/parcel.cpp
-CXXSRCS += binder/ndk/process.cpp
-CXXSRCS += binder/ndk/service_manager.cpp
-CXXSRCS += binder/ndk/stability.cpp
-CXXSRCS += binder/ndk/status.cpp
-endif
-
 ifneq ($(CONFIG_ANDROID_BINDER_RPC),)
-CXXSRCS += binder/libbinder_rpc_unstable.cpp
 CXXSRCS += binder/RpcServer.cpp
 CXXSRCS += binder/RpcSession.cpp
 CXXSRCS += binder/RpcState.cpp
@@ -144,10 +134,7 @@ EXPORT_FILES := \
     binder/include_activitymanager \
     binder/include_batterystats \
     binder/include_processinfo \
-    binder/include_rpc_unstable \
-    binder/ndk/include_cpp \
-    binder/ndk/include_ndk \
-    binder/ndk/include_platform
+    binder/include_rpc_unstable
 
 distclean::
 	$(call DELFILE, binder/aidl/android/os/IServiceManager.aidl)

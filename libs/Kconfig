@@ -33,10 +33,6 @@ config ANDROID_BINDER_PROXY_CHECK
 	bool "Android Binder Proxy Check"
 	default n
 
-config ANDROID_BINDER_NDK
-	bool "Android Binder NDK"
-	default n
-
 config ANDROID_BINDER_RPC
 	bool "Android CPC Binder"
 	depends on NET

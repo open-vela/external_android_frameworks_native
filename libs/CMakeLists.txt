@@ -17,9 +17,7 @@ if(CONFIG_ANDROID_BINDER)
 
   # binder global include path
   set(BINDER_GLOBAL_C_INCDIR
-      ${CMAKE_CURRENT_LIST_DIR}/binder/include_rpc_unstable
-      ${CMAKE_CURRENT_LIST_DIR}/binder/ndk/include_ndk
-      ${CMAKE_CURRENT_LIST_DIR}/binder/ndk/include_platform)
+      ${CMAKE_CURRENT_LIST_DIR}/binder/include_rpc_unstable)
 
   set(BINDER_GLOBAL_CXX_INCDIR
       ${CMAKE_CURRENT_LIST_DIR}/binder/aidl
@@ -79,23 +77,10 @@ if(CONFIG_ANDROID_BINDER)
       binder/Utils.cpp
       binderdebug/BinderDebug.cpp)
 
-  if(CONFIG_ANDROID_BINDER_NDK)
-    list(
-      APPEND
-      SRCS
-      binder/ndk/ibinder.cpp
-      binder/ndk/parcel.cpp
-      binder/ndk/process.cpp
-      binder/ndk/service_manager.cpp
-      binder/ndk/stability.cpp
-      binder/ndk/status.cpp)
-  endif()
-
   if(CONFIG_ANDROID_BINDER_RPC)
     list(
       APPEND
       SRCS
-      binder/libbinder_rpc_unstable.cpp
       binder/RpcServer.cpp
       binder/RpcSession.cpp
       binder/RpcState.cpp

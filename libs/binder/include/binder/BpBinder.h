@@ -188,6 +188,7 @@ private:
     mutable String16            mDescriptorCache;
             int32_t             mTrackedUid;
 
+#ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
     static Mutex                                sTrackingLock;
     static std::unordered_map<int32_t,uint32_t> sTrackingMap;
     static int                                  sNumTrackedUids;
@@ -197,6 +198,7 @@ private:
     static uint32_t                             sBinderProxyCountLowWatermark;
     static bool                                 sBinderProxyThrottleCreate;
     static std::unordered_map<int32_t,uint32_t> sLastLimitCallbackMap;
+#endif
 };
 
 } // namespace android

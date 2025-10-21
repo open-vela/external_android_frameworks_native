@@ -95,28 +95,29 @@ void ProcessState::registerThread(pid_t thread)
 {
     AutoMutex _l(mLock);
     ALOGD("register thread %d", thread);
-    mThreadPoolSet.insert(thread);
+    mThreadPoolSet.push_back(thread);
 }
 
 void ProcessState::unregisterThread(pid_t thread)
 {
     AutoMutex _l(mLock);
     ALOGD("unregister thread %d", thread);
-    mThreadPoolSet.erase(thread);
+    mThreadPoolSet.erase(std::remove(mThreadPoolSet.begin(), mThreadPoolSet.end(), thread), mThreadPoolSet.end());
 }
 
 void ProcessState::insertBBinder(IBinder *binder)
 {
     AutoMutex _l(mLock);
     ALOGD("BBinder %p insert into set\n", binder);
-    mIBinderSet.insert(binder);
+    mIBinderSet.push_back(binder);
 }
 
 int ProcessState::eraseBBinder(IBinder *binder)
 {
     AutoMutex _l(mLock);
     ALOGD("BBinder %p erase from set\n", binder);
-    return mIBinderSet.erase(binder);
+    mIBinderSet.erase(std::remove(mIBinderSet.begin(), mIBinderSet.end(), binder), mIBinderSet.end());
+    return 0;
 }
 
 void ProcessState::releaseAllBBinder()
@@ -124,7 +125,7 @@ void ProcessState::releaseAllBBinder()
     auto iter = mIBinderSet.begin();
     while (iter != mIBinderSet.end()) {
         auto binder = *iter;
-        iter = mIBinderSet.erase(iter);
+        iter = mIBinderSet.erase(std::remove(mIBinderSet.begin(), mIBinderSet.end(), binder), mIBinderSet.end());
         binder->clearStrongAndWeakRefCount();
     }
 }
@@ -134,7 +135,11 @@ void ProcessState::requestExit()
     mThreadPoolStarted = false;
 
     if (mDriverFD >= 0) {
-        size_t remain = mThreadPoolSet.count(gettid());
+        size_t remain = 0;
+        for (auto thread : mThreadPoolSet) {
+            if (thread == gettid())
+            remain++;
+        }
         do {
             ALOGD("flush thread");
             ioctl(mDriverFD, BINDER_FLUSH, NULL);

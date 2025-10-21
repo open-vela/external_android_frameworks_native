@@ -171,11 +171,13 @@ private:
     bool mExitRequested;
     bool mThreadPoolStarted;
     volatile int32_t mThreadPoolSeq;
-    std::unordered_set<pid_t> mThreadPoolSet;
-    std::set<IBinder *> mIBinderSet;
+    std::vector<pid_t> mThreadPoolSet;
+    std::vector<IBinder *> mIBinderSet;
 
+#ifdef CONFIG_ANDROID_BINDER_RPC
     std::vector<sp<RpcServer>> mServers;
     std::unordered_set<sp<RpcSession>, RpcSessionHash> mSessions;
+#endif
 
     CallRestriction mCallRestriction;
 

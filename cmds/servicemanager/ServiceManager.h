@@ -84,9 +84,9 @@ private:
         ssize_t getNodeStrongRefCount();
     };
 
-    using ServiceCallbackMap = std::map<std::string, std::vector<sp<IServiceCallback>>>;
-    using ClientCallbackMap = std::map<std::string, std::vector<sp<IClientCallback>>>;
-    using ServiceMap = std::map<std::string, Service>;
+    using ServiceCallbackMap = std::vector<std::pair<std::string, std::vector<sp<IServiceCallback>>>>;
+    using ClientCallbackMap = std::vector<std::pair<std::string, std::vector<sp<IClientCallback>>>>;
+    using ServiceMap = std::vector<std::pair<std::string, Service>>;
 
     // removes a callback from mNameToRegistrationCallback, removing it if the vector is empty
     // this updates iterator to the next location

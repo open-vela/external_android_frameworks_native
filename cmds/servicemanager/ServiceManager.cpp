@@ -265,7 +265,9 @@ sp<IBinder> ServiceManager::tryGetService(const std::string& name, bool startIfN
 
     sp<IBinder> out;
     Service* service = nullptr;
-    if (auto it = mNameToService.find(name); it != mNameToService.end()) {
+    auto it = std::find_if(mNameToService.begin(), mNameToService.end(),
+                           [name](const auto& pair) { return pair.first == name; });
+    if (it != mNameToService.end()) {
         service = &(it->second);
 
         if (!service->allowIsolated) {
@@ -346,19 +348,24 @@ Status ServiceManager::addService(const std::string& name, const sp<IBinder>& bi
     }
 
     // Overwrite the old service if it exists
-    mNameToService[name] = Service {
+    mNameToService.push_back({name, Service {
         .binder = binder,
         .allowIsolated = allowIsolated,
         .dumpPriority = dumpPriority,
         .debugPid = ctx.debugPid,
-    };
+    }});
 
-    auto it = mNameToRegistrationCallback.find(name);
+    auto it = std::find_if(mNameToRegistrationCallback.begin(), mNameToRegistrationCallback.end(),
+                           [name](const auto& pair) { return pair.first == name; });
     if (it != mNameToRegistrationCallback.end()) {
         for (const sp<IServiceCallback>& cb : it->second) {
-            mNameToService[name].guaranteeClient = true;
-            // permission checked in registerForNotifications
-            cb->onRegistration(name, binder);
+            for (auto& [it_name, it_service] : mNameToService) {
+                if (it_name == name) {
+                    it_service.guaranteeClient = true;
+                    // permission checked in registerForNotifications
+                    cb->onRegistration(name, binder);
+                }
+            }
         }
     }
 
@@ -415,14 +422,16 @@ Status ServiceManager::registerForNotifications(
         return Status::fromExceptionCode(Status::EX_ILLEGAL_STATE);
     }
 
-    mNameToRegistrationCallback[name].push_back(callback);
+    mNameToRegistrationCallback.push_back({name, {callback}});
 
-    if (auto it = mNameToService.find(name); it != mNameToService.end()) {
-        const sp<IBinder>& binder = it->second.binder;
+    for (auto const& [names, services] : mNameToService) {
+        if (names == name) {
+            const sp<IBinder>& binder = services.binder;
 
-        // never null if an entry exists
-        CHECK(binder != nullptr) << name;
-        callback->onRegistration(name, binder);
+            // never null if an entry exists
+            CHECK(binder != nullptr) << name;
+            callback->onRegistration(name, binder);
+        }
     }
 
     return Status::ok();
@@ -436,8 +445,9 @@ Status ServiceManager::unregisterForNotifications(
     }
 
     bool found = false;
+    auto it = std::find_if(mNameToRegistrationCallback.begin(), mNameToRegistrationCallback.end(),
+                           [name](const auto& pair) { return pair.first == name; });
 
-    auto it = mNameToRegistrationCallback.find(name);
     if (it != mNameToRegistrationCallback.end()) {
         removeRegistrationCallback(IInterface::asBinder(callback), &it, &found);
     }
@@ -610,7 +620,7 @@ Status ServiceManager::registerClientCallback(const std::string& name, const sp<
         return Status::fromExceptionCode(Status::EX_SECURITY);
     }
 
-    auto serviceIt = mNameToService.find(name);
+    auto serviceIt = std::find_if(mNameToService.begin(), mNameToService.end(), [name](const auto& it) { return it.first == name; });
     if (serviceIt == mNameToService.end()) {
         LOG(ERROR) << "Could not add callback for nonexistent service: " << name;
         return Status::fromExceptionCode(Status::EX_ILLEGAL_ARGUMENT);
@@ -633,7 +643,7 @@ Status ServiceManager::registerClientCallback(const std::string& name, const sp<
         return Status::fromExceptionCode(Status::EX_ILLEGAL_STATE);
     }
 
-    mNameToClientCallback[name].push_back(cb);
+    mNameToClientCallback.push_back({name, {cb}});
 
     return Status::ok();
 }
@@ -672,8 +682,15 @@ void ServiceManager::handleClientCallbacks() {
 
 ssize_t ServiceManager::handleServiceClientCallback(const std::string& serviceName,
                                                     bool isCalledOnInterval) {
-    auto serviceIt = mNameToService.find(serviceName);
-    if (serviceIt == mNameToService.end() || mNameToClientCallback.count(serviceName) < 1) {
+    ssize_t counts = 0;
+    auto serviceIt = std::find_if(mNameToService.begin(), mNameToService.end(),
+                                  [serviceName](const auto& it) { return it.first == serviceName; });
+    for (auto it = mNameToClientCallback.begin(); it != mNameToClientCallback.end(); ++it) {
+        if (it->first == serviceName) {
+            counts++;
+        }
+    }
+    if (serviceIt == mNameToService.end() || counts < 1) {
         return -1;
     }
 
@@ -712,7 +729,8 @@ ssize_t ServiceManager::handleServiceClientCallback(const std::string& serviceNa
 }
 
 void ServiceManager::sendClientCallbackNotifications(const std::string& serviceName, bool hasClients) {
-    auto serviceIt = mNameToService.find(serviceName);
+    auto serviceIt = std::find_if(mNameToService.begin(), mNameToService.end(),
+                                  [serviceName](const auto& it) { return it.first == serviceName; });
     if (serviceIt == mNameToService.end()) {
         LOG(WARNING) << "sendClientCallbackNotifications could not find service " << serviceName;
         return;
@@ -724,7 +742,8 @@ void ServiceManager::sendClientCallbackNotifications(const std::string& serviceN
 
     LOG(INFO) << "Notifying " << serviceName << " they have clients: " << hasClients;
 
-    auto ccIt = mNameToClientCallback.find(serviceName);
+    auto ccIt = std::find_if(mNameToClientCallback.begin(), mNameToClientCallback.end(),
+                             [serviceName](const auto& it) { return it.first == serviceName; });
     CHECK(ccIt != mNameToClientCallback.end())
         << "sendClientCallbackNotifications could not find callbacks for service ";
 
@@ -745,7 +764,8 @@ Status ServiceManager::tryUnregisterService(const std::string& name, const sp<IB
         return Status::fromExceptionCode(Status::EX_SECURITY);
     }
 
-    auto serviceIt = mNameToService.find(name);
+    auto serviceIt = std::find_if(mNameToService.begin(), mNameToService.end(),
+                                  [name](const auto& it) { return it.first == name; });
     if (serviceIt == mNameToService.end()) {
         LOG(WARNING) << "Tried to unregister " << name
             << ", but that service wasn't registered to begin with.";
@@ -785,7 +805,7 @@ Status ServiceManager::tryUnregisterService(const std::string& name, const sp<IB
         return Status::fromExceptionCode(Status::EX_ILLEGAL_STATE);
     }
 
-    mNameToService.erase(name);
+    mNameToService.erase(serviceIt);
 
     return Status::ok();
 }

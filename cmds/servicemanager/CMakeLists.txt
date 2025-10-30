@@ -15,18 +15,22 @@
 #
 if(CONFIG_ANDROID_SERVICEMANAGER)
 
-  nuttx_add_application(
-    MODULE
-    ${CONFIG_ANDROID_SERVICEMANAGER}
-    NAME
-    servicemanager
-    STACKSIZE
-    ${CONFIG_ANDROID_SERVICEMANAGER_STACKSIZE}
-    SRCS
-    main.cpp
-    Access.cpp
-    ServiceManager.cpp
-    COMPILE_FLAGS
-    -DVENDORSERVICEMANAGER)
+  nuttx_add_library(servicemanager STATIC)
+
+  if(NOT CONFIG_ANDROID_SERVICEMANAGER_INPROC)
+    nuttx_add_application(
+      MODULE
+      ${CONFIG_ANDROID_SERVICEMANAGER}
+      NAME
+      servicemanager
+      STACKSIZE
+      ${CONFIG_ANDROID_SERVICEMANAGER_STACKSIZE}
+      SRCS
+      main.cpp)
+  endif()
+
+  target_compile_options(servicemanager PRIVATE -DVENDORSERVICEMANAGER)
+
+  target_sources(servicemanager PRIVATE ServiceManager.cpp Access.cpp)
 
 endif()

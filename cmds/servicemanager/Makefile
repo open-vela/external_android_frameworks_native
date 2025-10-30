@@ -25,8 +25,10 @@ STACKSIZE = $(CONFIG_ANDROID_SERVICEMANAGER_STACKSIZE)
 CXXFLAGS += -DVENDORSERVICEMANAGER
 CXXSRCS  += Access.cpp
 CXXSRCS  += ServiceManager.cpp
+ifeq ($(CONFIG_ANDROID_SERVICEMANAGER_INPROC),)
 MAINSRC  += main.cpp
 PROGNAME += servicemanager
+endif
 
 ASRCS := $(wildcard $(ASRCS))
 CSRCS := $(wildcard $(CSRCS))

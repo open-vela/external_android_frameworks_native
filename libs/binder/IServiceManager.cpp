@@ -121,7 +121,7 @@ protected:
     // notifications.
     using LocalRegistrationAndWaiter =
             std::pair<sp<LocalRegistrationCallback>, sp<RegistrationWaiter>>;
-    using ServiceCallbackMap = std::map<std::string, std::vector<LocalRegistrationAndWaiter>>;
+    using ServiceCallbackMap = std::vector<std::pair<std::string, std::vector<LocalRegistrationAndWaiter>>>;
     ServiceCallbackMap mNameToRegistrationCallback;
     std::mutex mNameToRegistrationLock;
 
@@ -525,7 +525,12 @@ status_t ServiceManagerShim::registerForNotifications(const String16& name,
               status.toString8().c_str());
         return UNKNOWN_ERROR;
     }
-    mNameToRegistrationCallback[nameStr].push_back(std::make_pair(cb, registrationWaiter));
+    auto it = std::find_if(mNameToRegistrationCallback.begin(),
+                           mNameToRegistrationCallback.end(),
+                           [nameStr](const auto& entry) { return entry.first == nameStr;} );
+    if (it != mNameToRegistrationCallback.end()) {
+        it->second.push_back(std::make_pair(cb, registrationWaiter));
+    }
     return OK;
 }
 
@@ -558,7 +563,11 @@ status_t ServiceManagerShim::unregisterForNotifications(const String16& name,
     }
     std::string nameStr = String8(name).c_str();
     std::lock_guard<std::mutex> lock(mNameToRegistrationLock);
-    auto it = mNameToRegistrationCallback.find(nameStr);
+    auto it = std::find_if(mNameToRegistrationCallback.begin(),
+                      mNameToRegistrationCallback.end(),
+                      [nameStr](const auto& entry) {
+                          return entry.first == nameStr;
+                      });
     sp<RegistrationWaiter> registrationWaiter;
     if (it != mNameToRegistrationCallback.end()) {
         removeRegistrationCallbackLocked(cb, &it, &registrationWaiter);

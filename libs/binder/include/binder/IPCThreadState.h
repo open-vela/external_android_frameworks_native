@@ -19,7 +19,6 @@
 #include <utils/Errors.h>
 #include <binder/Parcel.h>
 #include <binder/ProcessState.h>
-#include <utils/Vector.h>
 
 #if defined(_WIN32)
 typedef  int  uid_t;
@@ -220,10 +219,10 @@ private:
                                            const binder_size_t* objects, size_t objectsSize);
 
     const   sp<ProcessState>    mProcess;
-            Vector<BBinder*>    mPendingStrongDerefs;
-            Vector<RefBase::weakref_type*> mPendingWeakDerefs;
-            Vector<RefBase*>    mPostWriteStrongDerefs;
-            Vector<RefBase::weakref_type*> mPostWriteWeakDerefs;
+            std::vector<BBinder*>    mPendingStrongDerefs;
+            std::vector<RefBase::weakref_type*> mPendingWeakDerefs;
+            std::vector<RefBase*>    mPostWriteStrongDerefs;
+            std::vector<RefBase::weakref_type*> mPostWriteWeakDerefs;
             Parcel              mIn;
             Parcel              mOut;
             status_t            mLastError;

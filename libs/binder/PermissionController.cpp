@@ -65,7 +65,7 @@ int32_t PermissionController::noteOp(const String16& op, int32_t uid, const Stri
     return service != nullptr ? service->noteOp(op, uid, packageName) : MODE_ERRORED;
 }
 
-void PermissionController::getPackagesForUid(const uid_t uid, Vector<String16> &packages)
+void PermissionController::getPackagesForUid(const uid_t uid, std::vector<String16> &packages)
 {
     sp<IPermissionController> service = getService();
     if (service != nullptr) {

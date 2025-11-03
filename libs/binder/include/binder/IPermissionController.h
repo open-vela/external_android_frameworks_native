@@ -34,7 +34,7 @@ public:
 
     virtual int32_t noteOp(const String16& op, int32_t uid, const String16& packageName) = 0;
 
-    virtual void getPackagesForUid(const uid_t uid, Vector<String16> &packages) = 0;
+    virtual void getPackagesForUid(const uid_t uid, std::vector<String16> &packages) = 0;
 
     virtual bool isRuntimePermission(const String16& permission) = 0;
 

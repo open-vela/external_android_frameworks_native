@@ -17,7 +17,7 @@
 #pragma once
 #include <android/os/IServiceManager.h>
 #include <binder/IInterface.h>
-#include <utils/Vector.h>
+#include <utils/Log.h>
 #include <utils/String16.h>
 #include <optional>
 
@@ -87,7 +87,7 @@ public:
      * Return list of all existing services.
      */
     // NOLINTNEXTLINE(google-default-arguments)
-    virtual Vector<String16> listServices(int dumpsysFlags = DUMP_FLAG_PRIORITY_ALL) = 0;
+    virtual std::vector<String16> listServices(int dumpsysFlags = DUMP_FLAG_PRIORITY_ALL) = 0;
 
     /**
      * Efficiently wait for a service.
@@ -107,7 +107,7 @@ public:
     /**
      * Get all instances of a service as declared in the VINTF manifest
      */
-    virtual Vector<String16> getDeclaredInstances(const String16& interface) = 0;
+    virtual std::vector<String16> getDeclaredInstances(const String16& interface) = 0;
 
     /**
      * If this instance is updatable via an APEX, returns the APEX with which
@@ -120,7 +120,7 @@ public:
      * Returns all instances which are updatable via the APEX. Instance names are fully qualified
      * like `pack.age.IFoo/default`.
      */
-    virtual Vector<String16> getUpdatableNames(const String16& apexName) = 0;
+    virtual std::vector<String16> getUpdatableNames(const String16& apexName) = 0;
 #endif
 
     /**

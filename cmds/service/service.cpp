@@ -100,7 +100,7 @@ extern "C" int main(int argc, char* const argv[])
             }
         }
         else if (strcmp(argv[optind], "list") == 0) {
-            Vector<String16> services = sm->listServices();
+            std::vector<String16> services = sm->listServices();
             aout << "Found " << services.size() << " services:" << endl;
             for (unsigned i = 0; i < services.size(); i++) {
                 String16 name = services[i];

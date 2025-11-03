@@ -75,13 +75,13 @@ public:
     sp<IBinder> checkService(const String16& name) const override;
     status_t addService(const String16& name, const sp<IBinder>& service,
                         bool allowIsolated, int dumpsysPriority) override;
-    Vector<String16> listServices(int dumpsysPriority) override;
+    std::vector<String16> listServices(int dumpsysPriority) override;
     sp<IBinder> waitForService(const String16& name16) override;
     bool isDeclared(const String16& name) override;
-    Vector<String16> getDeclaredInstances(const String16& interface) override;
+    std::vector<String16> getDeclaredInstances(const String16& interface) override;
     std::optional<String16> updatableViaApex(const String16& name) override;
 #if CONFIG_ANDROID_BINDER_VERSION == 14 || CONFIG_ANDROID_BINDER_VERSION == 15
-    Vector<String16> getUpdatableNames(const String16& apexName) override;
+    std::vector<String16> getUpdatableNames(const String16& apexName) override;
 #endif
     std::optional<IServiceManager::ConnectionInfo> getConnectionInfo(const String16& name) override;
     class RegistrationWaiter : public android::os::BnServiceCallback {
@@ -343,17 +343,17 @@ status_t ServiceManagerShim::addService(const String16& name, const sp<IBinder>&
     return status.exceptionCode();
 }
 
-Vector<String16> ServiceManagerShim::listServices(int dumpsysPriority)
+std::vector<String16> ServiceManagerShim::listServices(int dumpsysPriority)
 {
     std::vector<std::string> ret;
     if (!mTheRealServiceManager->listServices(dumpsysPriority, &ret).isOk()) {
         return {};
     }
 
-    Vector<String16> res;
-    res.setCapacity(ret.size());
+    std::vector<String16> res;
+    res.reserve(ret.size());
     for (const std::string& name : ret) {
-        res.push(String16(name.c_str()));
+        res.push_back(String16(name.c_str()));
     }
     return res;
 }
@@ -453,7 +453,7 @@ bool ServiceManagerShim::isDeclared(const String16& name) {
     return declared;
 }
 
-Vector<String16> ServiceManagerShim::getDeclaredInstances(const String16& interface) {
+std::vector<String16> ServiceManagerShim::getDeclaredInstances(const String16& interface) {
     std::vector<std::string> out;
     if (Status status =
                 mTheRealServiceManager->getDeclaredInstances(String8(interface).c_str(), &out);
@@ -463,10 +463,10 @@ Vector<String16> ServiceManagerShim::getDeclaredInstances(const String16& interf
         return {};
     }
 
-    Vector<String16> res;
-    res.setCapacity(out.size());
-    for (const std::string& instance : out) {
-        res.push(String16(instance.c_str()));
+    std::vector<String16> res;
+    res.reserve(out.size());
+    for (size_t i = 0; i < out.size(); i++) {
+        res[i] = String16(out[i].c_str());
     }
     return res;
 }
@@ -498,7 +498,7 @@ std::optional<IServiceManager::ConnectionInfo> ServiceManagerShim::getConnection
 }
 
 #if CONFIG_ANDROID_BINDER_VERSION == 14 || CONFIG_ANDROID_BINDER_VERSION == 15
-Vector<String16> ServiceManagerShim::getUpdatableNames(const String16& apexName) {
+std::vector<String16> ServiceManagerShim::getUpdatableNames(const String16& apexName) {
     std::vector<std::string> out;
     if (Status status = mTheRealServiceManager->getUpdatableNames(String8(apexName).c_str(), &out);
         !status.isOk()) {
@@ -507,10 +507,10 @@ Vector<String16> ServiceManagerShim::getUpdatableNames(const String16& apexName)
         return {};
     }
 
-    Vector<String16> res;
-    res.setCapacity(out.size());
-    for (const std::string& instance : out) {
-        res.push(String16(instance.c_str()));
+    std::vector<String16> res;
+    res.reserve(out.size());
+    for (size_t i = 0; i < out.size(); i++) {
+        res[i] = String16(out[i].c_str());
     }
     return res;
 }

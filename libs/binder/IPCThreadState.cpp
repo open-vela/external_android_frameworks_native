@@ -580,7 +580,7 @@ void IPCThreadState::processPendingDerefs()
         while (mPendingWeakDerefs.size() > 0 || mPendingStrongDerefs.size() > 0) {
             while (mPendingWeakDerefs.size() > 0) {
                 RefBase::weakref_type* refs = mPendingWeakDerefs[0];
-                mPendingWeakDerefs.removeAt(0);
+                mPendingWeakDerefs.erase(mPendingWeakDerefs.begin());
                 refs->decWeak(mProcess.get());
             }
 
@@ -590,7 +590,7 @@ void IPCThreadState::processPendingDerefs()
                 // decWeak() and a decStrong() to be queued, we want to process
                 // the decWeak() first.
                 BBinder* obj = mPendingStrongDerefs[0];
-                mPendingStrongDerefs.removeAt(0);
+                mPendingStrongDerefs.erase(mPendingStrongDerefs.begin());
                 obj->decStrong(mProcess.get());
             }
         }
@@ -771,7 +771,7 @@ void IPCThreadState::incStrongHandle(int32_t handle, BpBinder *proxy)
     if (!flushIfNeeded()) {
         // Create a temp reference until the driver has handled this command.
         proxy->incStrong(mProcess.get());
-        mPostWriteStrongDerefs.push(proxy);
+        mPostWriteStrongDerefs.push_back(proxy);
     }
 }
 
@@ -791,7 +791,7 @@ void IPCThreadState::incWeakHandle(int32_t handle, BpBinder *proxy)
     if (!flushIfNeeded()) {
         // Create a temp reference until the driver has handled this command.
         proxy->getWeakRefs()->incWeak(mProcess.get());
-        mPostWriteWeakDerefs.push(proxy->getWeakRefs());
+        mPostWriteWeakDerefs.push_back(proxy->getWeakRefs());
     }
 }
 
@@ -1197,7 +1197,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             LOG_REMOTEREFS("BR_RELEASE from driver on %p", obj);
             obj->printRefs();
         }
-        mPendingStrongDerefs.push(obj);
+        mPendingStrongDerefs.push_back(obj);
         break;
 
     case BR_INCREFS:
@@ -1219,7 +1219,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
         //ALOG_ASSERT(refs->refBase() == obj,
         //           "BR_DECREFS: object %p does not match cookie %p (expected %p)",
         //           refs, obj, refs->refBase());
-        mPendingWeakDerefs.push(refs);
+        mPendingWeakDerefs.push_back(refs);
         break;
 
     case BR_ATTEMPT_ACQUIRE:

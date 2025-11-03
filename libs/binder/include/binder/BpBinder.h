@@ -48,7 +48,7 @@ public:
     virtual const String16&    getInterfaceDescriptor() const;
     virtual bool        isBinderAlive() const;
     virtual status_t    pingBinder();
-    virtual status_t    dump(int fd, const Vector<String16>& args);
+    virtual status_t    dump(int fd, const std::vector<String16>& args);
 
     // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    transact(   uint32_t code,
@@ -78,7 +78,7 @@ public:
             void        sendObituary();
 
     static uint32_t     getBinderProxyCount(uint32_t uid);
-    static void         getCountByUid(Vector<uint32_t>& uids, Vector<uint32_t>& counts);
+    static void         getCountByUid(std::vector<uint32_t>& uids, std::vector<uint32_t>& counts);
     static void         enableCountByUid();
     static void         disableCountByUid();
     static void         setCountByUidEnabled(bool enable);
@@ -183,7 +183,7 @@ private:
     mutable Mutex               mLock;
             volatile int32_t    mAlive;
             volatile int32_t    mObitsSent;
-            Vector<Obituary>*   mObituaries;
+            std::vector<Obituary>*   mObituaries;
             ObjectManager       mObjects;
     mutable String16            mDescriptorCache;
             int32_t             mTrackedUid;

@@ -19,6 +19,7 @@
 
 #include <binder/IBinder.h>
 #include <binder/ProcessState.h>
+#include <utils/Vector.h>
 
 namespace android {
 

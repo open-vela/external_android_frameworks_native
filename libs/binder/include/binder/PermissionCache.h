@@ -23,7 +23,6 @@
 
 #include <utils/String16.h>
 #include <utils/Singleton.h>
-#include <utils/SortedVector.h>
 
 namespace android {
 // ---------------------------------------------------------------------------
@@ -51,9 +50,9 @@ class PermissionCache : Singleton<PermissionCache> {
     mutable Mutex mLock;
     // we pool all the permission names we see, as many permissions checks
     // will have identical names
-    SortedVector< String16 > mPermissionNamesPool;
+    std::vector< String16 > mPermissionNamesPool;
     // this is our cache per say. it stores pooled names.
-    SortedVector< Entry > mCache;
+    std::vector< Entry > mCache;
 
     // free the whole cache, but keep the permission name pool
     void purge();

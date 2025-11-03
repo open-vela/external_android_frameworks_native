@@ -265,7 +265,7 @@ status_t BpBinder::pingBinder()
     return transact(PING_TRANSACTION, data, &reply);
 }
 
-status_t BpBinder::dump(int fd, const Vector<String16>& args)
+status_t BpBinder::dump(int fd, const std::vector<String16>& args)
 {
     Parcel send;
     Parcel reply;
@@ -341,7 +341,7 @@ status_t BpBinder::linkToDeath(
 
         if (!mObitsSent) {
             if (!mObituaries) {
-                mObituaries = new Vector<Obituary>;
+                mObituaries = new std::vector<Obituary>();
                 if (!mObituaries) {
                     return NO_MEMORY;
                 }
@@ -353,8 +353,8 @@ status_t BpBinder::linkToDeath(
                     self->flushCommands();
                 }
             }
-            ssize_t res = mObituaries->add(ob);
-            return res >= (ssize_t)NO_ERROR ? (status_t)NO_ERROR : res;
+            mObituaries->push_back(ob);
+            return NO_ERROR;
         }
     }
 
@@ -374,14 +374,14 @@ status_t BpBinder::unlinkToDeath(
 
     const size_t N = mObituaries ? mObituaries->size() : 0;
     for (size_t i=0; i<N; i++) {
-        const Obituary& obit = mObituaries->itemAt(i);
+        const Obituary& obit =  mObituaries->at(i);
         if ((obit.recipient == recipient
                     || (recipient == nullptr && obit.cookie == cookie))
                 && obit.flags == flags) {
             if (outRecipient != nullptr) {
-                *outRecipient = mObituaries->itemAt(i).recipient;
+                *outRecipient = (*mObituaries)[i].recipient;
             }
-            mObituaries->removeAt(i);
+            mObituaries->erase(mObituaries->begin() + i);
             if (mObituaries->size() == 0) {
                 ALOGV("Clearing death notification: %p handle %" PRId32 "\n", this, binderHandle());
                 if (!isRpcBinder()) {
@@ -408,7 +408,7 @@ void BpBinder::sendObituary()
     if (mObitsSent) return;
 
     mLock.lock();
-    Vector<Obituary>* obits = mObituaries;
+    std::vector<Obituary>* obits = mObituaries;
     if(obits != nullptr) {
         ALOGV("Clearing sent death notification: %p handle %" PRId32 "\n", this, binderHandle());
         if (!isRpcBinder()) {
@@ -427,7 +427,7 @@ void BpBinder::sendObituary()
     if (obits != nullptr) {
         const size_t N = obits->size();
         for (size_t i=0; i<N; i++) {
-            reportOneDeath(obits->itemAt(i));
+            reportOneDeath(obits->at(i));
         }
 
         delete obits;
@@ -533,9 +533,9 @@ void BpBinder::onLastStrongRef(const void* /*id*/)
     if (ipc) ipc->decStrongHandle(binderHandle());
 
     mLock.lock();
-    Vector<Obituary>* obits = mObituaries;
+    std::vector<Obituary>* obits = mObituaries;
     if(obits != nullptr) {
-        if (!obits->isEmpty()) {
+        if (!obits->empty()) {
             ALOGI("onLastStrongRef automatically unlinking death recipients: %s",
                   mDescriptorCache.size() ? String8(mDescriptorCache).c_str() : "<uncached descriptor>");
         }
@@ -575,12 +575,12 @@ uint32_t BpBinder::getBinderProxyCount(uint32_t uid)
     return 0;
 }
 
-void BpBinder::getCountByUid(Vector<uint32_t>& uids, Vector<uint32_t>& counts)
+void BpBinder::getCountByUid(std::vector<uint32_t>& uids, std::vector<uint32_t>& counts)
 {
 #ifdef CONFIG_ANDROID_BINDER_PROXY_CHECK
     AutoMutex _l(sTrackingLock);
-    uids.setCapacity(sTrackingMap.size());
-    counts.setCapacity(sTrackingMap.size());
+    uids.reserve(sTrackingMap.size());
+    counts.reserve(sTrackingMap.size());
     for (const auto& it : sTrackingMap) {
         uids.push_back(it.first);
         counts.push_back(it.second & COUNTING_VALUE_MASK);

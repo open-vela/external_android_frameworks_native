@@ -92,7 +92,7 @@ bool IBinder::checkSubclass(const void* /*subclassID*/) const
 
 
 status_t IBinder::shellCommand(const sp<IBinder>& target, int in, int out, int err,
-    Vector<String16>& args, const sp<IShellCallback>& callback,
+    std::vector<String16>& args, const sp<IShellCallback>& callback,
     const sp<IResultReceiver>& resultReceiver)
 {
     Parcel send;
@@ -326,7 +326,7 @@ status_t BBinder::unlinkToDeath(
     return INVALID_OPERATION;
 }
 
-status_t BBinder::dump(int /*fd*/, const Vector<String16>& /*args*/)
+status_t BBinder::dump(int /*fd*/, const std::vector<String16>& /*args*/)
 {
     return NO_ERROR;
 }
@@ -606,9 +606,9 @@ status_t BBinder::onTransact(
         case DUMP_TRANSACTION: {
             int fd = data.readFileDescriptor();
             int argc = data.readInt32();
-            Vector<String16> args;
+            std::vector<String16> args;
             for (int i = 0; i < argc && data.dataAvail() > 0; i++) {
-               args.add(data.readString16());
+               args.push_back(data.readString16());
             }
             return dump(fd, args);
         }
@@ -618,9 +618,9 @@ status_t BBinder::onTransact(
             int out = data.readFileDescriptor();
             int err = data.readFileDescriptor();
             int argc = data.readInt32();
-            Vector<String16> args;
+            std::vector<String16> args;
             for (int i = 0; i < argc && data.dataAvail() > 0; i++) {
-               args.add(data.readString16());
+               args.push_back(data.readString16());
             }
             sp<IShellCallback> shellCallback = IShellCallback::asInterface(
                     data.readStrongBinder());

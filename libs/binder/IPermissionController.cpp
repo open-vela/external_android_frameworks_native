@@ -60,7 +60,7 @@ public:
         return reply.readInt32();
     }
 
-    virtual void getPackagesForUid(const uid_t uid, Vector<String16>& packages)
+    virtual void getPackagesForUid(const uid_t uid, std::vector<String16>& packages)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IPermissionController::getInterfaceDescriptor());
@@ -75,7 +75,7 @@ public:
             return;
         }
         for (int i = 0; i < size; i++) {
-            packages.push(reply.readString16());
+            packages.push_back(reply.readString16());
         }
     }
 
@@ -137,7 +137,7 @@ status_t BnPermissionController::onTransact(
         case GET_PACKAGES_FOR_UID_TRANSACTION: {
             CHECK_INTERFACE(IPermissionController, data, reply);
             int32_t uid = data.readInt32();
-            Vector<String16> packages;
+            std::vector<String16> packages;
             getPackagesForUid(uid, packages);
             reply->writeNoException();
             size_t size = packages.size();

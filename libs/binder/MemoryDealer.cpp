@@ -21,7 +21,6 @@
 #include <binder/MemoryBase.h>
 
 #include <utils/Log.h>
-#include <utils/SortedVector.h>
 #include <utils/String8.h>
 
 #include <stdint.h>

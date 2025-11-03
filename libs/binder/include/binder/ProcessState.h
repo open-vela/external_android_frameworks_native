@@ -19,7 +19,6 @@
 #include <binder/IBinder.h>
 #include <binder/IServiceManager.h>
 #include <binder/RpcServer.h>
-#include <utils/KeyedVector.h>
 #include <utils/Mutex.h>
 #include <utils/String16.h>
 #include <utils/String8.h>
@@ -170,7 +169,7 @@ private:
 
     mutable Mutex mLock; // protects everything below.
 
-    Vector<handle_entry> mHandleToObject;
+    std::vector<handle_entry> mHandleToObject;
 
     bool mForked;
     bool mExitRequested;

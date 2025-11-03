@@ -40,9 +40,10 @@ status_t PermissionCache::check(bool* granted,
     Entry e;
     e.name = permission;
     e.uid  = uid;
-    ssize_t index = mCache.indexOf(e);
-    if (index >= 0) {
-        *granted = mCache.itemAt(index).granted;
+    auto it = std::find_if(mCache.begin(), mCache.end(),
+                      [&e](const auto& item) { return item.name == e.name && item.uid == e.uid;});
+    if (it != mCache.end()) {
+        *granted = it->granted;
         return NO_ERROR;
     }
     return NAME_NOT_FOUND;
@@ -52,20 +53,25 @@ void PermissionCache::cache(const String16& permission,
         uid_t uid, bool granted) {
     Mutex::Autolock _l(mLock);
     Entry e;
-    ssize_t index = mPermissionNamesPool.indexOf(permission);
-    if (index > 0) {
-        e.name = mPermissionNamesPool.itemAt(index);
+    auto it = std::find_if(mPermissionNamesPool.begin(),
+                      mPermissionNamesPool.end(),
+                      [&permission](const auto& item) {
+                          return item == permission; 
+                      });
+    if (it != mPermissionNamesPool.end()) {
+        e.name = *it;
     } else {
-        mPermissionNamesPool.add(permission);
+        mPermissionNamesPool.push_back(permission);
         e.name = permission;
     }
     // note, we don't need to store the pid, which is not actually used in
     // permission checks
     e.uid  = uid;
     e.granted = granted;
-    index = mCache.indexOf(e);
-    if (index < 0) {
-        mCache.add(e);
+    auto entry = std::find_if(mCache.begin(), mCache.end(),
+                      [&e](const auto& item) { return item.name == e.name && item.uid == e.uid;});
+    if (entry == mCache.end()) {
+        mCache.push_back(e);
     }
 }
 

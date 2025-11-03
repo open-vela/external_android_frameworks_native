@@ -447,10 +447,9 @@ ProcessState::handle_entry* ProcessState::lookupHandleLocked(int32_t handle)
         handle_entry e;
         e.binder = nullptr;
         e.refs = nullptr;
-        status_t err = mHandleToObject.insertAt(e, N, handle+1-N);
-        if (err < NO_ERROR) return nullptr;
+        mHandleToObject.insert(mHandleToObject.begin() + N, handle + 1 - N, e);
     }
-    return &mHandleToObject.editItemAt(handle);
+    return &mHandleToObject[handle];
 }
 
 sp<IBinder> ProcessState::getStrongProxyForHandle(int32_t handle)

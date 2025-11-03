@@ -20,7 +20,7 @@
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
 #include <utils/String16.h>
-#include <utils/Vector.h>
+#include <utils/Log.h>
 
 #include <functional>
 
@@ -102,9 +102,9 @@ public:
 
     virtual bool            isBinderAlive() const = 0;
     virtual status_t        pingBinder() = 0;
-    virtual status_t        dump(int fd, const Vector<String16>& args) = 0;
+    virtual status_t        dump(int fd, const std::vector<String16>& args) = 0;
     static  status_t        shellCommand(const sp<IBinder>& target, int in, int out, int err,
-                                         Vector<String16>& args, const sp<IShellCallback>& callback,
+                                         std::vector<String16>& args, const sp<IShellCallback>& callback,
                                          const sp<IResultReceiver>& resultReceiver);
 
     /**

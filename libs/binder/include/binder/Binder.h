@@ -35,7 +35,7 @@ public:
     virtual const String16& getInterfaceDescriptor() const;
     virtual bool        isBinderAlive() const;
     virtual status_t    pingBinder();
-    virtual status_t    dump(int fd, const Vector<String16>& args);
+    virtual status_t    dump(int fd, const std::vector<String16>& args);
 
     // NOLINTNEXTLINE(google-default-arguments)
     virtual status_t    transact(   uint32_t code,

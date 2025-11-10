@@ -18,6 +18,12 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    let target_os =
+        env::var("CARGO_CFG_TARGET_OS").expect("TARGET_OS environment variable not found");
+    if target_os != "nuttx" {
+        return;
+    }
+
     let mut builder = bindgen::Builder::default();
 
     let nuttx_apps_dir_env = env::var("NUTTX_APPS_DIR").expect("NUTTX_APPS_DIR not set");

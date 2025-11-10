@@ -22,5 +22,5 @@ libc = "0.2.159"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = ["cfg(android_vendor)", "cfg(android_ndk)", "cfg(android_vndk)", "cfg(trusty)"]
+check-cfg = ["cfg(android_vendor)", "cfg(android_ndk)", "cfg(android_vndk)", "cfg(trusty)", "cfg(vendor_ndk)"]
 

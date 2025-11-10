@@ -20,9 +20,16 @@ use std::error::Error;
 use std::fmt;
 
 #[cfg(not(target_os = "trusty"))]
+#[cfg(not(target_os = "linux"))]
 #[allow(bad_style)]
 mod bindings {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
+
+#[cfg(target_os = "linux")]
+#[allow(bad_style)]
+mod bindings {
+    include!("bindings.rs");
 }
 
 // Trusty puts the full path to the auto-generated file in BINDGEN_INC_FILE

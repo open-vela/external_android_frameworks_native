@@ -23,7 +23,7 @@ use crate::sys;
 use std::convert::{TryFrom, TryInto};
 use std::ffi::c_void;
 use std::mem::{self, ManuallyDrop, MaybeUninit};
-use std::os::raw::{c_char, c_ulong};
+use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
 

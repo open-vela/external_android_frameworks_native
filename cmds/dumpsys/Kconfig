@@ -22,4 +22,4 @@ config ANDROID_DUMPSYS
 config ANDROID_DUMPSYS_STACKSIZE
 	int "Android dumpsys stack size"
 	depends on ANDROID_DUMPSYS
-	default DEFAULT_TASK_STACKSIZE
+	default 8192

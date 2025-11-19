@@ -54,9 +54,9 @@ using ::android::base::unique_fd;
 using ::android::base::WriteFully;
 using ::android::base::WriteStringToFd;
 
-static int sort_func(const String16* lhs, const String16* rhs)
+static int sort_func(const String16& lhs, const String16& rhs)
 {
-    return lhs->compare(*rhs);
+    return lhs.compare(rhs);
 }
 
 static void usage() {
@@ -86,11 +86,12 @@ static void usage() {
         "         SERVICE [ARGS]: dumps only service SERVICE, optionally passing ARGS to it\n");
 }
 
-static bool IsSkipped(const Vector<String16>& skipped, const String16& service) {
-    for (const auto& candidate : skipped) {
-        if (candidate == service) {
-            return true;
-        }
+static bool IsSkipped(const std::vector<String16>& skipped, const String16& service) {
+    auto it = std::find_if(skipped.begin(), skipped.end(), [&](const String16& candidate) {
+        return candidate == service;
+    });
+    if (it != skipped.end()) {
+        return true;
     }
     return false;
 }
@@ -125,11 +126,11 @@ String16 ConvertBitmaskToPriorityType(int bitmask) {
 }
 
 int Dumpsys::main(int argc, char* const argv[]) {
-    Vector<String16> services;
-    Vector<String16> args;
+    std::vector<String16> services;
+    std::vector<String16> args;
     String16 priorityType;
-    Vector<String16> skippedServices;
-    Vector<String16> protoServices;
+    std::vector<String16> skippedServices;
+    std::vector<String16> protoServices;
     bool showListOnly = false;
     bool skipServices = false;
     bool asProto = false;
@@ -225,13 +226,13 @@ int Dumpsys::main(int argc, char* const argv[]) {
 
     for (int i = optind; i < argc; i++) {
         if (skipServices) {
-            skippedServices.add(String16(argv[i]));
+            skippedServices.push_back(String16(argv[i]));
         } else {
             if (i == optind) {
-                services.add(String16(argv[i]));
+                services.push_back(String16(argv[i]));
             } else {
                 const String16 arg(argv[i]);
-                args.add(arg);
+                args.push_back(arg);
                 // For backward compatible, if the proto argument is passed to the service, the
                 // dump request is also considered to use proto.
                 if (!asProto && !arg.compare(String16(PriorityDumper::PROTO_ARG))) {
@@ -304,13 +305,13 @@ int Dumpsys::main(int argc, char* const argv[]) {
     return 0;
 }
 
-Vector<String16> Dumpsys::listServices(int priorityFilterFlags, bool filterByProto) const {
-    Vector<String16> services = sm_->listServices(priorityFilterFlags);
-    services.sort(sort_func);
+std::vector<String16> Dumpsys::listServices(int priorityFilterFlags, bool filterByProto) const {
+    std::vector<String16> services = sm_->listServices(priorityFilterFlags);
+    std::sort(services.begin(), services.end(), sort_func);
     if (filterByProto) {
-        Vector<String16> protoServices = sm_->listServices(IServiceManager::DUMP_FLAG_PROTO);
-        protoServices.sort(sort_func);
-        Vector<String16> intersection;
+        std::vector<String16> protoServices = sm_->listServices(IServiceManager::DUMP_FLAG_PROTO);
+        std::sort(protoServices.begin(), protoServices.end(), sort_func);
+        std::vector<String16> intersection;
         std::set_intersection(services.begin(), services.end(), protoServices.begin(),
                               protoServices.end(), std::back_inserter(intersection));
         services = std::move(intersection);
@@ -318,10 +319,10 @@ Vector<String16> Dumpsys::listServices(int priorityFilterFlags, bool filterByPro
     return services;
 }
 
-void Dumpsys::setServiceArgs(Vector<String16>& args, bool asProto, int priorityFlags) {
+void Dumpsys::setServiceArgs(std::vector<String16>& args, bool asProto, int priorityFlags) {
     // Add proto flag if dumping service as proto.
     if (asProto) {
-        args.insertAt(String16(PriorityDumper::PROTO_ARG), 0);
+        args.insert(args.begin(), String16(PriorityDumper::PROTO_ARG));
     }
 
     // Add -a (dump all) flag if dumping all services, dumping normal services or
@@ -329,7 +330,7 @@ void Dumpsys::setServiceArgs(Vector<String16>& args, bool asProto, int priorityF
     if ((priorityFlags == IServiceManager::DUMP_FLAG_PRIORITY_ALL) ||
         (priorityFlags == IServiceManager::DUMP_FLAG_PRIORITY_NORMAL) ||
         (priorityFlags == IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT)) {
-        args.insertAt(String16("-a"), 0);
+        args.insert(args.begin(), String16("-a"));
     }
 
     // Add priority flags when dumping services registered to a specific priority bucket.
@@ -337,8 +338,8 @@ void Dumpsys::setServiceArgs(Vector<String16>& args, bool asProto, int priorityF
         (priorityFlags == IServiceManager::DUMP_FLAG_PRIORITY_HIGH) ||
         (priorityFlags == IServiceManager::DUMP_FLAG_PRIORITY_NORMAL)) {
         String16 priorityType = ConvertBitmaskToPriorityType(priorityFlags);
-        args.insertAt(String16(PriorityDumper::PRIORITY_ARG), 0);
-        args.insertAt(priorityType, 1);
+        args.insert(args.begin(), String16(PriorityDumper::PRIORITY_ARG));
+        args.insert(args.begin()+1, priorityType);
     }
 }
 
@@ -414,7 +415,7 @@ static void reportDumpError(const String16& serviceName, status_t error, const c
 }
 
 status_t Dumpsys::startDumpThread(int dumpTypeFlags, const String16& serviceName,
-                                  const Vector<String16>& args) {
+                                  const std::vector<String16>& args) {
     sp<IBinder> service = sm_->checkService(serviceName);
     if (service == nullptr) {
         std::cerr << "Can't find service: " << serviceName << std::endl;

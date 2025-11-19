@@ -15,6 +15,8 @@
 #
 if(CONFIG_ANDROID_DUMPSYS)
 
+  nuttx_add_library(dumpsys STATIC)
+
   nuttx_add_application(
     MODULE
     ${CONFIG_ANDROID_DUMPSYS}
@@ -23,6 +25,9 @@ if(CONFIG_ANDROID_DUMPSYS)
     STACKSIZE
     ${CONFIG_ANDROID_DUMPSYS_STACKSIZE}
     SRCS
-    dumpsys.cpp)
+    main.cpp)
+
+  target_compile_options(dumpsys PRIVATE -Dmain=dumpsys_main)
+  target_sources(dumpsys PRIVATE dumpsys.cpp)
 
 endif()

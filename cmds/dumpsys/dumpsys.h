@@ -39,7 +39,7 @@ class Dumpsys {
      * @param supportsProto filter services that support proto dumps
      * @return list of services
      */
-    Vector<String16> listServices(int priorityFlags, bool supportsProto) const;
+    std::vector<String16> listServices(int priorityFlags, bool supportsProto) const;
 
     /**
      * Modifies @{code args} to add additional arguments  to indicate if the service
@@ -49,7 +49,7 @@ class Dumpsys {
      * @param priorityFlags indicates priority of dump by passing additional priority args
      * to the service
      */
-    static void setServiceArgs(Vector<String16>& args, bool asProto, int priorityFlags);
+    static void setServiceArgs(std::vector<String16>& args, bool asProto, int priorityFlags);
 
     enum Type {
         TYPE_DUMP = 0x1,       // dump using `dump` function
@@ -71,7 +71,7 @@ class Dumpsys {
      *         {@code != OK} error
      */
     status_t startDumpThread(int dumpTypeFlags, const String16& serviceName,
-                             const Vector<String16>& args);
+                             const std::vector<String16>& args);
 
     /**
      * Writes a section header to a file descriptor.

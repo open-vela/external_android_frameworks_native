@@ -464,6 +464,9 @@ void RpcSession::readCb(uv_poll_t* handle, int status, int events) {
 
         uv_close((uv_handle_t *)(&session->mUVHandle), closeCb);
 
+        LOG_ALWAYS_FATAL_IF(!session->removeIncomingConnection(conn),
+                            "bad state: connection object guaranteed to be in list");
+
         if (listener != nullptr) {
             listener->onSessionIncomingThreadEnded();
         }

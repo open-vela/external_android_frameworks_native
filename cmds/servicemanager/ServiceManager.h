@@ -67,6 +67,7 @@ public:
     binder::Status getServiceDebugInfo(std::vector<ServiceDebugInfo>* outReturn) override;
     void binderDied(const wp<IBinder>& who) override;
     void handleClientCallbacks();
+    status_t dump(int fd, const std::vector<String16>& args) override;
 
 protected:
     virtual void tryStartService(const std::string& name);

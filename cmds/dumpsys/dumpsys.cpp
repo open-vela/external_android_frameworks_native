@@ -139,7 +139,7 @@ int Dumpsys::main(int argc, char* const argv[]) {
     int priorityFlags = IServiceManager::DUMP_FLAG_PRIORITY_ALL;
     static struct option longOptions[] = {
         {"help", no_argument, 0, 0},           {"clients", no_argument, 0, 0},
-        {"dump", no_argument, 0, 0},           {"pid", no_argument, 0, 0},
+        {"dump", optional_argument, 0, 0},     {"pid", no_argument, 0, 0},
         {"priority", required_argument, 0, 0}, {"proto", no_argument, 0, 0},
         {"skip", no_argument, 0, 0},           {"stability", no_argument, 0, 0},
         {"thread", no_argument, 0, 0},         {0, 0, 0, 0}};
@@ -175,6 +175,7 @@ int Dumpsys::main(int argc, char* const argv[]) {
                 }
             } else if (!strcmp(longOptions[optionIndex].name, "dump")) {
                 dumpTypeFlags |= TYPE_DUMP;
+                if (optarg) args.push_back(String16(optarg));
             } else if (!strcmp(longOptions[optionIndex].name, "pid")) {
                 dumpTypeFlags |= TYPE_PID;
             } else if (!strcmp(longOptions[optionIndex].name, "stability")) {

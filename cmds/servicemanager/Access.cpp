@@ -117,6 +117,14 @@ Access::CallingContext Access::getCallingContext() {
         .uid = ipc->getCallingUid(),
         .sid = callingSid ? std::string(callingSid) : getPidcon(callingPid),
     };
+#elif defined(__NuttX__)
+    IPCThreadState* ipc = IPCThreadState::self();
+
+    pid_t callingPid = ipc->getCallingPid();
+
+    return CallingContext {
+        .debugPid = callingPid,
+    };
 #else
     return CallingContext();
 #endif

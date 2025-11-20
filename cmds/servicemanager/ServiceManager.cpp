@@ -26,6 +26,11 @@
 #include <cutils/multiuser.h>
 #include <thread>
 
+#ifdef __NuttX__
+#include <sys/ioctl.h>
+#include <nuttx/android/binder.h>
+#endif
+
 #ifndef VENDORSERVICEMANAGER
 #include <vintf/VintfObject.h>
 #ifdef __ANDROID_RECOVERY__
@@ -593,6 +598,57 @@ void ServiceManager::binderDied(const wp<IBinder>& who) {
     for (auto it = mNameToClientCallback.begin(); it != mNameToClientCallback.end();) {
         removeClientCallback(who, &it);
     }
+}
+
+status_t ServiceManager::dump(int fd, const std::vector<String16>& args)
+{
+    status_t status = 0;
+#ifdef __NuttX__
+    int binderFd = open("/dev/binder", O_RDONLY);
+    if (binderFd < 0) {
+        ALOGE("Fail to open /dev/binder");
+        return -errno;
+    }
+
+    struct binder_dump dump = {.fd = fd};
+
+    if (args.size() == 1) {
+        dump.pid = -1;
+    } else if (args[1] == String16("service")) {
+        for (auto const& [name, service] : mNameToService) {
+            dump.pid = service.debugPid;
+            if (ioctl(binderFd, BINDER_DUMP, &dump) < 0) {
+                ALOGE("Fail to dump binder for service");
+                status = -errno;
+                break;
+            }
+        }
+        goto cleanup;
+    } else {
+        String8 pidStr(args[1]);
+        char* endptr = nullptr;
+        unsigned pid = strtoul(pidStr.c_str(), &endptr, 10);
+
+        if (endptr != pidStr.c_str() && *endptr == '\0' && pid > 0) {
+            dump.pid = static_cast<pid_t>(pid);
+        } else {
+            ALOGW("Usage: --dump: dump all process.\n"
+              "       --dump service: dump process for all services.\n"
+              "       --dump <PID>: dump process for PID task.\n");
+            status = -EINVAL;
+            goto cleanup;
+        }
+    }
+
+    if (ioctl(binderFd, BINDER_DUMP, &dump) < 0) {
+        ALOGE("Fail to dump binder");
+        status = -errno;
+    }
+
+cleanup:
+    close(binderFd);
+#endif
+    return status;
 }
 
 void ServiceManager::tryStartService(const std::string& name) {

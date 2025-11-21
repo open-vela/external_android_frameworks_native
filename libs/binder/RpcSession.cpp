@@ -838,6 +838,7 @@ bool RpcSession::removeIncomingConnection(const sp<RpcConnection>& connection) {
         it != mConnections.mIncoming.end()) {
         mConnections.mIncoming.erase(it);
         if (mConnections.mIncoming.size() == 0) {
+            mConnections.mOutgoing.clear();
             sp<EventListener> listener = mEventListener.promote();
             if (listener) {
                 _l.unlock();

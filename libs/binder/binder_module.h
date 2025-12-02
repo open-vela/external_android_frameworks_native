@@ -31,7 +31,7 @@
 
 #ifdef __NuttX__
 #include <nuttx/android/binder.h>
-#include <nuttx/tls.h>
+#include <nuttx/tls_task.h>
 #else
 #include <linux/android/binder.h>
 #include <sys/ioctl.h>

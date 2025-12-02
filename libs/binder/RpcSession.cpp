@@ -844,6 +844,11 @@ bool RpcSession::removeIncomingConnection(const sp<RpcConnection>& connection) {
                 _l.unlock();
                 listener->onSessionAllIncomingThreadsEnded(sp<RpcSession>::fromExisting(this));
             }
+
+            if (mShutdownTrigger != nullptr) {
+                mShutdownTrigger->trigger();
+                mShutdownTrigger = nullptr;
+            }
         }
         return true;
     }

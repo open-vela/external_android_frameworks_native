@@ -845,7 +845,7 @@ bool RpcSession::removeIncomingConnection(const sp<RpcConnection>& connection) {
                 listener->onSessionAllIncomingThreadsEnded(sp<RpcSession>::fromExisting(this));
             }
 
-            if (mShutdownTrigger != nullptr) {
+            if (mForServer != nullptr && mShutdownTrigger != nullptr) {
                 mShutdownTrigger->trigger();
                 mShutdownTrigger = nullptr;
             }

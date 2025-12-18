@@ -151,7 +151,7 @@ if(CONFIG_ANDROID_BINDER)
       android_binder)
   endmacro()
 
-  if(CONFIG_ANDROID_BINDER_DRIVER_TEST)
+  if(CONFIG_ANDROID_BINDER_LIB_TEST)
     add_binder_test_app(binderLibTest binder/tests/binderLibTest.cpp)
   endif()
 

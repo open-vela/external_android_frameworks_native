@@ -18,6 +18,7 @@ ifneq ($(CONFIG_ANDROID_BINDER),)
 CONFIGURED_APPS += $(APPDIR)/external/android/frameworks/native/libs
 
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binder/include_rpc_unstable
+CFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binder/ndk/include_ndk
 
 CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binder/aidl
 CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binder/include
@@ -26,5 +27,6 @@ CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/bi
 CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binder/include_processinfo
 CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binder/include_rpc_unstable
 CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binder/ndk/include_cpp
+CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binder/ndk/include_ndk
 CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/android/frameworks/native/libs/binderdebug/include
 endif

@@ -17,7 +17,8 @@ if(CONFIG_ANDROID_BINDER)
 
   # binder global include path
   set(BINDER_GLOBAL_C_INCDIR
-      ${CMAKE_CURRENT_LIST_DIR}/binder/include_rpc_unstable)
+      ${CMAKE_CURRENT_LIST_DIR}/binder/include_rpc_unstable
+      ${CMAKE_CURRENT_LIST_DIR}/binder/ndk/include_ndk)
 
   set(BINDER_GLOBAL_CXX_INCDIR
       ${CMAKE_CURRENT_LIST_DIR}/binder/aidl
@@ -27,6 +28,7 @@ if(CONFIG_ANDROID_BINDER)
       ${CMAKE_CURRENT_LIST_DIR}/binder/include_batterystats
       ${CMAKE_CURRENT_LIST_DIR}/binder/include_processinfo
       ${CMAKE_CURRENT_LIST_DIR}/binder/ndk/include_cpp
+      ${CMAKE_CURRENT_LIST_DIR}/binder/ndk/include_ndk
       ${CMAKE_CURRENT_LIST_DIR}/binderdebug/include)
 
   set_property(

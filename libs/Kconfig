@@ -36,7 +36,7 @@ config ANDROID_BINDER_PROXY_CHECK
 config ANDROID_BINDER_RPC
 	bool "Android CPC Binder"
 	depends on NET
-	default n
+	default y
 
 config ANDROID_BINDER_THREADPOOL_STACKSIZE
 	int "Android Binder Thread pool stacksize"

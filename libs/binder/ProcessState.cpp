@@ -109,6 +109,10 @@ void ProcessState::unregisterThread(pid_t thread)
 void ProcessState::insertBBinder(IBinder *binder)
 {
     AutoMutex _l(mLock);
+    if (std::find(mIBinderSet.begin(), mIBinderSet.end(), binder) != mIBinderSet.end()) {
+        ALOGD("BBinder %p already in set, skip insert\n", binder);
+        return;
+    }
     ALOGD("BBinder %p insert into set\n", binder);
     mIBinderSet.push_back(binder);
 }
